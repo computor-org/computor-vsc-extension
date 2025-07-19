@@ -37,6 +37,12 @@ export interface HttpClientConfig {
   maxRetries: number;
   retryDelay: number;
   headers: Record<string, string>;
+  cache?: {
+    enabled: boolean;
+    ttl?: number; // Default TTL in milliseconds
+    respectCacheHeaders?: boolean;
+    maxSize?: number;
+  };
 }
 
 export interface RequestInterceptor {
