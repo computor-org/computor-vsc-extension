@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { UIShowcaseView } from './ui/views/UIShowcaseView';
+import { SettingsView } from './ui/views/SettingsView';
 
 export function activate(context: vscode.ExtensionContext) {
   console.log('Computor VS Code Extension is now active!');
@@ -15,7 +16,13 @@ export function activate(context: vscode.ExtensionContext) {
     showcaseView.render();
   });
 
-  context.subscriptions.push(activateCommand, uiShowcaseCommand);
+  // Settings management command
+  const settingsCommand = vscode.commands.registerCommand('computor.showSettings', () => {
+    const settingsView = new SettingsView(context);
+    settingsView.render();
+  });
+
+  context.subscriptions.push(activateCommand, uiShowcaseCommand, settingsCommand);
 }
 
 export function deactivate() {
