@@ -56,7 +56,9 @@
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
-    "test": "mocha"
+    "test": "mocha",
+    "test:integration": "jest --config jest.integration.config.js",
+    "test:all": "npm run test && npm run test:integration"
   },
   "devDependencies": {
     "@types/chai": "^4.3.4",
