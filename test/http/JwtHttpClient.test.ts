@@ -1,7 +1,7 @@
 import { expect } from 'chai';
-import { JwtHttpClient } from '../../http/JwtHttpClient';
-import { AuthenticationError } from '../../http/errors';
-import { KeycloakConfig } from '../../types/HttpTypes';
+import { JwtHttpClient } from '../../src/http/JwtHttpClient';
+import { AuthenticationError } from '../../src/http/errors';
+import { KeycloakConfig } from '../../src/types/HttpTypes';
 
 describe('JwtHttpClient', () => {
   let client: JwtHttpClient;

@@ -3,23 +3,10 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs/promises';
-import { ComputorSettingsManager } from '../../settings/ComputorSettingsManager';
-import { defaultSettings } from '../../types/SettingsTypes';
+import { ComputorSettingsManager } from '../../src/settings/ComputorSettingsManager';
+import { defaultSettings } from '../../src/types/SettingsTypes';
 
-// Mock VS Code extension context
-class MockExtensionContext implements Partial<vscode.ExtensionContext> {
-  secrets: vscode.SecretStorage;
-  
-  constructor() {
-    const storage = new Map<string, string>();
-    this.secrets = {
-      get: async (key: string) => storage.get(key),
-      store: async (key: string, value: string) => { storage.set(key, value); },
-      delete: async (key: string) => { storage.delete(key); },
-      onDidChange: new vscode.EventEmitter<vscode.SecretStorageChangeEvent>().event
-    } as vscode.SecretStorage;
-  }
-}
+import { MockExtensionContext } from '../helpers/MockExtensionContext';
 
 describe('ComputorSettingsManager', () => {
   let manager: ComputorSettingsManager;

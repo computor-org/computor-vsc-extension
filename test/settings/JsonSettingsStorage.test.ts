@@ -2,8 +2,8 @@ import { expect } from 'chai';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
-import { JsonSettingsStorage } from '../../settings/JsonSettingsStorage';
-import { ComputorSettings, defaultSettings } from '../../types/SettingsTypes';
+import { JsonSettingsStorage } from '../../src/settings/JsonSettingsStorage';
+import { ComputorSettings, defaultSettings } from '../../src/types/SettingsTypes';
 
 class TestJsonSettingsStorage extends JsonSettingsStorage<ComputorSettings> {
   protected getDefaultSettings(): ComputorSettings {
