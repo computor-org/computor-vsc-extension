@@ -91,19 +91,25 @@ export class ViewStateManager<T extends ViewState = ViewState> {
 
   // Utility methods for common state patterns
   setLoading(loading: boolean): void {
-    this.setState({ isLoading: loading } as Partial<T>);
+    if ('isLoading' in this.state) {
+      this.setState({ isLoading: loading } as unknown as Partial<T>);
+    }
   }
 
   setError(error: string | null): void {
-    this.setState({ error } as Partial<T>);
+    if ('error' in this.state) {
+      this.setState({ error } as unknown as Partial<T>);
+    }
   }
 
   setData(data: any): void {
-    this.setState({ data } as Partial<T>);
+    if ('data' in this.state) {
+      this.setState({ data } as unknown as Partial<T>);
+    }
   }
 
   updateField<K extends keyof T>(field: K, value: T[K]): void {
-    this.setState({ [field]: value } as Partial<T>);
+    this.setState({ [field]: value } as unknown as Partial<T>);
   }
 
   // Batch updates to prevent multiple re-renders

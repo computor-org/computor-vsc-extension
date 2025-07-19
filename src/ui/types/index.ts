@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as React from 'react';
 
 export interface ViewConstructor {
   new (context: vscode.ExtensionContext): BaseView;
@@ -120,7 +121,7 @@ export interface TreeItemData {
   label: string;
   description?: string;
   tooltip?: string;
-  iconPath?: vscode.ThemeIcon | { light: string; dark: string };
+  iconPath?: vscode.ThemeIcon | { light: vscode.Uri; dark: vscode.Uri } | string;
   contextValue?: string;
   children?: TreeItemData[];
 }
