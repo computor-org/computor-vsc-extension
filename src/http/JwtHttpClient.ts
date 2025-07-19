@@ -9,8 +9,18 @@ export class JwtHttpClient extends HttpClient {
   private tokenExpiry: Date | null = null;
   private keycloakConfig: KeycloakConfig;
 
-  constructor(baseUrl: string, keycloakConfig: KeycloakConfig, timeout?: number) {
-    super(baseUrl, timeout);
+  constructor(
+    baseUrl: string,
+    keycloakConfig: KeycloakConfig,
+    timeout?: number,
+    cacheConfig?: {
+      enabled?: boolean;
+      ttl?: number;
+      respectCacheHeaders?: boolean;
+      maxSize?: number;
+    }
+  ) {
+    super(baseUrl, timeout, 3, 1000, cacheConfig);
     this.keycloakConfig = keycloakConfig;
   }
 
