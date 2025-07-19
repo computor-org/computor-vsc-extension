@@ -12,12 +12,19 @@ We use **simple-git** as the primary Git integration library. This provides:
 - Cross-platform compatibility
 
 ## Implementation Status
-✅ **Phase 1 Complete** - Basic Git operations are fully implemented including:
+✅ **Fully Implemented** - All Git operations are complete including:
 - Repository detection and initialization
 - Status and diff operations
 - Commit, push, and pull functionality
-- Branch management
+- Branch management (create, switch, merge, delete)
+- Tag operations (create, delete, list)
+- Stash operations (stash, pop, apply, drop, list, clear)
+- Remote management (add, remove, list)
+- Clone operations with options
+- Commit history viewing
 - Error handling with user-friendly messages
+- Input validation with GitValidator utility
+- Support for authenticated HTTP(S) URLs
 
 ## Architecture
 
@@ -29,6 +36,7 @@ A service layer that wraps the simple-git library and provides:
 - Repository instance management
 - Type-safe Git operations
 - Command validation and sanitization
+- Integration with GitValidator for input validation
 
 #### 2. GitManager (`src/git/GitManager.ts`)
 High-level Git operations integrated with VS Code:
@@ -44,6 +52,15 @@ Specialized error handling for Git operations:
 - User-friendly error messages
 - Recoverable error detection
 - Detailed error logging
+
+#### 4. GitValidator (`src/utils/GitValidator.ts`)
+Input validation and sanitization utilities:
+- Branch name validation and sanitization
+- Tag name validation
+- Remote name and URL validation (including authenticated HTTP(S) URLs)
+- Commit message validation
+- File path validation
+- Detailed validation error messages
 
 ### Core Operations
 The Git wrapper supports:
@@ -62,23 +79,27 @@ The Git wrapper supports:
 - Automatic error classification and recovery suggestions
 - Validation of repository state before operations
 
-## Implementation Strategy
+## Implementation Phases (Completed)
 
-### Phase 1: Basic Operations
+### ✅ Phase 1: Basic Operations
 - Repository detection and initialization
 - Basic status and diff operations
 - Simple commit and push functionality
+- File staging and commit operations
 
-### Phase 2: Advanced Features
-- Branch management
-- Merge conflict resolution
+### ✅ Phase 2: Advanced Features
+- Branch management (create, switch, merge, delete)
 - Remote repository operations
 - Tag and release management
+- Stash operations (stash, pop, apply, drop, list, clear)
+- Commit history viewing
 
-### Phase 3: Integration Features
+### ✅ Phase 3: Integration Features
 - VS Code integration (status bar, commands)
-- Authentication handling
-- Background operations and progress tracking
+- Authentication handling (PAT, username/password)
+- Error handling with user-friendly messages
+- Input validation with GitValidator
+- Support for GitLab and GitHub authentication
 
 ## Security Considerations
 - Validate all Git commands before execution
@@ -113,8 +134,27 @@ await gitManager.showGitStatus();
 ```
 
 ## Testing Strategy
-- Unit tests for all Git wrapper methods
-- Integration tests with actual Git repositories  
+- Unit tests for all Git wrapper methods (`test/git/`, `test/utils/`)
+- Integration tests with actual Git repositories (`test/integration/git/`)
+- Manual integration tests for external services (`test/integration/manual/`)
 - Mock Git operations for isolated testing
 - Error scenario testing
-- Tests located in `test/git/` directory
+- Comprehensive test coverage including:
+  - GitWrapper operations
+  - GitValidator utilities
+  - GitErrorHandler
+  - Stash operations
+  - Remote authentication
+
+### Manual Test Scripts
+Available in `test/integration/manual/`:
+- `test-git-basic.ts` - Tests all local Git operations
+- `test-gitlab-integration.ts` - Interactive GitLab testing
+- `test-gitlab-auto.ts` - Automated GitLab testing with environment variables
+
+Run with:
+```bash
+npm run test:git-basic
+npm run test:gitlab       # Interactive
+npm run test:gitlab-auto  # With env vars: GITLAB_HTTP_PREFIX, GITLAB_HOST, GITLAB_PORT, GITLAB_PAT
+```
