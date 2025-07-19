@@ -1,0 +1,267 @@
+/* Typography System */
+
+/* Font sizes */
+.text-xs {
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.text-sm {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.text-base {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.text-lg {
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.text-xl {
+  font-size: 18px;
+  line-height: 1.5;
+}
+
+.text-2xl {
+  font-size: 24px;
+  line-height: 1.25;
+}
+
+/* Font weights */
+.font-normal {
+  font-weight: 400;
+}
+
+.font-medium {
+  font-weight: 500;
+}
+
+.font-semibold {
+  font-weight: 600;
+}
+
+.font-bold {
+  font-weight: 700;
+}
+
+/* Line heights */
+.leading-tight {
+  line-height: 1.25;
+}
+
+.leading-normal {
+  line-height: 1.5;
+}
+
+.leading-relaxed {
+  line-height: 1.75;
+}
+
+/* Text colors */
+.text-primary {
+  color: var(--vscode-foreground);
+}
+
+.text-secondary {
+  color: var(--vscode-descriptionForeground);
+}
+
+.text-muted {
+  color: var(--vscode-disabledForeground);
+}
+
+.text-error {
+  color: var(--vscode-errorForeground);
+}
+
+.text-warning {
+  color: var(--vscode-warningForeground);
+}
+
+.text-success {
+  color: var(--vscode-terminal-ansiGreen);
+}
+
+.text-info {
+  color: var(--vscode-infoForeground);
+}
+
+/* Text alignment */
+.text-left {
+  text-align: left;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.text-right {
+  text-align: right;
+}
+
+/* Text decoration */
+.underline {
+  text-decoration: underline;
+}
+
+.no-underline {
+  text-decoration: none;
+}
+
+/* Text transform */
+.uppercase {
+  text-transform: uppercase;
+}
+
+.lowercase {
+  text-transform: lowercase;
+}
+
+.capitalize {
+  text-transform: capitalize;
+}
+
+/* Text overflow */
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.text-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.text-clip {
+  text-overflow: clip;
+}
+
+/* White space */
+.whitespace-normal {
+  white-space: normal;
+}
+
+.whitespace-nowrap {
+  white-space: nowrap;
+}
+
+.whitespace-pre {
+  white-space: pre;
+}
+
+.whitespace-pre-line {
+  white-space: pre-line;
+}
+
+.whitespace-pre-wrap {
+  white-space: pre-wrap;
+}
+
+/* Word break */
+.break-normal {
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.break-words {
+  overflow-wrap: break-word;
+}
+
+.break-all {
+  word-break: break-all;
+}
+
+/* Headings */
+h1, .h1 {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.25;
+  margin-bottom: 16px;
+  color: var(--vscode-foreground);
+}
+
+h2, .h2 {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.25;
+  margin-bottom: 12px;
+  color: var(--vscode-foreground);
+}
+
+h3, .h3 {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.25;
+  margin-bottom: 8px;
+  color: var(--vscode-foreground);
+}
+
+h4, .h4 {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+  margin-bottom: 8px;
+  color: var(--vscode-foreground);
+}
+
+h5, .h5 {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+  margin-bottom: 4px;
+  color: var(--vscode-foreground);
+}
+
+h6, .h6 {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  margin-bottom: 4px;
+  color: var(--vscode-foreground);
+}
+
+/* Paragraphs */
+p {
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+
+/* Code */
+code {
+  font-family: var(--vscode-editor-font-family, 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace);
+  font-size: 0.9em;
+  background-color: var(--vscode-textCodeBlock-background);
+  color: var(--vscode-textPreformat-foreground);
+  padding: 2px 4px;
+  border-radius: 2px;
+}
+
+pre {
+  font-family: var(--vscode-editor-font-family, 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace);
+  background-color: var(--vscode-textCodeBlock-background);
+  color: var(--vscode-textPreformat-foreground);
+  padding: 8px 12px;
+  border-radius: 4px;
+  overflow-x: auto;
+  line-height: 1.4;
+}
+
+/* Links */
+a {
+  color: var(--vscode-textLink-foreground);
+  text-decoration: underline;
+}
+
+a:hover {
+  color: var(--vscode-textLink-activeForeground);
+}
+
+a:focus {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
