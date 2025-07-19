@@ -27,6 +27,7 @@ export abstract class BaseWebviewPanel extends BaseView {
       localResourceRoots: [
         vscode.Uri.file(path.join(context.extensionPath, 'media')),
         vscode.Uri.file(path.join(context.extensionPath, 'out', 'ui')),
+        vscode.Uri.file(path.join(context.extensionPath, 'node_modules')),
       ],
       ...options,
     };
