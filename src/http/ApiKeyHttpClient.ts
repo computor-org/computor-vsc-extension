@@ -12,9 +12,15 @@ export class ApiKeyHttpClient extends HttpClient {
     apiKey: string,
     headerName: string = 'X-API-Key',
     headerPrefix: string = '',
-    timeout?: number
+    timeout?: number,
+    cacheConfig?: {
+      enabled?: boolean;
+      ttl?: number;
+      respectCacheHeaders?: boolean;
+      maxSize?: number;
+    }
   ) {
-    super(baseUrl, timeout);
+    super(baseUrl, timeout, 3, 1000, cacheConfig);
     this.apiKey = apiKey;
     this.headerName = headerName;
     this.headerPrefix = headerPrefix;

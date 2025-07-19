@@ -6,8 +6,19 @@ export class BasicAuthHttpClient extends HttpClient {
   private password: string;
   private isAuth: boolean = false;
 
-  constructor(baseUrl: string, username: string, password: string, timeout?: number) {
-    super(baseUrl, timeout);
+  constructor(
+    baseUrl: string,
+    username: string,
+    password: string,
+    timeout?: number,
+    cacheConfig?: {
+      enabled?: boolean;
+      ttl?: number;
+      respectCacheHeaders?: boolean;
+      maxSize?: number;
+    }
+  ) {
+    super(baseUrl, timeout, 3, 1000, cacheConfig);
     this.username = username;
     this.password = password;
   }

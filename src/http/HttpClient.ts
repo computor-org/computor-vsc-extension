@@ -1,6 +1,9 @@
 import fetch, { Response, Headers } from 'node-fetch';
 import { HttpMethod, HttpResponse, HttpRequestConfig, RequestInterceptor, ResponseInterceptor } from '../types/HttpTypes';
 import { HttpError, NetworkError, TimeoutError, ValidationError } from './errors';
+import { CacheStrategy, CacheKey } from './cache/CacheStrategy';
+import { InMemoryCache } from './cache/InMemoryCache';
+import { NoOpCache } from './cache/NoOpCache';
 
 export abstract class HttpClient {
   protected baseUrl: string;
@@ -10,8 +13,23 @@ export abstract class HttpClient {
   protected retryDelay: number;
   protected requestInterceptors: RequestInterceptor[] = [];
   protected responseInterceptors: ResponseInterceptor[] = [];
+  protected cache: CacheStrategy;
+  protected cacheEnabled: boolean;
+  protected cacheTTL: number;
+  protected respectCacheHeaders: boolean;
 
-  constructor(baseUrl: string, timeout: number = 5000, maxRetries: number = 3, retryDelay: number = 1000) {
+  constructor(
+    baseUrl: string,
+    timeout: number = 5000,
+    maxRetries: number = 3,
+    retryDelay: number = 1000,
+    cacheConfig?: {
+      enabled?: boolean;
+      ttl?: number;
+      respectCacheHeaders?: boolean;
+      maxSize?: number;
+    }
+  ) {
     this.baseUrl = baseUrl.replace(/\/$/, '');
     this.timeout = timeout;
     this.maxRetries = maxRetries;
@@ -20,6 +38,16 @@ export abstract class HttpClient {
       'Content-Type': 'application/json',
       'User-Agent': 'computor-vsc-extension',
     };
+    
+    this.cacheEnabled = cacheConfig?.enabled ?? false;
+    this.cacheTTL = cacheConfig?.ttl ?? 300000; // 5 minutes default
+    this.respectCacheHeaders = cacheConfig?.respectCacheHeaders ?? true;
+    
+    if (this.cacheEnabled) {
+      this.cache = new InMemoryCache(cacheConfig?.maxSize ?? 100);
+    } else {
+      this.cache = new NoOpCache();
+    }
   }
 
   abstract authenticate(): Promise<void>;
@@ -54,9 +82,35 @@ export abstract class HttpClient {
   ): Promise<HttpResponse<T>> {
     const config = await this.buildRequestConfig(method, endpoint, data, params);
     
+    // Check cache for GET requests
+    if (this.cacheEnabled && method === 'GET') {
+      const cacheKey = this.createCacheKey(config);
+      const cachedEntry = await this.cache.get<T>(cacheKey);
+      
+      if (cachedEntry && !this.cache.isExpired(cachedEntry)) {
+        return cachedEntry.data as HttpResponse<T>;
+      }
+    }
+    
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
-        return await this.executeRequest<T>(config);
+        const response = await this.executeRequest<T>(config);
+        
+        // Cache successful GET responses
+        if (this.cacheEnabled && method === 'GET' && response.status === 200) {
+          const cacheKey = this.createCacheKey(config);
+          const ttl = this.getCacheTTL(response.headers);
+          
+          await this.cache.set(cacheKey, {
+            data: response,
+            timestamp: Date.now(),
+            ttl,
+            etag: response.headers['etag'],
+            lastModified: response.headers['last-modified'],
+          });
+        }
+        
+        return response;
       } catch (error) {
         if (attempt === this.maxRetries || !this.isRetryableError(error)) {
           throw error;
@@ -240,5 +294,57 @@ export abstract class HttpClient {
 
   public setDefaultHeaders(headers: Record<string, string>): void {
     this.headers = { ...this.headers, ...headers };
+  }
+
+  private createCacheKey(config: HttpRequestConfig): CacheKey {
+    return {
+      method: config.method,
+      url: config.url,
+      params: config.params ? JSON.stringify(config.params) : undefined,
+      body: config.data ? JSON.stringify(config.data) : undefined,
+    };
+  }
+
+  private getCacheTTL(headers: Record<string, string>): number {
+    if (!this.respectCacheHeaders) {
+      return this.cacheTTL;
+    }
+
+    const cacheControl = headers['cache-control'];
+    if (cacheControl) {
+      const maxAgeMatch = cacheControl.match(/max-age=(\d+)/);
+      if (maxAgeMatch && maxAgeMatch[1]) {
+        return parseInt(maxAgeMatch[1], 10) * 1000; // Convert to milliseconds
+      }
+      
+      if (cacheControl.includes('no-cache') || cacheControl.includes('no-store')) {
+        return 0; // Don't cache
+      }
+    }
+
+    return this.cacheTTL;
+  }
+
+  public async clearCache(): Promise<void> {
+    await this.cache.clear();
+  }
+
+  public async invalidateCacheEntry(endpoint: string, method: HttpMethod = 'GET', params?: Record<string, any>): Promise<void> {
+    const url = this.buildUrl(endpoint, params);
+    const cacheKey: CacheKey = {
+      method,
+      url,
+      params: params ? JSON.stringify(params) : undefined,
+    };
+    await this.cache.delete(cacheKey);
+  }
+
+  public setCacheEnabled(enabled: boolean): void {
+    this.cacheEnabled = enabled;
+    if (enabled && this.cache instanceof NoOpCache) {
+      this.cache = new InMemoryCache(100);
+    } else if (!enabled && !(this.cache instanceof NoOpCache)) {
+      this.cache = new NoOpCache();
+    }
   }
 }
