@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { UIShowcaseView } from './ui/views/UIShowcaseView';
 import { SettingsView } from './ui/views/SettingsView';
 import { ComputorAuthenticationProvider } from './authentication/ComputorAuthenticationProvider';
+import { GitManager } from './git/GitManager';
 
 export function activate(context: vscode.ExtensionContext) {
   console.log('Computor VS Code Extension is now active!');
@@ -9,6 +10,10 @@ export function activate(context: vscode.ExtensionContext) {
   // Initialize authentication provider
   const authProvider = new ComputorAuthenticationProvider(context);
   context.subscriptions.push(authProvider);
+
+  // Initialize Git manager
+  const gitManager = new GitManager(context);
+  context.subscriptions.push(gitManager);
 
   // Original activation command
   const activateCommand = vscode.commands.registerCommand('computor.activate', () => {
@@ -53,12 +58,18 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
+  // Git status command
+  const gitStatusCommand = vscode.commands.registerCommand('computor.showGitStatus', async () => {
+    await gitManager.showGitStatus();
+  });
+
   context.subscriptions.push(
     activateCommand, 
     uiShowcaseCommand, 
     settingsCommand,
     signInCommand,
-    signOutCommand
+    signOutCommand,
+    gitStatusCommand
   );
 }
 
