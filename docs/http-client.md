@@ -419,16 +419,143 @@ const response = await client.get('/protected-resource');
 - Test credential handling
 - Test secure storage integration
 
+## Caching
+
+### Overview
+The HTTP client includes a flexible caching system that can significantly improve performance by reducing redundant API calls.
+
+### Cache Strategies
+
+#### InMemoryCache
+- LRU (Least Recently Used) or FIFO (First In First Out) eviction policies
+- Configurable maximum size
+- Automatic expiration based on TTL
+- Zero dependencies, pure TypeScript implementation
+
+#### NoOpCache
+- Null object pattern for disabled caching
+- No performance overhead when caching is disabled
+
+### Configuration
+
+#### Basic Cache Configuration
+```typescript
+const client = new BasicAuthHttpClient(
+  'https://api.example.com',
+  'username',
+  'password',
+  5000, // timeout
+  {
+    enabled: true,              // Enable caching
+    ttl: 300000,               // 5 minutes default TTL
+    maxSize: 100,              // Maximum cached entries
+    respectCacheHeaders: true   // Honor Cache-Control headers
+  }
+);
+```
+
+#### Advanced Usage
+```typescript
+// Invalidate specific cache entry
+await client.invalidateCacheEntry('/users/123');
+
+// Clear entire cache
+await client.clearCache();
+
+// Disable caching at runtime
+client.setCacheEnabled(false);
+
+// Re-enable caching
+client.setCacheEnabled(true);
+```
+
+### Cache Key Generation
+Cache keys are generated based on:
+- HTTP method
+- URL (including base URL)
+- Query parameters
+- Request body (for POST/PUT requests)
+
+### HTTP Cache Headers Support
+When `respectCacheHeaders` is enabled:
+- Honors `Cache-Control: max-age=X` directives
+- Respects `Cache-Control: no-cache` and `no-store`
+- Stores `ETag` and `Last-Modified` for future conditional requests
+
+### Cache-Aware Patterns
+
+#### Pattern 1: Cache Invalidation on Updates
+```typescript
+async function updateUser(userId: string, data: any) {
+  // Update the user
+  await client.put(`/users/${userId}`, data);
+  
+  // Invalidate related cache entries
+  await client.invalidateCacheEntry(`/users/${userId}`);
+  await client.invalidateCacheEntry('/users'); // List might have changed
+}
+```
+
+#### Pattern 2: Aggressive Caching for Static Data
+```typescript
+const staticDataClient = new ApiKeyHttpClient(
+  'https://api.example.com',
+  'api-key',
+  'X-API-Key',
+  '',
+  5000,
+  {
+    enabled: true,
+    ttl: 3600000,              // 1 hour for static data
+    respectCacheHeaders: false  // Ignore server cache directives
+  }
+);
+```
+
+### Implementation Details
+
+#### CacheStrategy Interface
+```typescript
+abstract class CacheStrategy {
+  abstract get<T>(key: CacheKey): Promise<CacheEntry<T> | null>;
+  abstract set<T>(key: CacheKey, entry: CacheEntry<T>): Promise<void>;
+  abstract delete(key: CacheKey): Promise<void>;
+  abstract clear(): Promise<void>;
+  abstract has(key: CacheKey): Promise<boolean>;
+  
+  isExpired(entry: CacheEntry): boolean;
+}
+```
+
+#### Cache Entry Structure
+```typescript
+interface CacheEntry<T = any> {
+  data: T;
+  timestamp: number;
+  ttl: number;
+  etag?: string;
+  lastModified?: string;
+}
+```
+
+### Future Enhancements
+- Persistent cache using VS Code's storage API
+- Conditional requests using ETag/If-None-Match
+- Request deduplication for in-flight requests
+- Cache warming strategies
+- Cache statistics and hit rate monitoring
+
 ## Performance Considerations
 
 ### Optimization
 - Connection pooling
-- Request deduplication
-- Response caching
-- Retry mechanisms
+- Request deduplication (with caching)
+- Response caching (implemented)
+- Retry mechanisms with exponential backoff
 
 ### Monitoring
 - Request/response logging
 - Performance metrics
 - Error tracking
 - Authentication success rates
+- Cache hit/miss statistics
