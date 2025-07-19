@@ -13,6 +13,7 @@ import {
   GitCloneOptions,
   GitStashEntry
 } from '../types/GitTypes';
+import { GitValidator } from '../utils/GitValidator';
 
 export class GitWrapper implements IGitWrapper {
   private gitInstances: Map<string, SimpleGit> = new Map();
@@ -77,6 +78,10 @@ export class GitWrapper implements IGitWrapper {
   }
 
   async init(repositoryPath: string, bare?: boolean): Promise<void> {
+    if (!await GitValidator.isValidRepositoryPath(repositoryPath)) {
+      throw new Error('Invalid repository path');
+    }
+    
     const git = await this.getRepository(repositoryPath);
     if (bare) {
       await git.init(true);
@@ -86,6 +91,14 @@ export class GitWrapper implements IGitWrapper {
   }
 
   async clone(url: string, localPath: string, options?: GitCloneOptions): Promise<void> {
+    if (!GitValidator.isValidGitUrl(url)) {
+      throw new Error('Invalid Git URL');
+    }
+    
+    if (!await GitValidator.isValidRepositoryPath(path.dirname(localPath))) {
+      throw new Error('Invalid local path');
+    }
+    
     const cloneOptions: string[] = [];
     
     if (options?.depth) {
@@ -163,6 +176,11 @@ export class GitWrapper implements IGitWrapper {
   }
 
   async createBranch(repositoryPath: string, branchName: string): Promise<void> {
+    if (!GitValidator.isValidBranchName(branchName)) {
+      const reason = GitValidator.getInvalidBranchNameReason(branchName);
+      throw new Error(`Invalid branch name: ${reason}`);
+    }
+    
     const git = await this.getRepository(repositoryPath);
     await git.checkoutLocalBranch(branchName);
   }
@@ -187,11 +205,20 @@ export class GitWrapper implements IGitWrapper {
   }
 
   async add(repositoryPath: string, files: string | string[]): Promise<void> {
+    const validFiles = GitValidator.validateFilePaths(files);
+    if (validFiles.length === 0) {
+      throw new Error('No valid files to add');
+    }
+    
     const git = await this.getRepository(repositoryPath);
-    await git.add(files);
+    await git.add(validFiles);
   }
 
   async commit(repositoryPath: string, message: string): Promise<void> {
+    if (!GitValidator.isValidCommitMessage(message)) {
+      throw new Error('Invalid commit message: cannot be empty');
+    }
+    
     const git = await this.getRepository(repositoryPath);
     await git.commit(message);
   }
@@ -245,6 +272,14 @@ export class GitWrapper implements IGitWrapper {
   }
 
   async addRemote(repositoryPath: string, name: string, url: string): Promise<void> {
+    if (!GitValidator.isValidRemoteName(name)) {
+      throw new Error('Invalid remote name');
+    }
+    
+    if (!GitValidator.isValidGitUrl(url)) {
+      throw new Error('Invalid remote URL');
+    }
+    
     const git = await this.getRepository(repositoryPath);
     await git.addRemote(name, url);
   }
@@ -275,6 +310,11 @@ export class GitWrapper implements IGitWrapper {
   }
 
   async createTag(repositoryPath: string, tagName: string, message?: string): Promise<void> {
+    if (!GitValidator.isValidTagName(tagName)) {
+      const reason = GitValidator.getInvalidTagNameReason(tagName);
+      throw new Error(`Invalid tag name: ${reason}`);
+    }
+    
     const git = await this.getRepository(repositoryPath);
     if (message) {
       await git.addAnnotatedTag(tagName, message);
@@ -289,6 +329,16 @@ export class GitWrapper implements IGitWrapper {
   }
 
   async stash(repositoryPath: string, options?: string[]): Promise<string> {
+    if (options?.includes('-m') || options?.includes('--message')) {
+      const messageIndex = options.findIndex(opt => opt === '-m' || opt === '--message');
+      if (messageIndex !== -1 && messageIndex + 1 < options.length) {
+        const message = options[messageIndex + 1];
+        if (message && !GitValidator.isValidStashMessage(message)) {
+          throw new Error('Invalid stash message: cannot contain newlines');
+        }
+      }
+    }
+    
     const git = await this.getRepository(repositoryPath);
     
     if (options && options.length > 0) {
