@@ -13,10 +13,11 @@ export interface BaseView {
 export interface ComponentProps {
   className?: string;
   children?: React.ReactNode;
-  onClick?: () => void;
+  onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void;
   disabled?: boolean;
   id?: string;
   'data-testid'?: string;
+  style?: React.CSSProperties;
 }
 
 export interface ThemeContextType {
