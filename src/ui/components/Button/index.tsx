@@ -3,7 +3,9 @@ import styled, { css } from 'styled-components';
 import classNames from 'classnames';
 import { ComponentProps } from '../../types';
 
-export interface ButtonProps extends ComponentProps {
+type BaseButtonProps = Omit<ComponentProps, 'onClick'>;
+
+export interface ButtonProps extends BaseButtonProps {
   variant?: 'primary' | 'secondary' | 'tertiary' | 'danger';
   size?: 'sm' | 'md' | 'lg';
   fullWidth?: boolean;
@@ -11,6 +13,7 @@ export interface ButtonProps extends ComponentProps {
   icon?: React.ReactNode;
   iconPosition?: 'left' | 'right';
   type?: 'button' | 'submit' | 'reset';
+  onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void;
 }
 
 const StyledButton = styled.button<ButtonProps>`
@@ -158,6 +161,7 @@ const ButtonContent = styled.span<{ isLoading?: boolean }>`
 export const Button: React.FC<ButtonProps> = ({
   children,
   className,
+  style,
   variant = 'primary',
   size = 'md',
   fullWidth = false,
@@ -191,6 +195,7 @@ export const Button: React.FC<ButtonProps> = ({
   return (
     <StyledButton
       className={buttonClasses}
+      style={style}
       variant={variant}
       size={size}
       fullWidth={fullWidth}
