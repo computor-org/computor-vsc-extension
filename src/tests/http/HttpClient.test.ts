@@ -25,6 +25,19 @@ class TestHttpClient extends HttpClient {
   setAuthenticated(authenticated: boolean): void {
     this.authenticated = authenticated;
   }
+
+  // Test helpers to access protected properties
+  getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
+  getTimeout(): number {
+    return this.timeout;
+  }
+
+  getHeaders(): Record<string, string> {
+    return this.headers;
+  }
 }
 
 describe('HttpClient', () => {
@@ -36,21 +49,21 @@ describe('HttpClient', () => {
 
   describe('constructor', () => {
     it('should initialize with base URL', () => {
-      expect(client.baseUrl).to.equal('https://api.example.com');
+      expect(client.getBaseUrl()).to.equal('https://api.example.com');
     });
 
     it('should remove trailing slash from base URL', () => {
       const clientWithSlash = new TestHttpClient('https://api.example.com/');
-      expect(clientWithSlash.baseUrl).to.equal('https://api.example.com');
+      expect(clientWithSlash.getBaseUrl()).to.equal('https://api.example.com');
     });
 
     it('should set default timeout', () => {
-      expect(client.timeout).to.equal(5000);
+      expect(client.getTimeout()).to.equal(5000);
     });
 
     it('should set custom timeout', () => {
       const customClient = new TestHttpClient('https://api.example.com', 10000);
-      expect(customClient.timeout).to.equal(10000);
+      expect(customClient.getTimeout()).to.equal(10000);
     });
   });
 
@@ -159,18 +172,18 @@ describe('HttpClient', () => {
   describe('configuration', () => {
     it('should set base URL', () => {
       client.setBaseUrl('https://new-api.example.com');
-      expect(client.baseUrl).to.equal('https://new-api.example.com');
+      expect(client.getBaseUrl()).to.equal('https://new-api.example.com');
     });
 
     it('should set timeout', () => {
       client.setTimeout(10000);
-      expect(client.timeout).to.equal(10000);
+      expect(client.getTimeout()).to.equal(10000);
     });
 
     it('should set default headers', () => {
       const headers = { 'X-Custom-Header': 'value' };
       client.setDefaultHeaders(headers);
-      expect(client.headers).to.include(headers);
+      expect(client.getHeaders()).to.include(headers);
     });
   });
 

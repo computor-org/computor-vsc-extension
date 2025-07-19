@@ -38,12 +38,15 @@ describe('ApiKeyHttpClient', () => {
         expect.fail('Should have thrown AuthenticationError');
       } catch (error) {
         expect(error).to.be.instanceOf(AuthenticationError);
-        expect(error.message).to.equal('API key is required');
+        if (error instanceof Error) {
+          expect(error.message).to.equal('API key is required');
+        }
       }
     });
 
     it('should set authenticated state after successful validation', async () => {
       // Mock successful validation
+      // @ts-ignore - mocking for test
       client.get = async () => ({ data: {}, status: 200, statusText: 'OK', headers: {} });
       
       await client.authenticate();
@@ -52,6 +55,7 @@ describe('ApiKeyHttpClient', () => {
 
     it('should handle validation failure', async () => {
       // Mock failed validation
+      // @ts-ignore - mocking for test
       client.get = async () => {
         throw new Error('Unauthorized');
       };
@@ -61,7 +65,9 @@ describe('ApiKeyHttpClient', () => {
         expect.fail('Should have thrown AuthenticationError');
       } catch (error) {
         expect(error).to.be.instanceOf(AuthenticationError);
-        expect(error.message).to.include('API key validation failed');
+        if (error instanceof Error) {
+          expect(error.message).to.include('API key validation failed');
+        }
         expect(client.isAuthenticated()).to.be.false;
       }
     });
@@ -160,6 +166,7 @@ describe('ApiKeyHttpClient', () => {
 
     it('should return true when authenticated and API key exists', async () => {
       // Mock successful authentication
+      // @ts-ignore - mocking for test
       client.get = async () => ({ data: {}, status: 200, statusText: 'OK', headers: {} });
       
       await client.authenticate();
