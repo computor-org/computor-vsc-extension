@@ -23,6 +23,17 @@ This is a VS Code extension project called "computor-vsc-extension" that is part
 - **Avoid redundant comments**: Don't comment what the code already says
 - **Comment only when required for clarity**: Complex algorithms, workarounds, or non-obvious decisions
 
+### Naming Conventions
+- **camelCase**: Variables, functions, methods, and parameters
+  - `userName`, `getUserData()`, `handleButtonClick()`
+  - Even unused parameters: `element`, `token` (no underscore prefix)
+- **PascalCase**: Classes, interfaces, types, enums, and namespaces
+  - `HttpClient`, `UserData`, `ButtonVariant`, `ViewState`
+- **SCREAMING_SNAKE_CASE**: Constants and enum values
+  - `const MAX_RETRY_COUNT = 3`, `ButtonVariant.PRIMARY_BUTTON`
+- **kebab-case**: File names, CSS classes, and HTML attributes
+  - `user-profile.ts`, `.button-primary`, `data-testid`
+
 ### Development Principles
 - **SOLID**: Single Responsibility, Open/Closed, Liskov Substitution, Interface Segregation, Dependency Inversion
 - **KISS**: Keep It Simple, Stupid - avoid unnecessary complexity
