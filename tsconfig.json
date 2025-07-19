@@ -5,6 +5,8 @@
     "lib": ["ES2020", "DOM"],
     "types": ["node", "mocha", "chai"],
     "jsx": "react",
+    "jsxFactory": "React.createElement",
+    "jsxFragmentFactory": "React.Fragment",
     "outDir": "out",
     "rootDir": "src",
     "sourceMap": true,
