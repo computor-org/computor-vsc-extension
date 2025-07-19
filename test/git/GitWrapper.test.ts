@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { GitWrapper } from '../../src/git/GitWrapper';
-import { GitRepositoryInfo } from '../../src/types/GitTypes';
+// import { GitRepositoryInfo } from '../../src/types/GitTypes';
 
 const expect = chai.expect;
 
@@ -137,8 +137,8 @@ describe('GitWrapper', () => {
       const log = await gitWrapper.getLog(testRepoPath, { maxCount: 10 });
       
       expect(log).to.have.lengthOf(1);
-      expect(log[0].message).to.equal('First commit');
-      expect(log[0].author).to.equal('Test User');
+      expect(log[0]?.message).to.equal('First commit');
+      expect(log[0]?.author).to.equal('Test User');
     });
   });
 

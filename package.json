@@ -57,6 +57,7 @@
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "mocha",
+    "test:unit": "mocha --config .mocharc.unit.json",
     "test:integration": "jest --config jest.integration.config.js",
     "test:all": "npm run test && npm run test:integration"
   },

@@ -66,7 +66,7 @@ describe('Git Stash Operations', () => {
       // Check stash list contains our message
       const stashes = await gitWrapper.stashList(testRepoPath);
       expect(stashes).to.have.lengthOf(1);
-      expect(stashes[0].message).to.include('Work in progress');
+      expect(stashes[0]?.message).to.include('Work in progress');
     });
 
     it('should include untracked files by default', async () => {
@@ -103,10 +103,10 @@ describe('Git Stash Operations', () => {
       
       const stashes = await gitWrapper.stashList(testRepoPath);
       expect(stashes).to.have.lengthOf(2);
-      expect(stashes[0].index).to.equal(0);
-      expect(stashes[0].message).to.include('Second stash');
-      expect(stashes[1].index).to.equal(1);
-      expect(stashes[1].message).to.include('First stash');
+      expect(stashes[0]?.index).to.equal(0);
+      expect(stashes[0]?.message).to.include('Second stash');
+      expect(stashes[1]?.index).to.equal(1);
+      expect(stashes[1]?.message).to.include('First stash');
     });
 
     it('should parse stash entry details', async () => {
@@ -117,7 +117,7 @@ describe('Git Stash Operations', () => {
       const stashes = await gitWrapper.stashList(testRepoPath);
       expect(stashes[0]).to.have.property('hash');
       expect(stashes[0]).to.have.property('date');
-      expect(stashes[0].date).to.be.instanceOf(Date);
+      expect(stashes[0]?.date).to.be.instanceOf(Date);
     });
   });
 
