@@ -18,6 +18,8 @@ export class UIShowcaseView extends BaseWebviewPanel {
           body {
             padding: 20px;
             font-family: var(--vscode-font-family);
+            max-width: 100%;
+            overflow-x: hidden;
           }
           .showcase-section {
             margin-bottom: 40px;
@@ -33,7 +35,7 @@ export class UIShowcaseView extends BaseWebviewPanel {
           }
           .component-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
             gap: 16px;
             margin-bottom: 32px;
           }
@@ -102,6 +104,7 @@ export class UIShowcaseView extends BaseWebviewPanel {
             padding: 6px 10px;
             font-size: 13px;
             line-height: 20px;
+            box-sizing: border-box;
           }
           .vscode-input::placeholder {
             color: var(--vscode-input-placeholderForeground);
@@ -121,6 +124,8 @@ export class UIShowcaseView extends BaseWebviewPanel {
           }
           .input-wrapper {
             position: relative;
+            width: 100%;
+            box-sizing: border-box;
           }
           .input-error {
             margin-top: 4px;
@@ -137,6 +142,7 @@ export class UIShowcaseView extends BaseWebviewPanel {
             transition: all 0.2s ease;
             padding: 16px;
             border: 1px solid transparent;
+            box-sizing: border-box;
           }
           .vscode-card--bordered {
             border: 1px solid var(--vscode-panel-border);
