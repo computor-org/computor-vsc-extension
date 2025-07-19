@@ -1,16 +1,16 @@
 import { expect } from 'chai';
 import { TokenManager } from '../../src/authentication/TokenManager';
 import { ComputorCredentialManager, TokenExpiredError } from '../../src/authentication/ComputorCredentialManager';
-import { MockExtensionContext } from '../helpers/MockExtensionContext';
+import { SimpleMockExtensionContext } from '../helpers/SimpleMockContext';
 
 describe('TokenManager', () => {
   let tokenManager: TokenManager;
   let credentialManager: ComputorCredentialManager;
-  let context: MockExtensionContext;
+  let context: SimpleMockExtensionContext;
   
   beforeEach(() => {
-    context = new MockExtensionContext();
-    credentialManager = new ComputorCredentialManager(context);
+    context = new SimpleMockExtensionContext();
+    credentialManager = new ComputorCredentialManager(context as any);
     tokenManager = new TokenManager(credentialManager);
   });
   
