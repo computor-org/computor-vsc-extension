@@ -11,13 +11,7 @@ export class UIShowcaseView extends BaseWebviewPanel {
     const cspSource = this.getCspSource();
     
     // Get URIs for our webview UI files
-    const baseComponentUri = this.getWebviewUri('webview-ui/components/base.js');
-    const buttonUri = this.getWebviewUri('webview-ui/components/button.js');
-    const inputUri = this.getWebviewUri('webview-ui/components/input.js');
-    const selectUri = this.getWebviewUri('webview-ui/components/select.js');
-    const checkboxUri = this.getWebviewUri('webview-ui/components/checkbox.js');
-    const progressUri = this.getWebviewUri('webview-ui/components/progress.js');
-    const cardUri = this.getWebviewUri('webview-ui/components/card.js');
+    const componentsUri = this.getWebviewUri('webview-ui/components.js');
     const showcaseUri = this.getWebviewUri('webview-ui/showcase.js');
     const componentsStyleUri = this.getWebviewUri('webview-ui/components/components.css');
     const showcaseStyleUri = this.getWebviewUri('webview-ui/showcase.css');
@@ -42,19 +36,14 @@ export class UIShowcaseView extends BaseWebviewPanel {
 
         <script nonce="${nonce}">
           const vscode = acquireVsCodeApi();
+          console.log('VS Code API acquired');
         </script>
         
-        <!-- Load component files in order -->
-        <script nonce="${nonce}" src="${baseComponentUri}"></script>
-        <script nonce="${nonce}" src="${buttonUri}"></script>
-        <script nonce="${nonce}" src="${inputUri}"></script>
-        <script nonce="${nonce}" src="${selectUri}"></script>
-        <script nonce="${nonce}" src="${checkboxUri}"></script>
-        <script nonce="${nonce}" src="${progressUri}"></script>
-        <script nonce="${nonce}" src="${cardUri}"></script>
+        <!-- Load bundled components -->
+        <script nonce="${nonce}" src="${componentsUri}" onload="console.log('Components loaded')"></script>
         
         <!-- Load the showcase script -->
-        <script nonce="${nonce}" src="${showcaseUri}"></script>
+        <script nonce="${nonce}" src="${showcaseUri}" onload="console.log('Showcase loaded')"></script>
     </body>
     </html>`;
   }
