@@ -85,7 +85,8 @@ export class ComputorAuthenticationProvider implements vscode.AuthenticationProv
     this.onDidChangeSessionsEmitter.fire({ added: [], removed: [session as vscode.AuthenticationSession], changed: [] });
   }
 
-  private async showLoginPrompt(_scopes: readonly string[]): Promise<ComputorCredentials | undefined> {
+  private async showLoginPrompt(scopes: readonly string[]): Promise<ComputorCredentials | undefined> {
+    void scopes; // Currently unused
     // Check settings for default auth method
     const settingsManager = await this.getSettingsManager();
     const settings = await settingsManager.getSettings();

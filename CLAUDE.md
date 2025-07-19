@@ -26,7 +26,9 @@ This is a VS Code extension project called "computor-vsc-extension" that is part
 ### Naming Conventions
 - **camelCase**: Variables, functions, methods, and parameters
   - `userName`, `getUserData()`, `handleButtonClick()`
-  - Even unused parameters: `element`, `token` (no underscore prefix)
+  - **IMPORTANT**: Never use underscore prefix for unused parameters
+  - For unused parameters, use `void paramName;` to satisfy TypeScript
+  - Example: `function example(unusedParam: string) { void unusedParam; }`
 - **PascalCase**: Classes, interfaces, types, enums, and namespaces
   - `HttpClient`, `UserData`, `ButtonVariant`, `ViewState`
 - **SCREAMING_SNAKE_CASE**: Constants and enum values
