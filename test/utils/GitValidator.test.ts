@@ -142,6 +142,12 @@ describe('GitValidator', () => {
       expect(GitValidator.isValidGitUrl('http://gitlab.com/user/repo.git')).to.be.true;
     });
     
+    it('should accept valid HTTP(S) URLs with authentication', () => {
+      expect(GitValidator.isValidGitUrl('https://username:password@github.com/user/repo.git')).to.be.true;
+      expect(GitValidator.isValidGitUrl('http://x-auth-token:glpat-token@localhost:8084/user/repo.git')).to.be.true;
+      expect(GitValidator.isValidGitUrl('https://oauth2:token@gitlab.com/user/repo.git')).to.be.true;
+    });
+    
     it('should accept valid git protocol URLs', () => {
       expect(GitValidator.isValidGitUrl('git://github.com/user/repo.git')).to.be.true;
     });
