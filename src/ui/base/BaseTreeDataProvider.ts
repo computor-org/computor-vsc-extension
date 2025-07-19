@@ -1,26 +1,107 @@
 import * as vscode from 'vscode';
-import { TreeItemData } from '../types';
+import { TreeItemData, TreeProviderConfig, TreeRefreshEvent, LoadingState, TreeErrorInfo } from '../../types/TreeTypes';
+import { BaseTreeItem } from './BaseTreeItem';
 
-export abstract class BaseTreeDataProvider<T> implements vscode.TreeDataProvider<T> {
-  private _onDidChangeTreeData = new vscode.EventEmitter<T | undefined | null | void>();
+export abstract class BaseTreeDataProvider<T extends BaseTreeItem> implements vscode.TreeDataProvider<T> {
+  protected _onDidChangeTreeData = new vscode.EventEmitter<T | undefined | null | void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
   protected context: vscode.ExtensionContext;
   protected treeView: vscode.TreeView<T> | undefined;
+  protected config: TreeProviderConfig;
+  protected loadingState: LoadingState = LoadingState.IDLE;
+  protected errorInfo: TreeErrorInfo | undefined;
+  private refreshTimer: NodeJS.Timer | undefined;
+  protected rootItems: T[] = [];
 
-  constructor(context: vscode.ExtensionContext) {
+  constructor(context: vscode.ExtensionContext, config: TreeProviderConfig = {}) {
     this.context = context;
+    this.config = {
+      refreshInterval: config.refreshInterval,
+      maxDepth: config.maxDepth || 10,
+      cacheTimeout: config.cacheTimeout || 60000,
+      batchSize: config.batchSize || 50,
+      showIcons: config.showIcons !== false,
+      expandAll: config.expandAll || false
+    };
+    
+    if (this.config.refreshInterval) {
+      this.startAutoRefresh();
+    }
   }
 
   abstract getTreeItem(element: T): vscode.TreeItem | Thenable<vscode.TreeItem>;
   abstract getChildren(element?: T): vscode.ProviderResult<T[]>;
+  
+  /**
+   * Load data for the tree
+   * Must be implemented by subclasses
+   */
+  protected abstract loadData(element?: T): Promise<T[]>;
 
-  refresh(element?: T): void {
+  /**
+   * Handle errors during data loading
+   * Can be overridden by subclasses for custom error handling
+   */
+  protected async handleError(error: unknown, element?: T): Promise<void> {
+    const message = error instanceof Error ? error.message : String(error);
+    this.errorInfo = {
+      message,
+      retry: true,
+      details: error
+    };
+    
+    this.showErrorMessage(`Failed to load tree data: ${message}`);
+    
+    // Fire a change event to update the tree with error state
     this._onDidChangeTreeData.fire(element);
   }
 
+  /**
+   * Get loading state
+   */
+  getLoadingState(): LoadingState {
+    return this.loadingState;
+  }
+
+  /**
+   * Get error information
+   */
+  getErrorInfo(): TreeErrorInfo | undefined {
+    return this.errorInfo;
+  }
+
+  refresh(element?: T): void {
+    const event: TreeRefreshEvent<T> = {
+      element,
+      recursive: false,
+      reason: 'manual'
+    };
+    this.doRefresh(event);
+  }
+
   refreshAll(): void {
-    this._onDidChangeTreeData.fire();
+    const event: TreeRefreshEvent<T> = {
+      element: undefined,
+      recursive: true,
+      reason: 'manual'
+    };
+    this.doRefresh(event);
+  }
+
+  private doRefresh(event: TreeRefreshEvent<T>): void {
+    // Clear cache for affected items
+    if (event.element) {
+      event.element.clearCache();
+      if (event.recursive) {
+        void event.element.refresh(true);
+      }
+    } else {
+      // Clear all root items cache
+      this.rootItems.forEach(item => item.clearCache());
+    }
+    
+    this._onDidChangeTreeData.fire(event.element);
   }
 
   getParent?(element: T): vscode.ProviderResult<T> {
@@ -142,10 +223,209 @@ export abstract class BaseTreeDataProvider<T> implements vscode.TreeDataProvider
     return this.treeView?.visible ?? false;
   }
 
+  /**
+   * Start auto-refresh timer
+   */
+  private startAutoRefresh(): void {
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer);
+    }
+    
+    if (this.config.refreshInterval && this.config.refreshInterval > 0) {
+      this.refreshTimer = setInterval(() => {
+        this.refreshAll();
+      }, this.config.refreshInterval);
+    }
+  }
+
+  /**
+   * Stop auto-refresh timer
+   */
+  private stopAutoRefresh(): void {
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer);
+      this.refreshTimer = undefined;
+    }
+  }
+
+  /**
+   * Update configuration
+   */
+  updateConfig(config: Partial<TreeProviderConfig>): void {
+    this.config = { ...this.config, ...config };
+    
+    // Restart auto-refresh if interval changed
+    if ('refreshInterval' in config) {
+      this.stopAutoRefresh();
+      if (this.config.refreshInterval) {
+        this.startAutoRefresh();
+      }
+    }
+  }
+
+  /**
+   * Find tree item by predicate
+   */
+  async findItem(predicate: (item: T) => boolean): Promise<T | undefined> {
+    const searchItems = async (items: T[]): Promise<T | undefined> => {
+      for (const item of items) {
+        if (predicate(item)) {
+          return item;
+        }
+        
+        const children = await item.getChildren();
+        if (children.length > 0) {
+          const found = await searchItems(children as T[]);
+          if (found) {
+            return found;
+          }
+        }
+      }
+      return undefined;
+    };
+    
+    return searchItems(this.rootItems);
+  }
+
+  /**
+   * Find all tree items by predicate
+   */
+  async findAllItems(predicate: (item: T) => boolean): Promise<T[]> {
+    const results: T[] = [];
+    
+    const searchItems = async (items: T[]): Promise<void> => {
+      for (const item of items) {
+        if (predicate(item)) {
+          results.push(item);
+        }
+        
+        const children = await item.getChildren();
+        if (children.length > 0) {
+          await searchItems(children as T[]);
+        }
+      }
+    };
+    
+    await searchItems(this.rootItems);
+    return results;
+  }
+
+  /**
+   * Expand tree item to specific depth
+   */
+  async expandToDepth(element: T | undefined, depth: number): Promise<void> {
+    if (!this.treeView) {
+      return;
+    }
+    
+    const expandRecursive = async (item: T | undefined, currentDepth: number): Promise<void> => {
+      if (currentDepth >= depth) {
+        return;
+      }
+      
+      const children = await this.getChildren(item);
+      if (!children) {
+        return;
+      }
+      
+      for (const child of children) {
+        if (child.collapsibleState !== vscode.TreeItemCollapsibleState.None) {
+          await this.treeView!.reveal(child, { expand: true });
+          await expandRecursive(child, currentDepth + 1);
+        }
+      }
+    };
+    
+    await expandRecursive(element, 0);
+  }
+
+  /**
+   * Collapse all tree items
+   */
+  async collapseAll(): Promise<void> {
+    if (!this.treeView) {
+      return;
+    }
+    
+    // VS Code doesn't have a direct API to collapse all,
+    // so we refresh the tree which collapses everything by default
+    this.refreshAll();
+  }
+
+  /**
+   * Export tree data to JSON
+   */
+  async exportToJson(): Promise<string> {
+    const exportItem = async (item: T): Promise<any> => {
+      const data = item.toData();
+      const children = await item.getChildren();
+      
+      if (children.length > 0) {
+        const childData = await Promise.all(
+          children.map(child => exportItem(child as T))
+        );
+        return { ...data, children: childData };
+      }
+      
+      return data;
+    };
+    
+    const rootData = await Promise.all(
+      this.rootItems.map(item => exportItem(item))
+    );
+    
+    return JSON.stringify(rootData, null, 2);
+  }
+
+  /**
+   * Get statistics about the tree
+   */
+  async getStatistics(): Promise<{
+    totalItems: number;
+    maxDepth: number;
+    leafItems: number;
+    expandableItems: number;
+  }> {
+    let totalItems = 0;
+    let maxDepth = 0;
+    let leafItems = 0;
+    let expandableItems = 0;
+    
+    const analyzeItem = async (item: T, depth: number): Promise<void> => {
+      totalItems++;
+      maxDepth = Math.max(maxDepth, depth);
+      
+      if (item.collapsibleState === vscode.TreeItemCollapsibleState.None) {
+        leafItems++;
+      } else {
+        expandableItems++;
+      }
+      
+      const children = await item.getChildren();
+      await Promise.all(
+        children.map(child => analyzeItem(child as T, depth + 1))
+      );
+    };
+    
+    await Promise.all(
+      this.rootItems.map(item => analyzeItem(item, 1))
+    );
+    
+    return {
+      totalItems,
+      maxDepth,
+      leafItems,
+      expandableItems
+    };
+  }
+
   dispose(): void {
+    this.stopAutoRefresh();
     this._onDidChangeTreeData.dispose();
     if (this.treeView) {
       this.treeView.dispose();
     }
+    this.rootItems.forEach(item => item.dispose());
+    this.rootItems = [];
   }
 }
