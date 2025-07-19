@@ -1,7 +1,10 @@
 # Login Data Storage
 
 ## Overview
-This document outlines secure storage options for login data in the computor VS Code extension. The extension needs to store authentication credentials securely across different platforms while maintaining security best practices.
+This document outlines secure storage options for login data in the computor VS Code extension. The extension stores authentication credentials securely across different platforms while maintaining security best practices.
+
+## Implementation Status
+✅ **Fully Implemented** - The authentication system is complete using VS Code's native AuthenticationProvider and SecretStorage APIs.
 
 ## Storage Options
 
@@ -525,3 +528,73 @@ const newToken = await tokenManager.refreshToken('gitlab-token');
 - Use secure memory allocation
 - Implement proper garbage collection
 - Monitor memory usage for leaks
+
+## Current Implementation
+
+### VS Code Native Authentication
+The extension uses VS Code's built-in authentication framework:
+
+```typescript
+export class ComputorAuthenticationProvider implements vscode.AuthenticationProvider {
+  // Implements VS Code's AuthenticationProvider interface
+  // Provides automatic session management
+  // Integrates with VS Code's Accounts UI
+}
+```
+
+### Key Components
+1. **ComputorAuthenticationProvider**
+   - Main authentication provider implementing `vscode.AuthenticationProvider`
+   - Handles sign-in/sign-out flow
+   - Manages authentication sessions
+   - Integrates with VS Code's account management UI
+
+2. **VscodeCredentialStorage**
+   - Uses VS Code's `SecretStorage` API exclusively
+   - No external dependencies (no keytar required)
+   - Automatic encryption and platform-specific keyring integration
+   - Maintains credential index for listing profiles
+
+3. **ComputorCredentialManager**
+   - High-level credential operations
+   - Session caching for performance
+   - Automatic expiration handling
+   - Support for multiple credential types
+
+4. **TokenManager**
+   - Token lifecycle management
+   - JWT parsing and expiration detection
+   - Token revocation support
+   - Secure token generation utilities
+
+### Authentication Flow
+1. User triggers sign-in via command or VS Code Accounts menu
+2. Authentication provider prompts for credentials based on settings
+3. Credentials are validated and stored securely
+4. Session is created and managed by VS Code
+5. Authentication headers are generated for API requests
+
+### Integration with Settings
+The authentication system seamlessly integrates with the settings storage:
+- Reads authentication configuration from settings
+- Determines auth method (token vs basic auth)
+- Uses base URL from settings for API endpoints
+
+### Security Features
+- All credentials stored using VS Code's SecretStorage
+- Automatic encryption by VS Code
+- Platform-specific keyring integration
+- No plain text storage
+- Session-based caching with expiration
+
+### Usage Example
+```typescript
+// Sign in using VS Code authentication
+const session = await vscode.authentication.getSession('computor', [], { createIfNone: true });
+
+// Get authentication headers
+const headers = ComputorAuthenticationProvider.getAuthHeaders(session);
+
+// Use headers for API requests
+const response = await fetch(url, { headers });
+```
