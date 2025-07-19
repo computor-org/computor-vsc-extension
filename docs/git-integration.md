@@ -54,6 +54,7 @@ The Git wrapper supports:
 - Remote management
 - Tag operations
 - Commit history viewing
+- Stash operations (stash, pop, apply, drop, list, clear)
 
 ### Error Handling
 - Graceful handling of Git errors with specific error codes
@@ -99,9 +100,15 @@ if (repo?.isRepo) {
   
   // Push to remote
   await gitManager.pushChanges(repo.path);
+  
+  // Stash changes with message
+  await gitManager.stashChanges(repo.path, 'Work in progress');
+  
+  // Show stash list UI
+  await gitManager.showStashList(repo.path);
 }
 
-// Show Git status UI
+// Show Git status UI (includes stash options)
 await gitManager.showGitStatus();
 ```
 

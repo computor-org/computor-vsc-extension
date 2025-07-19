@@ -10,7 +10,8 @@ import {
   GitRemote,
   GitDiff,
   GitPushResult,
-  GitCloneOptions
+  GitCloneOptions,
+  GitStashEntry
 } from '../types/GitTypes';
 
 export class GitWrapper implements IGitWrapper {
@@ -285,6 +286,72 @@ export class GitWrapper implements IGitWrapper {
   async deleteTag(repositoryPath: string, tagName: string): Promise<void> {
     const git = await this.getRepository(repositoryPath);
     await git.tag(['-d', tagName]);
+  }
+
+  async stash(repositoryPath: string, options?: string[]): Promise<string> {
+    const git = await this.getRepository(repositoryPath);
+    
+    if (options && options.length > 0) {
+      return await git.stash(options);
+    } else {
+      // Default stash with include-untracked
+      return await git.stash(['push', '--include-untracked']);
+    }
+  }
+
+  async stashPop(repositoryPath: string, stashRef?: string): Promise<string> {
+    const git = await this.getRepository(repositoryPath);
+    const args = ['pop'];
+    if (stashRef) {
+      args.push(stashRef);
+    }
+    return await git.stash(args);
+  }
+
+  async stashApply(repositoryPath: string, stashRef?: string): Promise<string> {
+    const git = await this.getRepository(repositoryPath);
+    const args = ['apply'];
+    if (stashRef) {
+      args.push(stashRef);
+    }
+    return await git.stash(args);
+  }
+
+  async stashDrop(repositoryPath: string, stashRef?: string): Promise<string> {
+    const git = await this.getRepository(repositoryPath);
+    const args = ['drop'];
+    if (stashRef) {
+      args.push(stashRef);
+    }
+    return await git.stash(args);
+  }
+
+  async stashList(repositoryPath: string): Promise<GitStashEntry[]> {
+    const git = await this.getRepository(repositoryPath);
+    const stashList = await git.stashList();
+    
+    return stashList.all.map((stash, index) => {
+      // Parse stash message format: stash@{0}: WIP on branch: hash message
+      const match = stash.message.match(/^(.*?):\s*(.*)$/);
+      const stashMessage = match ? match[2] : stash.message;
+      
+      // Extract branch name if present
+      const branchMatch = stashMessage?.match(/WIP on (.+?):/);
+      const branch = branchMatch ? branchMatch[1] : undefined;
+      
+      return {
+        index: index,
+        hash: stash.hash,
+        message: stashMessage || stash.message,
+        date: new Date(stash.date),
+        branch: branch
+      };
+    });
+  }
+
+  async stashClear(repositoryPath: string): Promise<void> {
+    const git = await this.getRepository(repositoryPath);
+    await git.stash(['clear']);
   }
 
   dispose(): void {
