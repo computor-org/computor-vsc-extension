@@ -23,15 +23,15 @@ export abstract class BaseTreeDataProvider<T> implements vscode.TreeDataProvider
     this._onDidChangeTreeData.fire();
   }
 
-  getParent?(element: T): vscode.ProviderResult<T> {
+  getParent?(_element: T): vscode.ProviderResult<T> {
     // Override in subclasses if parent relationships are needed
     return undefined;
   }
 
   resolveTreeItem?(
     item: vscode.TreeItem,
-    element: T,
-    token: vscode.CancellationToken
+    _element: T,
+    _token: vscode.CancellationToken
   ): vscode.ProviderResult<vscode.TreeItem> {
     // Override in subclasses for lazy loading
     return item;
@@ -83,19 +83,19 @@ export abstract class BaseTreeDataProvider<T> implements vscode.TreeDataProvider
     );
   }
 
-  protected onSelectionChanged(selection: readonly T[]): void {
+  protected onSelectionChanged(_selection: readonly T[]): void {
     // Override in subclasses
   }
 
-  protected onVisibilityChanged(visible: boolean): void {
+  protected onVisibilityChanged(_visible: boolean): void {
     // Override in subclasses
   }
 
-  protected onElementCollapsed(element: T): void {
+  protected onElementCollapsed(_element: T): void {
     // Override in subclasses
   }
 
-  protected onElementExpanded(element: T): void {
+  protected onElementExpanded(_element: T): void {
     // Override in subclasses
   }
 

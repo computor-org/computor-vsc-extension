@@ -7,14 +7,14 @@ export abstract class BaseWebviewPanel extends BaseView {
   protected panel: vscode.WebviewPanel | undefined;
   protected viewType: string;
   protected title: string;
-  protected showOptions: vscode.ViewColumn | vscode.WebviewPanelShowOptions;
+  protected showOptions: vscode.ViewColumn;
   protected options: vscode.WebviewPanelOptions & vscode.WebviewOptions;
 
   constructor(
     context: vscode.ExtensionContext,
     viewType: string,
     title: string,
-    showOptions: vscode.ViewColumn | vscode.WebviewPanelShowOptions = vscode.ViewColumn.One,
+    showOptions: vscode.ViewColumn = vscode.ViewColumn.One,
     options: vscode.WebviewPanelOptions & vscode.WebviewOptions = {}
   ) {
     super(context);
@@ -88,7 +88,7 @@ export abstract class BaseWebviewPanel extends BaseView {
     // Override in subclasses if needed
   }
 
-  protected onViewStateChanged(active: boolean, visible: boolean): void {
+  protected onViewStateChanged(_active: boolean, _visible: boolean): void {
     // Override in subclasses if needed
   }
 
