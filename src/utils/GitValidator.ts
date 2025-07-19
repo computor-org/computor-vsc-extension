@@ -92,7 +92,8 @@ export class GitValidator {
     }
     
     const sshPattern = /^(ssh:\/\/)?([a-zA-Z0-9._-]+@)?[a-zA-Z0-9.-]+:[a-zA-Z0-9.\/_-]+\.git$/;
-    const httpsPattern = /^https?:\/\/[a-zA-Z0-9.-]+\/[a-zA-Z0-9.\/_-]+\.git$/;
+    // Updated pattern to support authentication in HTTP(S) URLs
+    const httpsPattern = /^https?:\/\/([a-zA-Z0-9._-]+:[^@]+@)?[a-zA-Z0-9.-]+(:[0-9]+)?\/[a-zA-Z0-9.\/_-]+\.git$/;
     const gitPattern = /^git:\/\/[a-zA-Z0-9.-]+\/[a-zA-Z0-9.\/_-]+\.git$/;
     const filePattern = /^file:\/\/.+$/;
     
