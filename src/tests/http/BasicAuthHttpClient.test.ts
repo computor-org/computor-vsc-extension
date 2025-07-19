@@ -25,12 +25,15 @@ describe('BasicAuthHttpClient', () => {
         expect.fail('Should have thrown AuthenticationError');
       } catch (error) {
         expect(error).to.be.instanceOf(AuthenticationError);
-        expect(error.message).to.equal('Username and password are required');
+        if (error instanceof Error) {
+          expect(error.message).to.equal('Username and password are required');
+        }
       }
     });
 
     it('should set authenticated state after successful authentication', async () => {
       // Mock successful authentication by overriding the get method
+      // @ts-ignore - mocking for test
       client.get = async () => ({ data: {}, status: 200, statusText: 'OK', headers: {} });
       
       await client.authenticate();
@@ -39,6 +42,7 @@ describe('BasicAuthHttpClient', () => {
 
     it('should handle authentication failure', async () => {
       // Mock failed authentication
+      // @ts-ignore - mocking for test
       client.get = async () => {
         throw new Error('Unauthorized');
       };
@@ -48,7 +52,9 @@ describe('BasicAuthHttpClient', () => {
         expect.fail('Should have thrown AuthenticationError');
       } catch (error) {
         expect(error).to.be.instanceOf(AuthenticationError);
-        expect(error.message).to.include('Authentication failed');
+        if (error instanceof Error) {
+          expect(error.message).to.include('Authentication failed');
+        }
         expect(client.isAuthenticated()).to.be.false;
       }
     });

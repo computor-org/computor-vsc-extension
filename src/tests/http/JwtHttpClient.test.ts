@@ -157,7 +157,9 @@ describe('JwtHttpClient', () => {
         expect.fail('Should have thrown AuthenticationError');
       } catch (error) {
         expect(error).to.be.instanceOf(AuthenticationError);
-        expect(error.message).to.equal('No refresh token available');
+        if (error instanceof Error) {
+          expect(error.message).to.equal('No refresh token available');
+        }
       }
     });
 
@@ -187,7 +189,9 @@ describe('JwtHttpClient', () => {
         expect.fail('Should have thrown AuthenticationError');
       } catch (error) {
         expect(error).to.be.instanceOf(AuthenticationError);
-        expect(error.message).to.include('OAuth flow not implemented');
+        if (error instanceof Error) {
+          expect(error.message).to.include('OAuth flow not implemented');
+        }
       }
     });
   });
@@ -201,7 +205,7 @@ describe('JwtHttpClient', () => {
       expect(authUrl).to.include(`client_id=${keycloakConfig.clientId}`);
       expect(authUrl).to.include(`redirect_uri=${encodeURIComponent(keycloakConfig.redirectUri)}`);
       expect(authUrl).to.include('response_type=code');
-      expect(authUrl).to.include('scope=openid%20profile%20email');
+      expect(authUrl).to.match(/scope=openid(%20|\+)profile(%20|\+)email/);
     });
   });
 });
