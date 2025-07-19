@@ -88,7 +88,7 @@ export abstract class BaseWebviewPanel extends BaseView {
     // Override in subclasses if needed
   }
 
-  protected onViewStateChanged(_active: boolean, _visible: boolean): void {
+  protected onViewStateChanged(active: boolean, visible: boolean): void {
     // Override in subclasses if needed
   }
 
