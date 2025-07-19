@@ -28,6 +28,14 @@ export interface GitCommit {
   email: string;
 }
 
+export interface GitStashEntry {
+  index: number;
+  hash: string;
+  message: string;
+  date: Date;
+  branch?: string;
+}
+
 export interface GitStatus {
   current: string | null;
   tracking: string | null;
@@ -156,4 +164,12 @@ export interface IGitWrapper {
   getTags(path: string): Promise<string[]>;
   createTag(path: string, tagName: string, message?: string): Promise<void>;
   deleteTag(path: string, tagName: string): Promise<void>;
+  
+  // Stash operations
+  stash(path: string, options?: string[]): Promise<string>;
+  stashPop(path: string, stashRef?: string): Promise<string>;
+  stashApply(path: string, stashRef?: string): Promise<string>;
+  stashDrop(path: string, stashRef?: string): Promise<string>;
+  stashList(path: string): Promise<GitStashEntry[]>;
+  stashClear(path: string): Promise<void>;
 }

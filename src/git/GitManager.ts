@@ -274,6 +274,10 @@ export class GitManager {
             await this.pushChanges(repo.path);
           } else if (item.label.startsWith('$(cloud-download)')) {
             await this.pullChanges(repo.path);
+          } else if (item.label.startsWith('$(archive) Stash')) {
+            await this.promptStash(repo.path);
+          } else if (item.label.startsWith('$(list-unordered)')) {
+            await this.showStashList(repo.path);
           }
         }
       });
@@ -293,6 +297,11 @@ export class GitManager {
         label: '$(git-commit) Commit changes',
         description: 'Stage and commit all changes'
       });
+      
+      items.push({
+        label: '$(archive) Stash changes',
+        description: 'Save changes for later'
+      });
     }
 
     if (status.ahead > 0) {
@@ -308,6 +317,11 @@ export class GitManager {
         description: `${status.behind} commits behind remote`
       });
     }
+
+    items.push({
+      label: '$(list-unordered) Show stashes',
+      description: 'View and manage stashed changes'
+    });
 
     items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
 
@@ -349,6 +363,110 @@ export class GitManager {
 
     if (message) {
       await this.commitChanges(repositoryPath, message);
+    }
+  }
+
+  private async promptStash(repositoryPath: string): Promise<void> {
+    const message = await vscode.window.showInputBox({
+      prompt: 'Stash message (optional)',
+      placeHolder: 'Enter a description for this stash'
+    });
+
+    await this.stashChanges(repositoryPath, message || undefined);
+  }
+
+  async stashChanges(repositoryPath: string, message?: string): Promise<void> {
+    try {
+      const options = message ? ['push', '-m', message, '--include-untracked'] : undefined;
+      await this.gitWrapper.stash(repositoryPath, options);
+      vscode.window.showInformationMessage('Changes stashed successfully');
+      await this.updateStatusBar();
+    } catch (error) {
+      this.handleGitError(error, 'Failed to stash changes');
+    }
+  }
+
+  async stashPop(repositoryPath: string, stashRef?: string): Promise<void> {
+    try {
+      await this.gitWrapper.stashPop(repositoryPath, stashRef);
+      vscode.window.showInformationMessage('Stash applied and removed successfully');
+      await this.updateStatusBar();
+    } catch (error) {
+      this.handleGitError(error, 'Failed to pop stash');
+    }
+  }
+
+  async stashApply(repositoryPath: string, stashRef?: string): Promise<void> {
+    try {
+      await this.gitWrapper.stashApply(repositoryPath, stashRef);
+      vscode.window.showInformationMessage('Stash applied successfully');
+      await this.updateStatusBar();
+    } catch (error) {
+      this.handleGitError(error, 'Failed to apply stash');
+    }
+  }
+
+  async showStashList(repositoryPath: string): Promise<void> {
+    try {
+      const stashes = await this.gitWrapper.stashList(repositoryPath);
+      
+      if (stashes.length === 0) {
+        vscode.window.showInformationMessage('No stashes found');
+        return;
+      }
+
+      const quickPick = vscode.window.createQuickPick();
+      quickPick.title = 'Git Stashes';
+      quickPick.placeholder = 'Select a stash to apply';
+      
+      quickPick.items = stashes.map((stash, index) => ({
+        label: `$(archive) stash@{${index}}`,
+        description: stash.message,
+        detail: `${stash.branch ? `On branch: ${stash.branch} | ` : ''}${stash.date.toLocaleString()}`,
+        stashRef: `stash@{${index}}`
+      }));
+
+      quickPick.buttons = [
+        { iconPath: new vscode.ThemeIcon('check'), tooltip: 'Apply stash' },
+        { iconPath: new vscode.ThemeIcon('trash'), tooltip: 'Drop stash' }
+      ];
+
+      quickPick.onDidChangeSelection(async (selection) => {
+        if (selection.length > 0) {
+          const selectedItem = selection[0] as any;
+          const action = await vscode.window.showQuickPick(
+            ['Apply', 'Pop', 'Drop'],
+            { placeHolder: `What would you like to do with ${selectedItem.stashRef}?` }
+          );
+
+          quickPick.hide();
+
+          switch (action) {
+            case 'Apply':
+              await this.stashApply(repositoryPath, selectedItem.stashRef);
+              break;
+            case 'Pop':
+              await this.stashPop(repositoryPath, selectedItem.stashRef);
+              break;
+            case 'Drop':
+              const confirm = await vscode.window.showWarningMessage(
+                `Are you sure you want to drop ${selectedItem.stashRef}?`,
+                'Yes',
+                'No'
+              );
+              if (confirm === 'Yes') {
+                await this.gitWrapper.stashDrop(repositoryPath, selectedItem.stashRef);
+                vscode.window.showInformationMessage('Stash dropped successfully');
+              }
+              break;
+          }
+        }
+      });
+
+      quickPick.onDidHide(() => quickPick.dispose());
+      quickPick.show();
+    } catch (error) {
+      this.handleGitError(error, 'Failed to list stashes');
     }
   }
 
