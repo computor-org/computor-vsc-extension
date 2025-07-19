@@ -81,17 +81,40 @@ document.addEventListener('DOMContentLoaded', () => {
   const stateRow = document.createElement('div');
   stateRow.className = 'demo-row';
   
-  const normalBtn = createButton({ text: 'Normal' });
-  const disabledBtn = createButton({ text: 'Disabled', disabled: true });
-  const loadingBtn = createButton({ text: 'Click me!' });
+  const normalBtn = createButton({ 
+    text: 'Normal',
+    onClick: () => {
+      vscode.postMessage({ 
+        type: 'buttonClicked', 
+        data: { button: 'normal', timestamp: new Date().toISOString() }
+      });
+    }
+  });
   
-  loadingBtn.on('click', () => {
-    loadingBtn.setLoading(true);
-    loadingBtn.setText('Loading...');
-    setTimeout(() => {
-      loadingBtn.setLoading(false);
-      loadingBtn.setText('Click me!');
-    }, 2000);
+  const disabledBtn = createButton({ text: 'Disabled', disabled: true });
+  
+  const loadingBtn = createButton({ 
+    text: 'Click me!',
+    onClick: () => {
+      loadingBtn.setLoading(true);
+      loadingBtn.setText('Loading...');
+      
+      // Send message to VS Code
+      vscode.postMessage({ 
+        type: 'loadingStarted', 
+        data: { message: 'Button is now loading...' }
+      });
+      
+      setTimeout(() => {
+        loadingBtn.setLoading(false);
+        loadingBtn.setText('Click me!');
+        
+        vscode.postMessage({ 
+          type: 'loadingCompleted', 
+          data: { message: 'Loading completed!' }
+        });
+      }, 2000);
+    }
   });
   
   stateRow.appendChild(normalBtn.render());
@@ -104,9 +127,41 @@ document.addEventListener('DOMContentLoaded', () => {
   const iconRow = document.createElement('div');
   iconRow.className = 'demo-row';
   
-  const saveBtn = createButton({ text: 'Save', icon: '💾', variant: 'primary' });
-  const nextBtn = createButton({ text: 'Next', icon: '→', iconPosition: 'right' });
-  const refreshBtn = createButton({ text: 'Refresh', icon: '🔄', variant: 'secondary' });
+  const saveBtn = createButton({ 
+    text: 'Save', 
+    icon: '💾', 
+    variant: 'primary',
+    onClick: () => {
+      vscode.postMessage({ 
+        type: 'saveAction', 
+        data: { action: 'save', timestamp: new Date().toISOString() }
+      });
+    }
+  });
+  
+  const nextBtn = createButton({ 
+    text: 'Next', 
+    icon: '→', 
+    iconPosition: 'right',
+    onClick: () => {
+      vscode.postMessage({ 
+        type: 'navigation', 
+        data: { direction: 'next' }
+      });
+    }
+  });
+  
+  const refreshBtn = createButton({ 
+    text: 'Refresh', 
+    icon: '🔄', 
+    variant: 'secondary',
+    onClick: () => {
+      vscode.postMessage({ 
+        type: 'refreshAction', 
+        data: { action: 'refresh' }
+      });
+    }
+  });
   
   iconRow.appendChild(saveBtn.render());
   iconRow.appendChild(nextBtn.render());
@@ -179,7 +234,10 @@ document.addEventListener('DOMContentLoaded', () => {
       { value: 'go', label: 'Go' }
     ],
     onChange: (value) => {
-      // Handle language selection
+      vscode.postMessage({ 
+        type: 'languageSelected', 
+        data: { language: value, timestamp: new Date().toISOString() }
+      });
     }
   });
   
@@ -190,7 +248,13 @@ document.addEventListener('DOMContentLoaded', () => {
       { value: 'light', label: 'Light' },
       { value: 'dark', label: 'Dark' },
       { value: 'auto', label: 'System' }
-    ]
+    ],
+    onChange: (value) => {
+      vscode.postMessage({ 
+        type: 'themeSelected', 
+        data: { theme: value, timestamp: new Date().toISOString() }
+      });
+    }
   });
   
   const disabledSelect = createSelect({
@@ -212,8 +276,25 @@ document.addEventListener('DOMContentLoaded', () => {
   const checkboxStack = document.createElement('div');
   checkboxStack.className = 'demo-stack';
   
-  const check1 = createCheckbox({ label: 'Enable notifications' });
-  const check2 = createCheckbox({ label: 'Auto-save', checked: true });
+  const check1 = createCheckbox({ 
+    label: 'Enable notifications',
+    onChange: (checked) => {
+      vscode.postMessage({ 
+        type: 'checkboxChanged', 
+        data: { option: 'notifications', checked, timestamp: new Date().toISOString() }
+      });
+    }
+  });
+  const check2 = createCheckbox({ 
+    label: 'Auto-save', 
+    checked: true,
+    onChange: (checked) => {
+      vscode.postMessage({ 
+        type: 'checkboxChanged', 
+        data: { option: 'autosave', checked, timestamp: new Date().toISOString() }
+      });
+    }
+  });
   const check3 = createCheckbox({ label: 'Disabled option', disabled: true });
   
   checkboxStack.appendChild(check1.render());
@@ -255,11 +336,19 @@ document.addEventListener('DOMContentLoaded', () => {
   decreaseBtn.on('click', () => {
     progressValue = Math.max(0, progressValue - 10);
     progress6.setValue(progressValue);
+    vscode.postMessage({ 
+      type: 'progressChanged', 
+      data: { action: 'decrease', value: progressValue }
+    });
   });
   
   increaseBtn.on('click', () => {
     progressValue = Math.min(100, progressValue + 10);
     progress6.setValue(progressValue);
+    vscode.postMessage({ 
+      type: 'progressChanged', 
+      data: { action: 'increase', value: progressValue }
+    });
   });
   
   btnRow.appendChild(decreaseBtn.render());
@@ -346,9 +435,23 @@ document.addEventListener('DOMContentLoaded', () => {
       { value: 'developer', label: 'Developer' },
       { value: 'designer', label: 'Designer' },
       { value: 'manager', label: 'Manager' }
-    ]
+    ],
+    onChange: (value) => {
+      vscode.postMessage({ 
+        type: 'formFieldChanged', 
+        data: { field: 'role', value, timestamp: new Date().toISOString() }
+      });
+    }
   });
-  const agreeCheck = createCheckbox({ label: 'I agree to the terms and conditions' });
+  const agreeCheck = createCheckbox({ 
+    label: 'I agree to the terms and conditions',
+    onChange: (checked) => {
+      vscode.postMessage({ 
+        type: 'formFieldChanged', 
+        data: { field: 'agreed', value: checked, timestamp: new Date().toISOString() }
+      });
+    }
+  });
   
   form.appendChild(nameInput.render());
   form.appendChild(emailInput2.render());

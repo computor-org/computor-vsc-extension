@@ -45,6 +45,15 @@ class Component {
     }
   }
 
+  // Attach all stored events to the current element
+  attachEvents() {
+    if (this.element) {
+      this.events.forEach((handler, event) => {
+        this.element.addEventListener(event, handler);
+      });
+    }
+  }
+
   off(event) {
     const handler = this.events.get(event);
     if (handler && this.element) {
@@ -159,6 +168,9 @@ class Button extends Component {
       type: 'button'
     }, children);
 
+    // Attach any stored event handlers
+    this.attachEvents();
+
     return this.element;
   }
 
@@ -252,6 +264,10 @@ class Input extends Component {
     }
 
     this.element = wrapper;
+    
+    // Attach any stored event handlers
+    this.attachEvents();
+    
     return wrapper;
   }
 
@@ -334,6 +350,10 @@ class Select extends Component {
 
     wrapper.appendChild(this.selectElement);
     this.element = wrapper;
+    
+    // Attach any stored event handlers
+    this.attachEvents();
+    
     return wrapper;
   }
 
@@ -399,6 +419,10 @@ class Checkbox extends Component {
     }
 
     this.element = label;
+    
+    // Attach any stored event handlers
+    this.attachEvents();
+    
     return label;
   }
 
@@ -466,6 +490,10 @@ class Progress extends Component {
     wrapper.appendChild(container);
 
     this.element = wrapper;
+    
+    // Attach any stored event handlers
+    this.attachEvents();
+    
     return wrapper;
   }
 
@@ -563,6 +591,9 @@ class Card extends Component {
       className: classes.join(' ')
     }, children);
 
+    // Attach any stored event handlers
+    this.attachEvents();
+
     return this.element;
   }
 
@@ -610,6 +641,9 @@ class CardActions extends Component {
     this.element = this.createElement('div', {
       className: classes.join(' ')
     }, this.buttons);
+
+    // Attach any stored event handlers
+    this.attachEvents();
 
     return this.element;
   }
