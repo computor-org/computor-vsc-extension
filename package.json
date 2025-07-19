@@ -12,7 +12,10 @@
   "activationEvents": [
     "onCommand:computor.activate",
     "onCommand:computor.showUIComponents",
-    "onCommand:computor.showSettings"
+    "onCommand:computor.showSettings",
+    "onCommand:computor.signIn",
+    "onCommand:computor.signOut",
+    "onAuthenticationRequest:computor"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -28,6 +31,16 @@
       {
         "command": "computor.showSettings",
         "title": "Computor: Settings"
+      },
+      {
+        "command": "computor.signIn",
+        "title": "Computor: Sign In",
+        "category": "Accounts"
+      },
+      {
+        "command": "computor.signOut",
+        "title": "Computor: Sign Out",
+        "category": "Accounts"
       }
     ]
   },

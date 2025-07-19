@@ -1,9 +1,14 @@
 import * as vscode from 'vscode';
 import { UIShowcaseView } from './ui/views/UIShowcaseView';
 import { SettingsView } from './ui/views/SettingsView';
+import { ComputorAuthenticationProvider } from './authentication/ComputorAuthenticationProvider';
 
 export function activate(context: vscode.ExtensionContext) {
   console.log('Computor VS Code Extension is now active!');
+
+  // Initialize authentication provider
+  const authProvider = new ComputorAuthenticationProvider(context);
+  context.subscriptions.push(authProvider);
 
   // Original activation command
   const activateCommand = vscode.commands.registerCommand('computor.activate', () => {
@@ -22,7 +27,39 @@ export function activate(context: vscode.ExtensionContext) {
     settingsView.render();
   });
 
-  context.subscriptions.push(activateCommand, uiShowcaseCommand, settingsCommand);
+  // Authentication commands
+  const signInCommand = vscode.commands.registerCommand('computor.signIn', async () => {
+    try {
+      const session = await vscode.authentication.getSession('computor', [], { createIfNone: true });
+      if (session) {
+        vscode.window.showInformationMessage(`Signed in as ${session.account.label}`);
+      }
+    } catch (error) {
+      vscode.window.showErrorMessage(`Sign in failed: ${error}`);
+    }
+  });
+
+  const signOutCommand = vscode.commands.registerCommand('computor.signOut', async () => {
+    try {
+      const sessions = await vscode.authentication.getSession('computor', [], { createIfNone: false });
+      if (sessions) {
+        await authProvider.removeSession(sessions.id);
+        vscode.window.showInformationMessage('Signed out successfully');
+      } else {
+        vscode.window.showInformationMessage('No active session');
+      }
+    } catch (error) {
+      vscode.window.showErrorMessage(`Sign out failed: ${error}`);
+    }
+  });
+
+  context.subscriptions.push(
+    activateCommand, 
+    uiShowcaseCommand, 
+    settingsCommand,
+    signInCommand,
+    signOutCommand
+  );
 }
 
 export function deactivate() {
