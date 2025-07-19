@@ -2,7 +2,7 @@
 
 ## Overview
 
-This is a lightweight UI framework for VS Code extensions built with pure JavaScript - no React, build process, or heavy dependencies required!
+This is a lightweight UI framework for VS Code extensions built with pure JavaScript - no React, build process, or heavy dependencies required! The framework provides seamless communication between webview components and the VS Code extension through the `vscode.postMessage()` API.
 
 ## Features
 
@@ -12,6 +12,8 @@ This is a lightweight UI framework for VS Code extensions built with pure JavaSc
 - ✅ **Lightweight** - Minimal overhead, fast loading
 - ✅ **Easy to extend** - Simple class-based component system
 - ✅ **TypeScript support** - Full type safety in extension code
+- ✅ **Seamless communication** - Built-in `vscode.postMessage()` integration
+- ✅ **Event-driven architecture** - Components emit events that trigger extension actions
 
 ## Architecture
 
@@ -143,6 +145,62 @@ card.setSelected(true);
 card.setContent('New content');
 card.setTitle('New title');
 ```
+
+## Communication System
+
+The framework provides built-in communication between webview components and the VS Code extension using the `vscode.postMessage()` API.
+
+### Sending Messages from Components
+
+Components can send messages to the extension by calling `vscode.postMessage()`:
+
+```javascript
+const button = createButton({
+  text: 'Save File',
+  onClick: () => {
+    vscode.postMessage({
+      type: 'saveAction',
+      data: { 
+        filename: 'example.txt',
+        timestamp: new Date().toISOString() 
+      }
+    });
+  }
+});
+```
+
+### Handling Messages in Extension
+
+The extension handles messages in the webview panel's `handleMessage` method:
+
+```typescript
+handleMessage(message: any): void {
+  switch (message.type) {
+    case 'saveAction':
+      vscode.window.showInformationMessage(`Saving ${message.data.filename}`);
+      // Perform save operation
+      break;
+    case 'formSubmit':
+      this.processForm(message.data);
+      break;
+    default:
+      console.log('Received message:', message);
+  }
+}
+```
+
+### Message Types
+
+The framework supports various message types for different interactions:
+
+- `buttonClicked` - Button press events
+- `formSubmit` - Form submission with validation data
+- `formFieldChanged` - Individual field changes
+- `checkboxChanged` - Checkbox state changes
+- `progressChanged` - Progress bar updates
+- `languageSelected` - Select dropdown changes
+- `loadingStarted/loadingCompleted` - Loading state changes
+- Custom types for application-specific events
 
 ## Using in VS Code Extensions
 
