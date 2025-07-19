@@ -1,23 +1,7 @@
 import { expect } from 'chai';
-import * as vscode from 'vscode';
 import { TokenManager } from '../../authentication/TokenManager';
 import { ComputorCredentialManager, TokenExpiredError } from '../../authentication/ComputorCredentialManager';
-import { TokenCredentials } from '../../types/AuthenticationTypes';
-
-// Mock VS Code extension context
-class MockExtensionContext implements Partial<vscode.ExtensionContext> {
-  secrets: vscode.SecretStorage;
-  private storage = new Map<string, string>();
-  
-  constructor() {
-    this.secrets = {
-      get: async (key: string) => this.storage.get(key),
-      store: async (key: string, value: string) => { this.storage.set(key, value); },
-      delete: async (key: string) => { this.storage.delete(key); },
-      onDidChange: new vscode.EventEmitter<vscode.SecretStorageChangeEvent>().event
-    } as vscode.SecretStorage;
-  }
-}
+import { MockExtensionContext } from '../../../test/helpers/MockExtensionContext';
 
 describe('TokenManager', () => {
   let tokenManager: TokenManager;
@@ -26,7 +10,7 @@ describe('TokenManager', () => {
   
   beforeEach(() => {
     context = new MockExtensionContext();
-    credentialManager = new ComputorCredentialManager(context as vscode.ExtensionContext);
+    credentialManager = new ComputorCredentialManager(context);
     tokenManager = new TokenManager(credentialManager);
   });
   
