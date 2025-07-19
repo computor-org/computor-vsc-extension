@@ -8,6 +8,27 @@ document.addEventListener('DOMContentLoaded', () => {
   const container = document.getElementById('showcase-container');
   if (!container) return;
 
+  // Check if components are loaded
+  console.log('UIComponents available:', typeof window.UIComponents);
+  console.log('window.UIComponents:', window.UIComponents);
+
+  // Get components from the global UIComponents object
+  if (!window.UIComponents) {
+    console.error('UIComponents not found! Components.js may not have loaded properly.');
+    container.innerHTML = '<p style="color: red;">Error: Components not loaded. Check console for details.</p>';
+    return;
+  }
+
+  const {
+    createButton,
+    createInput,
+    createSelect,
+    createCheckbox,
+    createProgress,
+    createCard,
+    createCardActions
+  } = window.UIComponents;
+
   // Create sections
   function createSection(title) {
     const section = document.createElement('div');
