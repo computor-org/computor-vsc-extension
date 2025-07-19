@@ -59,6 +59,39 @@ export class UIShowcaseView extends BaseWebviewPanel {
       case 'info':
         vscode.window.showInformationMessage(message.message);
         break;
+      case 'buttonClicked':
+        vscode.window.showInformationMessage(`Button clicked: ${message.data.button} at ${message.data.timestamp}`);
+        break;
+      case 'loadingStarted':
+        vscode.window.showInformationMessage(message.data.message);
+        break;
+      case 'loadingCompleted':
+        vscode.window.showInformationMessage(message.data.message);
+        break;
+      case 'saveAction':
+        vscode.window.showInformationMessage(`💾 Save action triggered at ${message.data.timestamp}`);
+        break;
+      case 'navigation':
+        vscode.window.showInformationMessage(`→ Navigation: ${message.data.direction}`);
+        break;
+      case 'refreshAction':
+        vscode.window.showInformationMessage('🔄 Refresh action triggered');
+        break;
+      case 'languageSelected':
+        vscode.window.showInformationMessage(`Language selected: ${message.data.language}`);
+        break;
+      case 'themeSelected':
+        vscode.window.showInformationMessage(`Theme selected: ${message.data.theme}`);
+        break;
+      case 'checkboxChanged':
+        vscode.window.showInformationMessage(`${message.data.option} ${message.data.checked ? 'enabled' : 'disabled'}`);
+        break;
+      case 'progressChanged':
+        vscode.window.showInformationMessage(`Progress ${message.data.action}: ${message.data.value}%`);
+        break;
+      case 'formFieldChanged':
+        vscode.window.showInformationMessage(`Form field '${message.data.field}' changed: ${message.data.value}`);
+        break;
       default:
         console.log('Received message:', message);
     }
