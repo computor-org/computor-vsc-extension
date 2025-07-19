@@ -17,18 +17,14 @@ This is a lightweight UI framework for VS Code extensions built with pure JavaSc
 
 ```
 webview-ui/
+├── components.js       # Bundled components (all components in one file)
 ├── components/
-│   ├── base.js         # Base Component class
-│   ├── button.js       # Button component
-│   ├── input.js        # Input component
-│   ├── select.js       # Select dropdown
-│   ├── checkbox.js     # Checkbox component
-│   ├── progress.js     # Progress bar
-│   ├── card.js         # Card container
 │   └── components.css  # Component styles
 ├── showcase.js         # Demo implementation
 └── showcase.css        # Demo styles
 ```
+
+The main difference from other frameworks is that all JavaScript components are bundled into a single `components.js` file, making it easy to load in any webview with just one script tag.
 
 ## Available Components
 
@@ -165,6 +161,7 @@ export class MyView extends BaseWebviewPanel {
     const cspSource = this.getCspSource();
     
     // Get URIs for webview resources
+    const componentsUri = this.getWebviewUri('webview-ui/components.js');
     const scriptUri = this.getWebviewUri('webview-ui/myview.js');
     const styleUri = this.getWebviewUri('webview-ui/components/components.css');
 
@@ -180,6 +177,7 @@ export class MyView extends BaseWebviewPanel {
         <script nonce="${nonce}">
           const vscode = acquireVsCodeApi();
         </script>
+        <script nonce="${nonce}" src="${componentsUri}"></script>
         <script nonce="${nonce}" src="${scriptUri}"></script>
     </body>
     </html>`;
@@ -210,6 +208,9 @@ localResourceRoots: [
 
 ```javascript
 // webview-ui/myview.js
+// Get components from the global UIComponents object
+const { createButton, createInput } = window.UIComponents;
+
 document.addEventListener('DOMContentLoaded', () => {
   const app = document.getElementById('app');
   
