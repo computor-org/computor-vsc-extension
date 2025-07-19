@@ -1,22 +1,8 @@
 import { expect } from 'chai';
 import * as vscode from 'vscode';
-import { VscodeCredentialStorage } from '../../authentication/VscodeCredentialStorage';
-import { ComputorCredentials } from '../../types/AuthenticationTypes';
-
-// Mock VS Code extension context
-class MockExtensionContext implements Partial<vscode.ExtensionContext> {
-  secrets: vscode.SecretStorage;
-  private storage = new Map<string, string>();
-  
-  constructor() {
-    this.secrets = {
-      get: async (key: string) => this.storage.get(key),
-      store: async (key: string, value: string) => { this.storage.set(key, value); },
-      delete: async (key: string) => { this.storage.delete(key); },
-      onDidChange: new vscode.EventEmitter<vscode.SecretStorageChangeEvent>().event
-    } as vscode.SecretStorage;
-  }
-}
+import { VscodeCredentialStorage } from '../../src/authentication/VscodeCredentialStorage';
+import { ComputorCredentials } from '../../src/types/AuthenticationTypes';
+import { MockExtensionContext } from '../helpers/MockExtensionContext';
 
 describe('VscodeCredentialStorage', () => {
   let storage: VscodeCredentialStorage;

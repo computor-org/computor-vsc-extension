@@ -1,6 +1,6 @@
 import { expect } from 'chai';
-import { BasicAuthHttpClient } from '../../http/BasicAuthHttpClient';
-import { AuthenticationError } from '../../http/errors';
+import { BasicAuthHttpClient } from '../../src/http/BasicAuthHttpClient';
+import { AuthenticationError } from '../../src/http/errors';
 
 describe('BasicAuthHttpClient', () => {
   let client: BasicAuthHttpClient;

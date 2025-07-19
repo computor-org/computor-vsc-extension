@@ -1,6 +1,6 @@
 import { expect } from 'chai';
-import { InMemoryCache } from '../../../http/cache/InMemoryCache';
-import { CacheKey } from '../../../http/cache/CacheStrategy';
+import { InMemoryCache } from '../../../src/http/cache/InMemoryCache';
+import { CacheKey } from '../../../src/http/cache/CacheStrategy';
 
 describe('InMemoryCache', () => {
   let cache: InMemoryCache;

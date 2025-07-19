@@ -1,6 +1,6 @@
 import { expect } from 'chai';
-import { ApiKeyHttpClient } from '../../http/ApiKeyHttpClient';
-import { AuthenticationError } from '../../http/errors';
+import { ApiKeyHttpClient } from '../../src/http/ApiKeyHttpClient';
+import { AuthenticationError } from '../../src/http/errors';
 
 describe('ApiKeyHttpClient', () => {
   let client: ApiKeyHttpClient;
