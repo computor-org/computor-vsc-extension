@@ -7,3 +7,7 @@ export { BaseTreeDataProvider } from './base/BaseTreeDataProvider';
 
 // Types
 export * from './types';
+
+// Views
+export * from './views/UIShowcaseView';
+export * from './views/SettingsView';

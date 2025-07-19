@@ -6,6 +6,10 @@ dist/
 *.d.ts
 *.d.ts.map
 
+# Exception for webview UI files
+!webview-ui/**/*.js
+!webview-ui/**/*.css
+
 # Dependencies
 node_modules/
 
