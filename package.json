@@ -16,7 +16,10 @@
     "onCommand:computor.signIn",
     "onCommand:computor.signOut",
     "onCommand:computor.showGitStatus",
-    "onAuthenticationRequest:computor"
+    "onAuthenticationRequest:computor",
+    "onView:computor.apiTreeView",
+    "onView:computor.jsonTreeView",
+    "onView:computor.testResultsView"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -47,8 +50,219 @@
         "command": "computor.showGitStatus",
         "title": "Computor: Show Git Status",
         "category": "Git"
+      },
+      {
+        "command": "computor.refreshApiTree",
+        "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "Computor Tree"
+      },
+      {
+        "command": "computor.loadMoreApiItems",
+        "title": "Load More",
+        "category": "Computor Tree"
+      },
+      {
+        "command": "computor.copyApiItemData",
+        "title": "Copy Data",
+        "category": "Computor Tree"
+      },
+      {
+        "command": "computor.openApiDataInEditor",
+        "title": "Open in Editor",
+        "category": "Computor Tree"
+      },
+      {
+        "command": "computor.copyJsonValue",
+        "title": "Copy Value",
+        "category": "Computor Tree"
+      },
+      {
+        "command": "computor.copyJsonPath",
+        "title": "Copy Path",
+        "category": "Computor Tree"
+      },
+      {
+        "command": "computor.openJsonInEditor",
+        "title": "Open JSON in Editor",
+        "icon": "$(go-to-file)",
+        "category": "Computor Tree"
+      },
+      {
+        "command": "computor.searchJson",
+        "title": "Search",
+        "icon": "$(search)",
+        "category": "Computor Tree"
+      },
+      {
+        "command": "computor.clearJsonSearch",
+        "title": "Clear Search",
+        "icon": "$(clear-all)",
+        "category": "Computor Tree"
+      },
+      {
+        "command": "computor.expandAllJson",
+        "title": "Expand All",
+        "icon": "$(expand-all)",
+        "category": "Computor Tree"
+      },
+      {
+        "command": "computor.collapseAllJson",
+        "title": "Collapse All",
+        "icon": "$(collapse-all)",
+        "category": "Computor Tree"
+      },
+      {
+        "command": "computor.jsonStatistics",
+        "title": "Show Statistics",
+        "icon": "$(graph)",
+        "category": "Computor Tree"
+      },
+      {
+        "command": "computor.goToTest",
+        "title": "Go to Test",
+        "category": "Computor Tree"
+      },
+      {
+        "command": "computor.runSingleTest",
+        "title": "Run Test",
+        "icon": "$(run)",
+        "category": "Computor Tree"
+      },
+      {
+        "command": "computor.groupTestsBy",
+        "title": "Group By...",
+        "icon": "$(group-by-ref-type)",
+        "category": "Computor Tree"
+      },
+      {
+        "command": "computor.toggleShowOnlyFailures",
+        "title": "Toggle Show Only Failures",
+        "icon": "$(filter)",
+        "category": "Computor Tree"
+      },
+      {
+        "command": "computor.showTestSummary",
+        "title": "Show Summary",
+        "icon": "$(info)",
+        "category": "Computor Tree"
+      },
+      {
+        "command": "computor.exportTestResults",
+        "title": "Export Results",
+        "icon": "$(export)",
+        "category": "Computor Tree"
       }
-    ]
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "computor.apiTreeView",
+          "name": "Computor API",
+          "icon": "$(globe)",
+          "contextualTitle": "Computor API Data",
+          "when": "computor.authenticated"
+        },
+        {
+          "id": "computor.jsonTreeView",
+          "name": "JSON Explorer",
+          "icon": "$(json)",
+          "contextualTitle": "JSON Data Explorer"
+        },
+        {
+          "id": "computor.testResultsView",
+          "name": "Test Results",
+          "icon": "$(beaker)",
+          "contextualTitle": "Test Results Explorer"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "computor.refreshApiTree",
+          "when": "view == computor.apiTreeView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "computor.openJsonInEditor",
+          "when": "view == computor.jsonTreeView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "computor.searchJson",
+          "when": "view == computor.jsonTreeView",
+          "group": "navigation@2"
+        },
+        {
+          "command": "computor.expandAllJson",
+          "when": "view == computor.jsonTreeView",
+          "group": "navigation@3"
+        },
+        {
+          "command": "computor.collapseAllJson",
+          "when": "view == computor.jsonTreeView",
+          "group": "navigation@4"
+        },
+        {
+          "command": "computor.groupTestsBy",
+          "when": "view == computor.testResultsView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "computor.toggleShowOnlyFailures",
+          "when": "view == computor.testResultsView",
+          "group": "navigation@2"
+        },
+        {
+          "command": "computor.showTestSummary",
+          "when": "view == computor.testResultsView",
+          "group": "navigation@3"
+        },
+        {
+          "command": "computor.exportTestResults",
+          "when": "view == computor.testResultsView",
+          "group": "navigation@4"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "computor.copyApiItemData",
+          "when": "view == computor.apiTreeView && viewItem =~ /apiTreeItem/",
+          "group": "1_copy@1"
+        },
+        {
+          "command": "computor.openApiDataInEditor",
+          "when": "view == computor.apiTreeView && viewItem =~ /apiTreeItem/",
+          "group": "1_copy@2"
+        },
+        {
+          "command": "computor.copyJsonValue",
+          "when": "view == computor.jsonTreeView && viewItem =~ /jsonTreeItem.*\\.copyable/",
+          "group": "1_copy@1"
+        },
+        {
+          "command": "computor.copyJsonPath",
+          "when": "view == computor.jsonTreeView && viewItem =~ /jsonTreeItem/",
+          "group": "1_copy@2"
+        },
+        {
+          "command": "computor.openJsonInEditor",
+          "when": "view == computor.jsonTreeView && viewItem =~ /jsonTreeItem/",
+          "group": "2_open@1"
+        },
+        {
+          "command": "computor.goToTest",
+          "when": "view == computor.testResultsView && viewItem =~ /testResult/",
+          "group": "1_test@1"
+        },
+        {
+          "command": "computor.runSingleTest",
+          "when": "view == computor.testResultsView && viewItem =~ /testResult/",
+          "group": "1_test@2"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
