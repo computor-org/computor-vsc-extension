@@ -25,6 +25,15 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "computor",
+          "title": "Computor",
+          "icon": "$(mortar-board)"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "computor.activate",
@@ -206,7 +215,27 @@
         "category": "Computor"
       }
     ],
+    "viewsWelcome": [
+      {
+        "view": "computor.welcome",
+        "contents": "Welcome to Computor!\n\n[Sign In](command:computor.signIn)\n\nSign in to access lecturer features and manage your courses."
+      }
+    ],
     "views": {
+      "computor": [
+        {
+          "id": "computor.lecturerView",
+          "name": "Lecturer View",
+          "icon": "$(mortar-board)",
+          "contextualTitle": "Computor Lecturer View",
+          "when": "computor.authenticated"
+        },
+        {
+          "id": "computor.welcome",
+          "name": "Welcome",
+          "when": "!computor.authenticated"
+        }
+      ],
       "explorer": [
         {
           "id": "computor.apiTreeView",
@@ -226,13 +255,6 @@
           "name": "Test Results",
           "icon": "$(beaker)",
           "contextualTitle": "Test Results Explorer"
-        },
-        {
-          "id": "computor.lecturerView",
-          "name": "Lecturer View",
-          "icon": "$(mortar-board)",
-          "contextualTitle": "Computor Lecturer View",
-          "when": "computor.authenticated"
         }
       ]
     },
