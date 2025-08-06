@@ -63,13 +63,13 @@ export class ComputorApiService {
 
   async getOrganizations(): Promise<OrganizationList[]> {
     const client = await this.getHttpClient();
-    const response = await client.get<OrganizationList[]>('/api/v1/organizations');
+    const response = await client.get<OrganizationList[]>('/organizations');
     return response.data;
   }
 
   async getCourseFamilies(organizationId: string): Promise<CourseFamilyList[]> {
     const client = await this.getHttpClient();
-    const response = await client.get<CourseFamilyList[]>('/api/v1/course-families', {
+    const response = await client.get<CourseFamilyList[]>('/course-families', {
       organization_id: organizationId
     });
     return response.data;
@@ -77,7 +77,7 @@ export class ComputorApiService {
 
   async getCourses(courseFamilyId: string): Promise<CourseList[]> {
     const client = await this.getHttpClient();
-    const response = await client.get<CourseList[]>('/api/v1/courses', {
+    const response = await client.get<CourseList[]>('/courses', {
       course_family_id: courseFamilyId
     });
     return response.data;
@@ -85,43 +85,43 @@ export class ComputorApiService {
 
   async getCourseContents(courseId: string): Promise<CourseContentList[]> {
     const client = await this.getHttpClient();
-    const response = await client.get<CourseContentList[]>(`/api/v1/courses/${courseId}/contents`);
+    const response = await client.get<CourseContentList[]>(`/courses/${courseId}/contents`);
     return response.data;
   }
 
   async createCourseContent(courseId: string, content: CourseContentCreate): Promise<CourseContentGet> {
     const client = await this.getHttpClient();
-    const response = await client.post<CourseContentGet>(`/api/v1/courses/${courseId}/contents`, content);
+    const response = await client.post<CourseContentGet>(`/courses/${courseId}/contents`, content);
     return response.data;
   }
 
   async updateCourseContent(courseId: string, contentId: string, content: CourseContentUpdate): Promise<CourseContentGet> {
     const client = await this.getHttpClient();
-    const response = await client.put<CourseContentGet>(`/api/v1/courses/${courseId}/contents/${contentId}`, content);
+    const response = await client.put<CourseContentGet>(`/courses/${courseId}/contents/${contentId}`, content);
     return response.data;
   }
 
   async deleteCourseContent(courseId: string, contentId: string): Promise<void> {
     const client = await this.getHttpClient();
-    await client.delete(`/api/v1/courses/${courseId}/contents/${contentId}`);
+    await client.delete(`/courses/${courseId}/contents/${contentId}`);
   }
 
   async getCourseContentKinds(): Promise<CourseContentKindList[]> {
     const client = await this.getHttpClient();
-    const response = await client.get<CourseContentKindList[]>('/api/v1/course-content-kinds');
+    const response = await client.get<CourseContentKindList[]>('/course-content-kinds');
     return response.data;
   }
 
   async getExamples(repositoryId?: string): Promise<ExampleList[]> {
     const client = await this.getHttpClient();
     const params = repositoryId ? { repository_id: repositoryId } : undefined;
-    const response = await client.get<ExampleList[]>('/api/v1/examples', params);
+    const response = await client.get<ExampleList[]>('/examples', params);
     return response.data;
   }
 
   async getExampleRepositories(): Promise<ExampleRepositoryList[]> {
     const client = await this.getHttpClient();
-    const response = await client.get<ExampleRepositoryList[]>('/api/v1/example-repositories');
+    const response = await client.get<ExampleRepositoryList[]>('/example-repositories');
     return response.data;
   }
 
@@ -133,7 +133,7 @@ export class ComputorApiService {
   ): Promise<CourseContentGet> {
     const client = await this.getHttpClient();
     const response = await client.patch<CourseContentGet>(
-      `/api/v1/courses/${courseId}/contents/${contentId}`,
+      `/courses/${courseId}/contents/${contentId}`,
       {
         example_id: exampleId,
         example_version: exampleVersion
@@ -145,7 +145,7 @@ export class ComputorApiService {
   async unassignExampleFromCourseContent(courseId: string, contentId: string): Promise<CourseContentGet> {
     const client = await this.getHttpClient();
     const response = await client.patch<CourseContentGet>(
-      `/api/v1/courses/${courseId}/contents/${contentId}`,
+      `/courses/${courseId}/contents/${contentId}`,
       {
         example_id: null,
         example_version: null

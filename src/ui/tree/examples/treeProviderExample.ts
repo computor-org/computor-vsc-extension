@@ -24,7 +24,7 @@ export function activateTreeProviders(context: vscode.ExtensionContext) {
   );
   
   // Register the API tree view
-  const apiTreeView = apiTreeProvider.registerTreeView('computor.apiTreeView', {
+  void apiTreeProvider.registerTreeView('computor.apiTreeView', {
     canSelectMany: true,
     showCollapseAll: true
   });
@@ -59,7 +59,7 @@ export function activateTreeProviders(context: vscode.ExtensionContext) {
   );
   
   // Register the JSON tree view
-  const jsonTreeView = jsonTreeProvider.registerTreeView('computor.jsonTreeView');
+  void jsonTreeProvider.registerTreeView('computor.jsonTreeView');
   
   // Example 3: Test Results Tree Data Provider
   const sampleTestResults: TestResult[] = [
@@ -106,7 +106,7 @@ export function activateTreeProviders(context: vscode.ExtensionContext) {
   );
   
   // Register the test results tree view
-  const testTreeView = testTreeProvider.registerTreeView('computor.testResultsView', {
+  void testTreeProvider.registerTreeView('computor.testResultsView', {
     canSelectMany: false
   });
   
