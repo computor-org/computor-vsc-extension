@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
 import { LecturerTreeDataProvider } from '../ui/tree/lecturer/LecturerTreeDataProvider';
-import { CourseTreeItem, CourseContentTreeItem } from '../ui/tree/lecturer/LecturerTreeItems';
+import { CourseTreeItem, CourseContentTreeItem, CourseFolderTreeItem, CourseContentTypeTreeItem } from '../ui/tree/lecturer/LecturerTreeItems';
 import { ComputorApiService } from '../services/ComputorApiService';
 
 export class LecturerCommands {
@@ -36,8 +36,27 @@ export class LecturerCommands {
 
     // Course content management
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.createCourseContent', async (item: CourseTreeItem | CourseContentTreeItem) => {
+      vscode.commands.registerCommand('computor.createCourseContent', async (item: CourseFolderTreeItem | CourseContentTreeItem) => {
         await this.createCourseContent(item);
+      })
+    );
+
+    // Course content type management
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.createCourseContentType', async (item: CourseFolderTreeItem) => {
+        await this.createCourseContentType(item);
+      })
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.editCourseContentType', async (item: CourseContentTypeTreeItem) => {
+        await this.editCourseContentType(item);
+      })
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.deleteCourseContentType', async (item: CourseContentTypeTreeItem) => {
+        await this.deleteCourseContentType(item);
       })
     );
 
@@ -97,7 +116,33 @@ export class LecturerCommands {
     }
   }
 
-  private async createCourseContent(item: CourseTreeItem | CourseContentTreeItem): Promise<void> {
+  private async createCourseContent(item: CourseFolderTreeItem | CourseContentTreeItem): Promise<void> {
+    if (!(item instanceof CourseFolderTreeItem) || item.folderType !== 'contents') {
+      vscode.window.showErrorMessage('Course contents can only be created under the Contents folder');
+      return;
+    }
+
+    // Get available content types
+    const contentTypes = await this.apiService.getCourseContentTypes(item.course.id);
+    if (contentTypes.length === 0) {
+      vscode.window.showWarningMessage('No content types available. Please create a content type first.');
+      return;
+    }
+
+    // Select content type
+    const selectedType = await vscode.window.showQuickPick(
+      contentTypes.map(t => ({
+        label: t.title || t.slug,
+        description: t.slug,
+        id: t.id
+      })),
+      { placeHolder: 'Select content type' }
+    );
+
+    if (!selectedType) {
+      return;
+    }
+
     const title = await vscode.window.showInputBox({
       prompt: 'Enter course content title',
       placeHolder: 'e.g., Week 1: Introduction'
@@ -107,15 +152,7 @@ export class LecturerCommands {
       return;
     }
 
-    if (item instanceof CourseTreeItem) {
-      await this.treeDataProvider.createCourseContent(item, title);
-    } else if (item instanceof CourseContentTreeItem) {
-      await this.treeDataProvider.createCourseContent(
-        new CourseTreeItem(item.course, item.courseFamily, item.organization),
-        title,
-        item.courseContent.path
-      );
-    }
+    await this.treeDataProvider.createCourseContent(item, title, selectedType.id);
   }
 
   private async renameCourseContent(item: CourseContentTreeItem): Promise<void> {
@@ -253,6 +290,122 @@ export class LecturerCommands {
     vscode.window.showInformationMessage(
       `Repository URL: ${repoUrl}\nYou can clone it with your GitLab token.`
     );
+  }
+
+  private async createCourseContentType(item: CourseFolderTreeItem): Promise<void> {
+    if (item.folderType !== 'contentTypes') {
+      return;
+    }
+
+    // Get available content kinds
+    const contentKinds = await this.apiService.getCourseContentKinds();
+    if (contentKinds.length === 0) {
+      vscode.window.showErrorMessage('No content kinds available in the system');
+      return;
+    }
+
+    // Select content kind
+    const kindItems = contentKinds.map(k => ({
+      label: k.title || k.id,
+      description: `ID: ${k.id}`,
+      kindData: k
+    }));
+    
+    const selectedKind = await vscode.window.showQuickPick(
+      kindItems,
+      { placeHolder: 'Select content kind' }
+    );
+
+    if (!selectedKind) {
+      return;
+    }
+
+    const slug = await vscode.window.showInputBox({
+      prompt: 'Enter a unique slug for this content type',
+      placeHolder: 'e.g., lecture, assignment, exercise'
+    });
+
+    if (!slug) {
+      return;
+    }
+
+    const title = await vscode.window.showInputBox({
+      prompt: 'Enter content type title',
+      placeHolder: 'e.g., Lecture, Assignment'
+    });
+
+    const color = await vscode.window.showInputBox({
+      prompt: 'Enter color (optional)',
+      placeHolder: 'e.g., #FF5733, blue, rgb(255,87,51)',
+      value: 'green'
+    });
+
+    try {
+      await this.apiService.createCourseContentType({
+        slug,
+        title: title || slug,
+        color: color || 'green',
+        course_id: item.course.id,
+        course_content_kind_id: selectedKind.kindData.id
+      });
+      
+      // Clear cache and refresh
+      this.treeDataProvider.refreshNode(item);
+      vscode.window.showInformationMessage(`Content type "${title || slug}" created successfully`);
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to create content type: ${error}`);
+    }
+  }
+
+  private async editCourseContentType(item: CourseContentTypeTreeItem): Promise<void> {
+    const title = await vscode.window.showInputBox({
+      prompt: 'Enter new title',
+      value: item.contentType.title || item.contentType.slug
+    });
+
+    if (!title) {
+      return;
+    }
+
+    const color = await vscode.window.showInputBox({
+      prompt: 'Enter new color',
+      value: item.contentType.color
+    });
+
+    try {
+      await this.apiService.updateCourseContentType(item.contentType.id, {
+        title,
+        color: color || item.contentType.color
+      });
+      
+      // Refresh parent folder
+      const parent = new CourseFolderTreeItem('contentTypes', item.course, item.courseFamily, item.organization);
+      this.treeDataProvider.refreshNode(parent);
+      vscode.window.showInformationMessage('Content type updated successfully');
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to update content type: ${error}`);
+    }
+  }
+
+  private async deleteCourseContentType(item: CourseContentTypeTreeItem): Promise<void> {
+    const confirmation = await vscode.window.showWarningMessage(
+      `Are you sure you want to delete content type "${item.contentType.title || item.contentType.slug}"?`,
+      'Yes',
+      'No'
+    );
+
+    if (confirmation === 'Yes') {
+      try {
+        await this.apiService.deleteCourseContentType(item.contentType.id);
+        
+        // Refresh parent folder
+        const parent = new CourseFolderTreeItem('contentTypes', item.course, item.courseFamily, item.organization);
+        this.treeDataProvider.refreshNode(parent);
+        vscode.window.showInformationMessage('Content type deleted successfully');
+      } catch (error) {
+        vscode.window.showErrorMessage(`Failed to delete content type: ${error}`);
+      }
+    }
   }
 
   private async manageGitLabTokens(): Promise<void> {

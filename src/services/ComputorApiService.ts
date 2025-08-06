@@ -11,6 +11,10 @@ import {
   CourseContentCreate,
   CourseContentUpdate,
   CourseContentKindList,
+  CourseContentTypeList,
+  CourseContentTypeGet,
+  CourseContentTypeCreate,
+  CourseContentTypeUpdate,
   ExampleList,
   ExampleRepositoryList
 } from '../types/generated';
@@ -112,6 +116,31 @@ export class ComputorApiService {
     const client = await this.getHttpClient();
     const response = await client.get<CourseContentKindList[]>('/course-content-kinds');
     return response.data;
+  }
+
+  async getCourseContentTypes(courseId: string): Promise<CourseContentTypeList[]> {
+    const client = await this.getHttpClient();
+    const response = await client.get<CourseContentTypeList[]>('/course-content-types', {
+      course_id: courseId
+    });
+    return response.data;
+  }
+
+  async createCourseContentType(contentType: CourseContentTypeCreate): Promise<CourseContentTypeGet> {
+    const client = await this.getHttpClient();
+    const response = await client.post<CourseContentTypeGet>('/course-content-types', contentType);
+    return response.data;
+  }
+
+  async updateCourseContentType(typeId: string, contentType: CourseContentTypeUpdate): Promise<CourseContentTypeGet> {
+    const client = await this.getHttpClient();
+    const response = await client.put<CourseContentTypeGet>(`/course-content-types/${typeId}`, contentType);
+    return response.data;
+  }
+
+  async deleteCourseContentType(typeId: string): Promise<void> {
+    const client = await this.getHttpClient();
+    await client.delete(`/course-content-types/${typeId}`);
   }
 
   async getExamples(repositoryId?: string): Promise<ExampleList[]> {
