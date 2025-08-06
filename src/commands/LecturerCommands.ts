@@ -1,11 +1,13 @@
 import * as vscode from 'vscode';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
+import { GitLabTokenManager } from '../services/GitLabTokenManager';
 import { LecturerTreeDataProvider } from '../ui/tree/lecturer/LecturerTreeDataProvider';
 import { CourseTreeItem, CourseContentTreeItem } from '../ui/tree/lecturer/LecturerTreeItems';
 import { ComputorApiService } from '../services/ComputorApiService';
 
 export class LecturerCommands {
   private settingsManager: ComputorSettingsManager;
+  private gitLabTokenManager: GitLabTokenManager;
   private apiService: ComputorApiService;
 
   constructor(
@@ -13,6 +15,7 @@ export class LecturerCommands {
     private treeDataProvider: LecturerTreeDataProvider
   ) {
     this.settingsManager = new ComputorSettingsManager(context);
+    this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
     this.apiService = new ComputorApiService(context);
   }
 
@@ -215,50 +218,64 @@ export class LecturerCommands {
       return;
     }
 
-    // Check if we need a GitLab token
-    const gitlabUrl = new URL(repoUrl).origin;
-    let token = await this.settingsManager.getGitLabToken(gitlabUrl);
-    
-    if (!token) {
-      token = await vscode.window.showInputBox({
-        prompt: `Enter GitLab personal access token for ${gitlabUrl}`,
-        password: true,
-        placeHolder: 'GitLab Personal Access Token'
-      });
+    // Get GitLab token using the token manager
+    const gitlabUrl = this.gitLabTokenManager.extractGitLabUrlFromCourse(item.course);
+    if (!gitlabUrl) {
+      vscode.window.showErrorMessage('Could not extract GitLab URL from course');
+      return;
+    }
 
-      if (token) {
-        await this.settingsManager.setGitLabToken(gitlabUrl, token);
-      } else {
-        return;
-      }
+    const token = await this.gitLabTokenManager.ensureTokenForUrl(gitlabUrl);
+    if (!token) {
+      vscode.window.showWarningMessage('GitLab token is required to access the repository');
+      return;
     }
 
     // Get workspace directory
     const workspaceDir = await this.settingsManager.getWorkspaceDirectory();
     
     if (!workspaceDir) {
-      await this.selectWorkspaceDirectory();
+      const selected = await vscode.window.showInformationMessage(
+        'Please select a workspace directory first',
+        'Select Directory'
+      );
+      if (selected === 'Select Directory') {
+        await this.selectWorkspaceDirectory();
+      }
       return;
     }
 
-    // Open the repository
+    // TODO: Here we could clone the repository using the token
+    // For now, just open the URL in browser
     vscode.env.openExternal(vscode.Uri.parse(repoUrl));
+    
+    // Show info about cloning
+    vscode.window.showInformationMessage(
+      `Repository URL: ${repoUrl}\nYou can clone it with your GitLab token.`
+    );
   }
 
   private async manageGitLabTokens(): Promise<void> {
+    // Get stored GitLab URLs from settings (for now)
     const settings = await this.settingsManager.getSettings();
-    const tokens = settings.workspace?.gitlabTokens || {};
+    const urls = Object.keys(settings.workspace?.gitlabTokens || {});
     
-    if (Object.keys(tokens).length === 0) {
-      vscode.window.showInformationMessage('No GitLab tokens configured');
+    if (urls.length === 0) {
+      vscode.window.showInformationMessage('No GitLab tokens configured yet. Tokens will be requested when needed.');
       return;
     }
 
-    const items = Object.keys(tokens).map(url => ({
+    const items = urls.map(url => ({
       label: url,
       description: 'GitLab Instance',
       detail: 'Click to manage token'
     }));
+
+    items.push({
+      label: '$(add) Add New GitLab Instance',
+      description: 'Manually add a GitLab token',
+      detail: ''
+    });
 
     const selected = await vscode.window.showQuickPick(items, {
       placeHolder: 'Select GitLab instance to manage'
@@ -268,24 +285,38 @@ export class LecturerCommands {
       return;
     }
 
-    const action = await vscode.window.showQuickPick(
-      ['Update Token', 'Remove Token'],
-      { placeHolder: `Manage token for ${selected.label}` }
-    );
-
-    if (action === 'Update Token') {
-      const newToken = await vscode.window.showInputBox({
-        prompt: `Enter new token for ${selected.label}`,
-        password: true
+    if (selected.label.startsWith('$(add)')) {
+      // Add new token
+      const url = await vscode.window.showInputBox({
+        prompt: 'Enter GitLab instance URL',
+        placeHolder: 'https://gitlab.example.com'
       });
       
-      if (newToken) {
-        await this.settingsManager.setGitLabToken(selected.label, newToken);
-        vscode.window.showInformationMessage('Token updated successfully');
+      if (url) {
+        const token = await this.gitLabTokenManager.ensureTokenForUrl(url);
+        if (token) {
+          vscode.window.showInformationMessage(`Token added for ${url}`);
+        }
       }
-    } else if (action === 'Remove Token') {
-      await this.settingsManager.setGitLabToken(selected.label, '');
-      vscode.window.showInformationMessage('Token removed successfully');
+    } else {
+      // Manage existing token
+      const action = await vscode.window.showQuickPick(
+        ['Update Token', 'Remove Token', 'Test Token'],
+        { placeHolder: `Manage token for ${selected.label}` }
+      );
+
+      if (action === 'Update Token') {
+        const token = await this.gitLabTokenManager.ensureTokenForUrl(selected.label);
+        if (token) {
+          vscode.window.showInformationMessage('Token updated successfully');
+        }
+      } else if (action === 'Remove Token') {
+        await this.gitLabTokenManager.removeToken(selected.label);
+        vscode.window.showInformationMessage('Token removed successfully');
+      } else if (action === 'Test Token') {
+        // TODO: Implement token testing
+        vscode.window.showInformationMessage('Token testing not yet implemented');
+      }
     }
   }
 }
