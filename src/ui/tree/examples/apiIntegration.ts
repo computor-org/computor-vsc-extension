@@ -23,7 +23,7 @@ export async function setupApiTreeWithBackend(
     }
   );
 
-  const projectsView = projectsTreeProvider.registerTreeView('computor.projectsView', {
+  void projectsTreeProvider.registerTreeView('computor.projectsView', {
     canSelectMany: true,
     showCollapseAll: true
   });
@@ -101,7 +101,7 @@ export async function setupApiTreeWithBackend(
     if (uri) {
       try {
         const response = await httpClient.get(`/api/v1/files/${fileData.id}/content`);
-        await vscode.workspace.fs.writeFile(uri, Buffer.from(response.data));
+        await vscode.workspace.fs.writeFile(uri, Buffer.from(String(response.data)));
         vscode.window.showInformationMessage(`Downloaded: ${fileData.name}`);
       } catch (error) {
         vscode.window.showErrorMessage(`Download failed: ${error}`);
@@ -147,7 +147,8 @@ export async function setupApiTreeWithBackend(
 /**
  * Example API response structures that would work with the tree
  */
-const exampleApiResponses = {
+// Example API response structures
+void {
   // GET /api/v1/projects
   projects: [
     {
