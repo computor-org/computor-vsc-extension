@@ -7,6 +7,9 @@ import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataPro
 import { LecturerCommands } from './commands/LecturerCommands';
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
 import { GitLabTokenManager } from './services/GitLabTokenManager';
+import { ExampleTreeProvider } from './ui/tree/examples/ExampleTreeProvider';
+import { ExampleCommands } from './commands/exampleCommands';
+import { ComputorApiService } from './services/ComputorApiService';
 
 // Export the GitLab token manager for use by other components
 export let gitLabTokenManager: GitLabTokenManager;
@@ -88,6 +91,20 @@ export function activate(context: vscode.ExtensionContext) {
   // Register lecturer commands
   const lecturerCommands = new LecturerCommands(context, lecturerTreeDataProvider);
   lecturerCommands.registerCommands();
+
+  // Initialize API service
+  const apiService = new ComputorApiService(context);
+
+  // Initialize Example Tree Provider and View
+  const exampleTreeProvider = new ExampleTreeProvider(context, apiService);
+  const exampleTreeView = vscode.window.createTreeView('computor.examplesView', {
+    treeDataProvider: exampleTreeProvider,
+    showCollapseAll: true
+  });
+  context.subscriptions.push(exampleTreeView);
+
+  // Register example commands
+  new ExampleCommands(context, apiService, exampleTreeProvider);
 
   // Check for existing authentication session
   vscode.authentication.getSession('computor', [], { createIfNone: false }).then(session => {
