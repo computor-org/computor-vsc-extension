@@ -87,53 +87,26 @@ export class ComputorAuthenticationProvider implements vscode.AuthenticationProv
 
   private async showLoginPrompt(scopes: readonly string[]): Promise<ComputorCredentials | undefined> {
     void scopes; // Currently unused
-    // Check settings for default auth method
-    const settingsManager = await this.getSettingsManager();
-    const settings = await settingsManager.getSettings();
-    const authMethod = settings.authentication.defaultProvider;
-
-    if (authMethod === 'token') {
-      return this.promptForToken();
-    } else if (authMethod === 'basic') {
-      return this.promptForBasicAuth();
-    } else {
-      // Default to token
-      return this.promptForToken();
-    }
-  }
-
-  private async promptForToken(): Promise<ComputorCredentials | undefined> {
-    const settingsManager = await this.getSettingsManager();
-    const settings = await settingsManager.getSettings();
-    
-    const token = await vscode.window.showInputBox({
-      title: 'Computor Authentication',
-      prompt: 'Enter your API token',
-      password: true,
-      placeHolder: 'API Token'
-    });
-
-    if (!token) {
-      return undefined;
-    }
-
-    const realm = await vscode.window.showInputBox({
-      title: 'Computor Authentication',
-      prompt: 'Enter realm (optional)',
-      placeHolder: 'default'
-    }) || 'default';
-
-    return {
-      baseUrl: settings.authentication.baseUrl,
-      realm,
-      token
-    };
+    // Default to Basic Auth for backend API
+    return this.promptForBasicAuth();
   }
 
   private async promptForBasicAuth(): Promise<ComputorCredentials | undefined> {
     const settingsManager = await this.getSettingsManager();
     const settings = await settingsManager.getSettings();
     
+    // Ask for backend URL first
+    const baseUrl = await vscode.window.showInputBox({
+      title: 'Computor Backend URL',
+      prompt: 'Enter the backend API URL',
+      placeHolder: 'http://localhost:8000',
+      value: settings.authentication.baseUrl
+    });
+
+    if (!baseUrl) {
+      return undefined;
+    }
+
     const username = await vscode.window.showInputBox({
       title: 'Computor Authentication',
       prompt: 'Enter your username',
@@ -155,15 +128,13 @@ export class ComputorAuthenticationProvider implements vscode.AuthenticationProv
       return undefined;
     }
 
-    const realm = await vscode.window.showInputBox({
-      title: 'Computor Authentication',
-      prompt: 'Enter realm (optional)',
-      placeHolder: 'default'
-    }) || 'default';
+    // Save the backend URL for future use
+    settings.authentication.baseUrl = baseUrl;
+    await settingsManager.saveSettings(settings);
 
     return {
-      baseUrl: settings.authentication.baseUrl,
-      realm,
+      baseUrl,
+      realm: 'default',
       username,
       password
     };

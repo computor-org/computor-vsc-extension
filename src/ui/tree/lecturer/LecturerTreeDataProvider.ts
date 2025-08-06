@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { ComputorApiService } from '../../../services/ComputorApiService';
+import { GitLabTokenManager } from '../../../services/GitLabTokenManager';
 import {
   OrganizationTreeItem,
   CourseFamilyTreeItem,
@@ -7,7 +8,7 @@ import {
   CourseContentTreeItem,
   ExampleTreeItem
 } from './LecturerTreeItems';
-import { CourseContentList, CourseContentCreate, CourseContentUpdate } from '../../../types/generated';
+import { CourseContentList, CourseContentCreate, CourseContentUpdate, CourseList } from '../../../types/generated';
 
 type TreeItem = OrganizationTreeItem | CourseFamilyTreeItem | CourseTreeItem | CourseContentTreeItem | ExampleTreeItem;
 
@@ -16,10 +17,13 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   readonly onDidChangeTreeData: vscode.Event<TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
 
   private apiService: ComputorApiService;
+  private gitLabTokenManager: GitLabTokenManager;
   private courseContentsCache: Map<string, CourseContentList[]> = new Map();
+  private coursesCache: Map<string, CourseList[]> = new Map();
 
   constructor(context: vscode.ExtensionContext) {
     this.apiService = new ComputorApiService(context);
+    this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
   }
 
   refresh(): void {
@@ -52,6 +56,13 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       if (element instanceof CourseFamilyTreeItem) {
         // Show courses for course family
         const courses = await this.apiService.getCourses(element.courseFamily.id);
+        
+        // Check for unique GitLab URLs and ensure we have tokens
+        await this.ensureGitLabTokensForCourses(courses);
+        
+        // Cache courses for later use
+        this.coursesCache.set(element.courseFamily.id, courses);
+        
         return courses.map(course => new CourseTreeItem(course, element.courseFamily, element.organization));
       }
 
@@ -237,5 +248,37 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       const roots = this.getRootContents(contents);
       return roots.length + 1;
     }
+  }
+
+  /**
+   * Ensure we have GitLab tokens for all unique GitLab instances in courses
+   */
+  private async ensureGitLabTokensForCourses(courses: CourseList[]): Promise<void> {
+    const gitlabUrls = new Set<string>();
+    
+    // Extract unique GitLab URLs from courses
+    for (const course of courses) {
+      const url = this.gitLabTokenManager.extractGitLabUrlFromCourse(course);
+      if (url) {
+        gitlabUrls.add(url);
+      }
+    }
+    
+    // Prompt for tokens for each unique URL
+    for (const url of gitlabUrls) {
+      await this.gitLabTokenManager.ensureTokenForUrl(url);
+    }
+  }
+
+  /**
+   * Get GitLab token for a course
+   */
+  async getGitLabTokenForCourse(course: CourseList): Promise<string | undefined> {
+    const gitlabUrl = this.gitLabTokenManager.extractGitLabUrlFromCourse(course);
+    if (!gitlabUrl) {
+      return undefined;
+    }
+    
+    return await this.gitLabTokenManager.ensureTokenForUrl(gitlabUrl);
   }
 }

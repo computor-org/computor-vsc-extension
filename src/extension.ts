@@ -6,9 +6,16 @@ import { GitManager } from './git/GitManager';
 import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataProvider';
 import { LecturerCommands } from './commands/LecturerCommands';
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
+import { GitLabTokenManager } from './services/GitLabTokenManager';
+
+// Export the GitLab token manager for use by other components
+export let gitLabTokenManager: GitLabTokenManager;
 
 export function activate(context: vscode.ExtensionContext) {
   console.log('Computor VS Code Extension is now active!');
+
+  // Initialize GitLab token manager (singleton - shared by all views)
+  gitLabTokenManager = GitLabTokenManager.getInstance(context);
 
   // Initialize authentication provider
   const authProvider = new ComputorAuthenticationProvider(context);
