@@ -41,6 +41,8 @@ export function activate(context: vscode.ExtensionContext) {
       const session = await vscode.authentication.getSession('computor', [], { createIfNone: true });
       if (session) {
         vscode.window.showInformationMessage(`Signed in as ${session.account.label}`);
+        // Set context to show authenticated views
+        vscode.commands.executeCommand('setContext', 'computor.authenticated', true);
       }
     } catch (error) {
       vscode.window.showErrorMessage(`Sign in failed: ${error}`);
@@ -53,6 +55,8 @@ export function activate(context: vscode.ExtensionContext) {
       if (sessions) {
         await authProvider.removeSession(sessions.id);
         vscode.window.showInformationMessage('Signed out successfully');
+        // Clear context to hide authenticated views
+        vscode.commands.executeCommand('setContext', 'computor.authenticated', false);
       } else {
         vscode.window.showInformationMessage('No active session');
       }
@@ -77,6 +81,13 @@ export function activate(context: vscode.ExtensionContext) {
   // Register lecturer commands
   const lecturerCommands = new LecturerCommands(context, lecturerTreeDataProvider);
   lecturerCommands.registerCommands();
+
+  // Check for existing authentication session
+  vscode.authentication.getSession('computor', [], { createIfNone: false }).then(session => {
+    if (session) {
+      vscode.commands.executeCommand('setContext', 'computor.authenticated', true);
+    }
+  });
 
   // Check and prompt for workspace directory if not set
   const settingsManager = new ComputorSettingsManager(context);
