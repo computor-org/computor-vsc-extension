@@ -16,10 +16,12 @@
     "onCommand:computor.signIn",
     "onCommand:computor.signOut",
     "onCommand:computor.showGitStatus",
+    "onCommand:computor.selectWorkspaceDirectory",
     "onAuthenticationRequest:computor",
     "onView:computor.apiTreeView",
     "onView:computor.jsonTreeView",
-    "onView:computor.testResultsView"
+    "onView:computor.testResultsView",
+    "onView:computor.lecturerView"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -152,6 +154,56 @@
         "title": "Export Results",
         "icon": "$(export)",
         "category": "Computor Tree"
+      },
+      {
+        "command": "computor.selectWorkspaceDirectory",
+        "title": "Select Workspace Directory",
+        "category": "Computor"
+      },
+      {
+        "command": "computor.refreshLecturerTree",
+        "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.createCourseContent",
+        "title": "Create Course Content",
+        "icon": "$(add)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.renameCourseContent",
+        "title": "Rename",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.deleteCourseContent",
+        "title": "Delete",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.assignExample",
+        "title": "Assign Example",
+        "icon": "$(link)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.unassignExample",
+        "title": "Unassign Example",
+        "icon": "$(unlink)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.openGitLabRepo",
+        "title": "Open GitLab Repository",
+        "icon": "$(github)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.manageGitLabTokens",
+        "title": "Manage GitLab Tokens",
+        "category": "Computor"
       }
     ],
     "views": {
@@ -174,6 +226,13 @@
           "name": "Test Results",
           "icon": "$(beaker)",
           "contextualTitle": "Test Results Explorer"
+        },
+        {
+          "id": "computor.lecturerView",
+          "name": "Lecturer View",
+          "icon": "$(mortar-board)",
+          "contextualTitle": "Computor Lecturer View",
+          "when": "computor.authenticated"
         }
       ]
     },
@@ -223,6 +282,16 @@
           "command": "computor.exportTestResults",
           "when": "view == computor.testResultsView",
           "group": "navigation@4"
+        },
+        {
+          "command": "computor.refreshLecturerTree",
+          "when": "view == computor.lecturerView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "computor.selectWorkspaceDirectory",
+          "when": "view == computor.lecturerView",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
@@ -260,6 +329,41 @@
           "command": "computor.runSingleTest",
           "when": "view == computor.testResultsView && viewItem =~ /testResult/",
           "group": "1_test@2"
+        },
+        {
+          "command": "computor.createCourseContent",
+          "when": "view == computor.lecturerView && viewItem =~ /course/",
+          "group": "1_content@1"
+        },
+        {
+          "command": "computor.createCourseContent",
+          "when": "view == computor.lecturerView && viewItem =~ /courseContent.*hasChildren/",
+          "group": "1_content@1"
+        },
+        {
+          "command": "computor.renameCourseContent",
+          "when": "view == computor.lecturerView && viewItem =~ /courseContent/",
+          "group": "2_edit@1"
+        },
+        {
+          "command": "computor.deleteCourseContent",
+          "when": "view == computor.lecturerView && viewItem =~ /courseContent/",
+          "group": "3_delete@1"
+        },
+        {
+          "command": "computor.assignExample",
+          "when": "view == computor.lecturerView && viewItem =~ /courseContent.*assignment.*noExample/",
+          "group": "4_example@1"
+        },
+        {
+          "command": "computor.unassignExample",
+          "when": "view == computor.lecturerView && viewItem =~ /courseContent.*assignment.*hasExample/",
+          "group": "4_example@1"
+        },
+        {
+          "command": "computor.openGitLabRepo",
+          "when": "view == computor.lecturerView && viewItem =~ /course/",
+          "group": "5_gitlab@1"
         }
       ]
     }

@@ -81,6 +81,38 @@ export class ComputorSettingsManager {
     await this.secureStorage.delete(key);
   }
   
+  async getWorkspaceDirectory(): Promise<string | undefined> {
+    const settings = await this.settingsStorage.load();
+    return settings.workspace?.repositoryDirectory;
+  }
+  
+  async setWorkspaceDirectory(directory: string): Promise<void> {
+    const settings = await this.settingsStorage.load();
+    if (!settings.workspace) {
+      settings.workspace = { repositoryDirectory: directory, gitlabTokens: {} };
+    } else {
+      settings.workspace.repositoryDirectory = directory;
+    }
+    await this.settingsStorage.save(settings);
+  }
+  
+  async getGitLabToken(instanceUrl: string): Promise<string | undefined> {
+    const settings = await this.settingsStorage.load();
+    return settings.workspace?.gitlabTokens?.[instanceUrl];
+  }
+  
+  async setGitLabToken(instanceUrl: string, token: string): Promise<void> {
+    const settings = await this.settingsStorage.load();
+    if (!settings.workspace) {
+      settings.workspace = { repositoryDirectory: undefined, gitlabTokens: {} };
+    }
+    if (!settings.workspace.gitlabTokens) {
+      settings.workspace.gitlabTokens = {};
+    }
+    settings.workspace.gitlabTokens[instanceUrl] = token;
+    await this.settingsStorage.save(settings);
+  }
+  
   async clearSettings(): Promise<void> {
     await this.settingsStorage.clear();
   }

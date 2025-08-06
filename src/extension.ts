@@ -3,6 +3,9 @@ import { UIShowcaseView } from './ui/views/UIShowcaseView';
 import { SettingsView } from './ui/views/SettingsView';
 import { ComputorAuthenticationProvider } from './authentication/ComputorAuthenticationProvider';
 import { GitManager } from './git/GitManager';
+import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataProvider';
+import { LecturerCommands } from './commands/LecturerCommands';
+import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
 
 export function activate(context: vscode.ExtensionContext) {
   console.log('Computor VS Code Extension is now active!');
@@ -61,6 +64,33 @@ export function activate(context: vscode.ExtensionContext) {
   // Git status command
   const gitStatusCommand = vscode.commands.registerCommand('computor.showGitStatus', async () => {
     await gitManager.showGitStatus();
+  });
+
+  // Initialize Lecturer View
+  const lecturerTreeDataProvider = new LecturerTreeDataProvider(context);
+  const lecturerTreeView = vscode.window.createTreeView('computor.lecturerView', {
+    treeDataProvider: lecturerTreeDataProvider,
+    showCollapseAll: true
+  });
+  context.subscriptions.push(lecturerTreeView);
+
+  // Register lecturer commands
+  const lecturerCommands = new LecturerCommands(context, lecturerTreeDataProvider);
+  lecturerCommands.registerCommands();
+
+  // Check and prompt for workspace directory if not set
+  const settingsManager = new ComputorSettingsManager(context);
+  settingsManager.getWorkspaceDirectory().then(dir => {
+    if (!dir) {
+      vscode.window.showInformationMessage(
+        'Please select a directory for storing repositories',
+        'Select Directory'
+      ).then(selection => {
+        if (selection === 'Select Directory') {
+          vscode.commands.executeCommand('computor.selectWorkspaceDirectory');
+        }
+      });
+    }
   });
 
   context.subscriptions.push(

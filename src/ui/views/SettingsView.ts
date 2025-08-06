@@ -78,7 +78,8 @@ export class SettingsView extends BaseWebviewPanel {
           // Save general settings
           await this.settingsManager.saveSettings({
             version: '1.0.0',
-            authentication: settings.authentication
+            authentication: settings.authentication,
+            workspace: settings.workspace || { repositoryDirectory: undefined, gitlabTokens: {} }
           });
           
           // Save API token securely if provided
