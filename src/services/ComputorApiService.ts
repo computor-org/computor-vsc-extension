@@ -85,25 +85,27 @@ export class ComputorApiService {
 
   async getCourseContents(courseId: string): Promise<CourseContentList[]> {
     const client = await this.getHttpClient();
-    const response = await client.get<CourseContentList[]>(`/courses/${courseId}/contents`);
+    const response = await client.get<CourseContentList[]>('/course-contents', {
+      course_id: courseId
+    });
     return response.data;
   }
 
   async createCourseContent(courseId: string, content: CourseContentCreate): Promise<CourseContentGet> {
     const client = await this.getHttpClient();
-    const response = await client.post<CourseContentGet>(`/courses/${courseId}/contents`, content);
+    const response = await client.post<CourseContentGet>('/course-contents', content);
     return response.data;
   }
 
   async updateCourseContent(courseId: string, contentId: string, content: CourseContentUpdate): Promise<CourseContentGet> {
     const client = await this.getHttpClient();
-    const response = await client.put<CourseContentGet>(`/courses/${courseId}/contents/${contentId}`, content);
+    const response = await client.put<CourseContentGet>(`/course-contents/${contentId}`, content);
     return response.data;
   }
 
   async deleteCourseContent(courseId: string, contentId: string): Promise<void> {
     const client = await this.getHttpClient();
-    await client.delete(`/courses/${courseId}/contents/${contentId}`);
+    await client.delete(`/course-contents/${contentId}`);
   }
 
   async getCourseContentKinds(): Promise<CourseContentKindList[]> {
@@ -133,7 +135,7 @@ export class ComputorApiService {
   ): Promise<CourseContentGet> {
     const client = await this.getHttpClient();
     const response = await client.patch<CourseContentGet>(
-      `/courses/${courseId}/contents/${contentId}`,
+      `/course-contents/${contentId}`,
       {
         example_id: exampleId,
         example_version: exampleVersion
@@ -145,7 +147,7 @@ export class ComputorApiService {
   async unassignExampleFromCourseContent(courseId: string, contentId: string): Promise<CourseContentGet> {
     const client = await this.getHttpClient();
     const response = await client.patch<CourseContentGet>(
-      `/courses/${courseId}/contents/${contentId}`,
+      `/course-contents/${contentId}`,
       {
         example_id: null,
         example_version: null
