@@ -16,8 +16,22 @@ import {
   CourseContentTypeCreate,
   CourseContentTypeUpdate,
   ExampleList,
-  ExampleRepositoryList
+  ExampleRepositoryList,
+  ExampleRepositoryGet,
+  ExampleGet,
+  ExampleDownloadResponse
 } from '../types/generated';
+
+// Query interface for examples (not generated yet)
+interface ExampleQuery {
+  repository_id?: string;
+  identifier?: string;
+  title?: string;
+  category?: string;
+  tags?: string[];
+  search?: string;
+  directory?: string;
+}
 
 export class ComputorApiService {
   private httpClient?: JwtHttpClient;
@@ -143,17 +157,91 @@ export class ComputorApiService {
     await client.delete(`/course-content-types/${typeId}`);
   }
 
-  async getExamples(repositoryId?: string): Promise<ExampleList[]> {
-    const client = await this.getHttpClient();
-    const params = repositoryId ? { repository_id: repositoryId } : undefined;
-    const response = await client.get<ExampleList[]>('/examples', params);
-    return response.data;
-  }
-
   async getExampleRepositories(): Promise<ExampleRepositoryList[]> {
     const client = await this.getHttpClient();
     const response = await client.get<ExampleRepositoryList[]>('/example-repositories');
     return response.data;
+  }
+
+  async getExampleRepository(repositoryId: string): Promise<ExampleRepositoryGet | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<ExampleRepositoryGet>(`/example-repositories/${repositoryId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to get example repository:', error);
+      return undefined;
+    }
+  }
+
+  async getExamples(query?: ExampleQuery): Promise<ExampleList[] | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const params = new URLSearchParams();
+      
+      if (query?.repository_id) {
+        params.append('repository_id', query.repository_id);
+      }
+      if (query?.identifier) {
+        params.append('identifier', query.identifier);
+      }
+      if (query?.title) {
+        params.append('title', query.title);
+      }
+      if (query?.category) {
+        params.append('category', query.category);
+      }
+      if (query?.tags && query.tags.length > 0) {
+        query.tags.forEach(tag => params.append('tags', tag));
+      }
+      if (query?.search) {
+        params.append('search', query.search);
+      }
+      if (query?.directory) {
+        params.append('directory', query.directory);
+      }
+      
+      const url = params.toString() ? `/examples?${params.toString()}` : '/examples';
+      const response = await client.get<ExampleList[]>(url);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to get examples:', error);
+      return undefined;
+    }
+  }
+
+  async getExample(exampleId: string): Promise<ExampleGet | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<ExampleGet>(`/examples/${exampleId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to get example:', error);
+      return undefined;
+    }
+  }
+
+  async downloadExample(exampleId: string, withDependencies: boolean = false): Promise<ExampleDownloadResponse | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const params = withDependencies ? '?with_dependencies=true' : '';
+      const response = await client.get<ExampleDownloadResponse>(`/examples/${exampleId}/download${params}`);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to download example:', error);
+      return undefined;
+    }
+  }
+
+  async uploadExample(uploadRequest: { repository_id: string; directory: string; files: { [key: string]: string } }): Promise<any> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.post('/examples/upload', uploadRequest);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to upload example:', error);
+      return undefined;
+    }
   }
 
   async assignExampleToCourseContent(

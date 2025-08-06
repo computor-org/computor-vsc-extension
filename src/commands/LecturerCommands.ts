@@ -186,7 +186,7 @@ export class LecturerCommands {
       // Get available examples
       const examples = await this.apiService.getExamples();
       
-      if (examples.length === 0) {
+      if (!examples || examples.length === 0) {
         vscode.window.showWarningMessage('No examples available');
         return;
       }
