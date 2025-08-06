@@ -6,11 +6,19 @@ import {
   CourseFamilyTreeItem,
   CourseTreeItem,
   CourseContentTreeItem,
+  CourseFolderTreeItem,
+  CourseContentTypeTreeItem,
   ExampleTreeItem
 } from './LecturerTreeItems';
-import { CourseContentList, CourseContentCreate, CourseContentUpdate, CourseList } from '../../../types/generated';
+import { 
+  CourseContentList, 
+  CourseContentCreate, 
+  CourseContentUpdate, 
+  CourseList,
+  CourseContentTypeList
+} from '../../../types/generated';
 
-type TreeItem = OrganizationTreeItem | CourseFamilyTreeItem | CourseTreeItem | CourseContentTreeItem | ExampleTreeItem;
+type TreeItem = OrganizationTreeItem | CourseFamilyTreeItem | CourseTreeItem | CourseContentTreeItem | CourseFolderTreeItem | CourseContentTypeTreeItem | ExampleTreeItem;
 
 export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<TreeItem | undefined | null | void> = new vscode.EventEmitter<TreeItem | undefined | null | void>();
@@ -20,6 +28,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   private gitLabTokenManager: GitLabTokenManager;
   private courseContentsCache: Map<string, CourseContentList[]> = new Map();
   private coursesCache: Map<string, CourseList[]> = new Map();
+  private courseContentTypesCache: Map<string, CourseContentTypeList[]> = new Map();
 
   constructor(context: vscode.ExtensionContext) {
     this.apiService = new ComputorApiService(context);
@@ -67,21 +76,40 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       }
 
       if (element instanceof CourseTreeItem) {
-        // Show course contents for course
-        const contents = await this.getCourseContents(element.course.id);
-        
-        // Build tree structure from ltree paths
-        const rootContents = this.getRootContents(contents);
-        return rootContents.map(content => {
-          const hasChildren = this.hasChildContents(content, contents);
-          return new CourseContentTreeItem(
-            content,
+        // Show two folders: Contents and Content Types
+        return [
+          new CourseFolderTreeItem('contents', element.course, element.courseFamily, element.organization),
+          new CourseFolderTreeItem('contentTypes', element.course, element.courseFamily, element.organization)
+        ];
+      }
+
+      if (element instanceof CourseFolderTreeItem) {
+        if (element.folderType === 'contents') {
+          // Show course contents for course
+          const contents = await this.getCourseContents(element.course.id);
+          
+          // Build tree structure from ltree paths
+          const rootContents = this.getRootContents(contents);
+          return rootContents.map(content => {
+            const hasChildren = this.hasChildContents(content, contents);
+            return new CourseContentTreeItem(
+              content,
+              element.course,
+              element.courseFamily,
+              element.organization,
+              hasChildren
+            );
+          });
+        } else {
+          // Show course content types
+          const contentTypes = await this.getCourseContentTypes(element.course.id);
+          return contentTypes.map(type => new CourseContentTypeTreeItem(
+            type,
             element.course,
             element.courseFamily,
-            element.organization,
-            hasChildren
-          );
-        });
+            element.organization
+          ));
+        }
       }
 
       if (element instanceof CourseContentTreeItem) {
@@ -114,6 +142,14 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       this.courseContentsCache.set(courseId, contents);
     }
     return this.courseContentsCache.get(courseId) || [];
+  }
+
+  private async getCourseContentTypes(courseId: string): Promise<CourseContentTypeList[]> {
+    if (!this.courseContentTypesCache.has(courseId)) {
+      const types = await this.apiService.getCourseContentTypes(courseId);
+      this.courseContentTypesCache.set(courseId, types);
+    }
+    return this.courseContentTypesCache.get(courseId) || [];
   }
 
   private getRootContents(contents: CourseContentList[]): CourseContentList[] {
@@ -152,11 +188,19 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       return new CourseFamilyTreeItem(element.courseFamily, element.organization);
     }
     
+    if (element instanceof CourseFolderTreeItem) {
+      return new CourseTreeItem(element.course, element.courseFamily, element.organization);
+    }
+    
+    if (element instanceof CourseContentTypeTreeItem) {
+      return new CourseFolderTreeItem('contentTypes', element.course, element.courseFamily, element.organization);
+    }
+    
     if (element instanceof CourseContentTreeItem) {
       const pathParts = element.courseContent.path.split('.');
       if (pathParts.length === 1) {
-        // Root content - parent is course
-        return new CourseTreeItem(element.course, element.courseFamily, element.organization);
+        // Root content - parent is contents folder
+        return new CourseFolderTreeItem('contents', element.course, element.courseFamily, element.organization);
       } else {
         // Find parent content
         const parentPath = pathParts.slice(0, -1).join('.');
@@ -180,27 +224,24 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   }
 
   // Helper methods for course content management
-  async createCourseContent(courseItem: CourseTreeItem, title: string, parentPath?: string): Promise<void> {
+  async createCourseContent(folderItem: CourseFolderTreeItem, title: string, contentTypeId: string, parentPath?: string): Promise<void> {
     try {
-      const position = await this.getNextPosition(courseItem.course.id, parentPath);
+      const position = await this.getNextPosition(folderItem.course.id, parentPath);
       const path = parentPath ? `${parentPath}.${position}` : `${position}`;
-      
-      // Get course content types for this course
-      const courseId = courseItem.course.id;
       
       const contentData: CourseContentCreate = {
         title,
         path,
         position,
-        course_id: courseId,
-        course_content_type_id: '', // This would need to be fetched from the API
+        course_id: folderItem.course.id,
+        course_content_type_id: contentTypeId,
       };
       
-      await this.apiService.createCourseContent(courseId, contentData);
+      await this.apiService.createCourseContent(folderItem.course.id, contentData);
       
       // Clear cache and refresh
-      this.courseContentsCache.delete(courseId);
-      this.refreshNode(courseItem);
+      this.courseContentsCache.delete(folderItem.course.id);
+      this.refreshNode(folderItem);
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to create course content: ${error}`);
     }

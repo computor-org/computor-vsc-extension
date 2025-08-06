@@ -4,6 +4,7 @@ import {
   CourseFamilyList, 
   CourseList, 
   CourseContentList,
+  CourseContentTypeList,
   ExampleList 
 } from '../../../types/generated';
 
@@ -143,5 +144,47 @@ export class ExampleTreeItem extends vscode.TreeItem {
     this.iconPath = new vscode.ThemeIcon('package');
     this.tooltip = example.title;
     this.description = 'latest';
+  }
+}
+
+// Folder nodes for organizing course sub-items
+export class CourseFolderTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly folderType: 'contents' | 'contentTypes',
+    public readonly course: CourseList,
+    public readonly courseFamily: CourseFamilyList,
+    public readonly organization: OrganizationList
+  ) {
+    super(
+      folderType === 'contents' ? 'Contents' : 'Content Types',
+      vscode.TreeItemCollapsibleState.Collapsed
+    );
+    this.id = `${folderType}-${course.id}`;
+    this.contextValue = `course.${folderType}`;
+    this.iconPath = new vscode.ThemeIcon(folderType === 'contents' ? 'folder' : 'symbol-class');
+    this.tooltip = folderType === 'contents' ? 
+      'Course contents organized in a tree structure' : 
+      'Content types define the kinds of content in this course';
+  }
+}
+
+// Course Content Type item
+export class CourseContentTypeTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly contentType: CourseContentTypeList,
+    public readonly course: CourseList,
+    public readonly courseFamily: CourseFamilyList,
+    public readonly organization: OrganizationList
+  ) {
+    super(contentType.title || contentType.slug, vscode.TreeItemCollapsibleState.None);
+    this.id = `contentType-${contentType.id}`;
+    this.contextValue = 'courseContentType';
+    this.iconPath = new vscode.ThemeIcon('symbol-enum');
+    this.tooltip = `${contentType.title || contentType.slug}\nSlug: ${contentType.slug}`;
+    
+    // Show color as description if available
+    if (contentType.color) {
+      this.description = contentType.color;
+    }
   }
 }
