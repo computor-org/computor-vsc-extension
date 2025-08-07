@@ -5,7 +5,9 @@ import {
   CourseList, 
   CourseContentList,
   CourseContentTypeList,
-  ExampleList 
+  ExampleList,
+  CourseGroupList,
+  CourseMemberList
 } from '../../../types/generated';
 import { IconGenerator } from '../../../utils/iconGenerator';
 
@@ -197,21 +199,37 @@ export class ExampleTreeItem extends vscode.TreeItem {
 // Folder nodes for organizing course sub-items
 export class CourseFolderTreeItem extends vscode.TreeItem {
   constructor(
-    public readonly folderType: 'contents' | 'contentTypes',
+    public readonly folderType: 'contents' | 'contentTypes' | 'groups',
     public readonly course: CourseList,
     public readonly courseFamily: CourseFamilyList,
     public readonly organization: OrganizationList
   ) {
+    const labels = {
+      'contents': 'Contents',
+      'contentTypes': 'Content Types',
+      'groups': 'Groups'
+    };
+    
+    const icons = {
+      'contents': 'folder',
+      'contentTypes': 'symbol-class',
+      'groups': 'organization'
+    };
+    
+    const tooltips = {
+      'contents': 'Course contents organized in a tree structure',
+      'contentTypes': 'Content types define the kinds of content in this course',
+      'groups': 'Course groups and their members'
+    };
+    
     super(
-      folderType === 'contents' ? 'Contents' : 'Content Types',
+      labels[folderType],
       vscode.TreeItemCollapsibleState.Collapsed
     );
     this.id = `${folderType}-${course.id}`;
     this.contextValue = `course.${folderType}`;
-    this.iconPath = new vscode.ThemeIcon(folderType === 'contents' ? 'folder' : 'symbol-class');
-    this.tooltip = folderType === 'contents' ? 
-      'Course contents organized in a tree structure' : 
-      'Content types define the kinds of content in this course';
+    this.iconPath = new vscode.ThemeIcon(icons[folderType]);
+    this.tooltip = tooltips[folderType];
   }
 }
 
@@ -245,5 +263,82 @@ export class CourseContentTypeTreeItem extends vscode.TreeItem {
     if (contentType.color) {
       this.description = contentType.color;
     }
+  }
+}
+
+// Course Group item
+export class CourseGroupTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly group: CourseGroupList,
+    public readonly course: CourseList,
+    public readonly courseFamily: CourseFamilyList,
+    public readonly organization: OrganizationList,
+    public readonly memberCount: number = 0
+  ) {
+    super(
+      group.title || `Group ${group.id.slice(0, 8)}`,
+      vscode.TreeItemCollapsibleState.Collapsed
+    );
+    this.id = `group-${group.id}`;
+    this.contextValue = 'course.group';
+    this.iconPath = new vscode.ThemeIcon('people');
+    this.tooltip = `Group: ${group.title || group.id}\nMembers: ${memberCount}`;
+    this.description = memberCount > 0 ? `${memberCount} members` : 'No members';
+  }
+}
+
+// Virtual "No Group" item for ungrouped members
+export class NoGroupTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly course: CourseList,
+    public readonly courseFamily: CourseFamilyList,
+    public readonly organization: OrganizationList,
+    public readonly memberCount: number = 0
+  ) {
+    super(
+      'No Group',
+      memberCount > 0 ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None
+    );
+    this.id = `no-group-${course.id}`;
+    this.contextValue = 'course.noGroup';
+    this.iconPath = new vscode.ThemeIcon('person');
+    this.tooltip = `Members not assigned to any group: ${memberCount}`;
+    this.description = memberCount > 0 ? `${memberCount} members` : 'No members';
+  }
+}
+
+// Course Member item
+export class CourseMemberTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly member: CourseMemberList,
+    public readonly course: CourseList,
+    public readonly courseFamily: CourseFamilyList,
+    public readonly organization: OrganizationList,
+    public readonly group?: CourseGroupList
+  ) {
+    const userName = member.user?.username || member.user?.email || `User ${member.user_id.slice(0, 8)}`;
+    super(
+      userName,
+      vscode.TreeItemCollapsibleState.None
+    );
+    this.id = `member-${member.id}`;
+    this.contextValue = 'course.member';
+    this.iconPath = new vscode.ThemeIcon('account');
+    
+    // Build tooltip with user info
+    const tooltipParts = [
+      `Member: ${userName}`,
+      `User ID: ${member.user_id}`,
+      `Role ID: ${member.course_role_id}`
+    ];
+    
+    if (group) {
+      tooltipParts.push(`Group: ${group.title || group.id}`);
+    } else {
+      tooltipParts.push('Group: None');
+    }
+    
+    this.tooltip = tooltipParts.join('\n');
+    this.description = member.course_role_id;
   }
 }

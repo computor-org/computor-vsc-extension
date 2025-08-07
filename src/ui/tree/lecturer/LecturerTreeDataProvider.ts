@@ -9,7 +9,10 @@ import {
   CourseContentTreeItem,
   CourseFolderTreeItem,
   CourseContentTypeTreeItem,
-  ExampleTreeItem
+  ExampleTreeItem,
+  CourseGroupTreeItem,
+  NoGroupTreeItem,
+  CourseMemberTreeItem
 } from './LecturerTreeItems';
 import { 
   CourseContentList, 
@@ -17,10 +20,12 @@ import {
   CourseContentUpdate, 
   CourseList,
   CourseContentTypeList,
-  CourseContentKindList
+  CourseContentKindList,
+  CourseGroupList,
+  CourseMemberList
 } from '../../../types/generated';
 
-type TreeItem = OrganizationTreeItem | CourseFamilyTreeItem | CourseTreeItem | CourseContentTreeItem | CourseFolderTreeItem | CourseContentTypeTreeItem | ExampleTreeItem;
+type TreeItem = OrganizationTreeItem | CourseFamilyTreeItem | CourseTreeItem | CourseContentTreeItem | CourseFolderTreeItem | CourseContentTypeTreeItem | ExampleTreeItem | CourseGroupTreeItem | NoGroupTreeItem | CourseMemberTreeItem;
 
 export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<TreeItem | undefined | null | void> = new vscode.EventEmitter<TreeItem | undefined | null | void>();
@@ -34,6 +39,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   private courseContentTypesCache: Map<string, CourseContentTypeList[]> = new Map();
   private courseContentTypesById: Map<string, CourseContentTypeList> = new Map();
   private courseContentKindsCache: Map<string, CourseContentKindList> = new Map();
+  private courseGroupsCache: Map<string, CourseGroupList[]> = new Map();
+  private courseMembersCache: Map<string, CourseMemberList[]> = new Map();
 
   private examplesCache: Map<string, any> = new Map();
   private expandedStates: Record<string, boolean> = {};
@@ -52,6 +59,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     this.courseContentTypesCache.clear();
     this.courseContentTypesById.clear();
     this.courseContentKindsCache.clear();
+    this.courseGroupsCache.clear();
+    this.courseMembersCache.clear();
     this.examplesCache.clear();
     this._onDidChangeTreeData.fire();
   }
@@ -272,8 +281,9 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       }
 
       if (element instanceof CourseTreeItem) {
-        // Show two folders: Content Types and Contents
+        // Show three folders: Groups, Content Types, and Contents
         return [
+          new CourseFolderTreeItem('groups', element.course, element.courseFamily, element.organization),
           new CourseFolderTreeItem('contentTypes', element.course, element.courseFamily, element.organization),
           new CourseFolderTreeItem('contents', element.course, element.courseFamily, element.organization)
         ];
@@ -316,6 +326,37 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
           }));
           
           return contentItems;
+        } else if (element.folderType === 'groups') {
+          // Show course groups and ungrouped members
+          const groups = await this.getCourseGroups(element.course.id);
+          const allMembers = await this.getCourseMembers(element.course.id);
+          
+          const result: TreeItem[] = [];
+          
+          // Add group nodes
+          for (const group of groups) {
+            const groupMembers = allMembers.filter((m: CourseMemberList) => m.course_group_id === group.id);
+            result.push(new CourseGroupTreeItem(
+              group,
+              element.course,
+              element.courseFamily,
+              element.organization,
+              groupMembers.length
+            ));
+          }
+          
+          // Add "No Group" node for ungrouped members
+          const ungroupedMembers = allMembers.filter((m: CourseMemberList) => !m.course_group_id);
+          if (ungroupedMembers.length > 0 || groups.length === 0) {
+            result.push(new NoGroupTreeItem(
+              element.course,
+              element.courseFamily,
+              element.organization,
+              ungroupedMembers.length
+            ));
+          }
+          
+          return result;
         } else {
           // Show course content types
           const contentTypes = await this.getCourseContentTypes(element.course.id);
@@ -361,6 +402,30 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         return childItems;
       }
 
+      if (element instanceof CourseGroupTreeItem) {
+        // Show members in this group
+        const members = await this.getCourseMembers(element.course.id, element.group.id);
+        return members.map((member: CourseMemberList) => new CourseMemberTreeItem(
+          member,
+          element.course,
+          element.courseFamily,
+          element.organization,
+          element.group
+        ));
+      }
+
+      if (element instanceof NoGroupTreeItem) {
+        // Show members not in any group
+        const members = await this.getCourseMembers(element.course.id);
+        const ungroupedMembers = members.filter((m: CourseMemberList) => !m.course_group_id);
+        return ungroupedMembers.map((member: CourseMemberList) => new CourseMemberTreeItem(
+          member,
+          element.course,
+          element.courseFamily,
+          element.organization
+        ));
+      }
+
       return [];
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to load tree data: ${error}`);
@@ -399,6 +464,23 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         this.courseContentKindsCache.set(kind.id, kind);
       });
     }
+  }
+
+  private async getCourseGroups(courseId: string): Promise<CourseGroupList[]> {
+    if (!this.courseGroupsCache.has(courseId)) {
+      const groups = await this.apiService.getCourseGroups(courseId);
+      this.courseGroupsCache.set(courseId, groups);
+    }
+    return this.courseGroupsCache.get(courseId) || [];
+  }
+
+  private async getCourseMembers(courseId: string, groupId?: string): Promise<CourseMemberList[]> {
+    const cacheKey = groupId ? `${courseId}-${groupId}` : courseId;
+    if (!this.courseMembersCache.has(cacheKey)) {
+      const members = await this.apiService.getCourseMembers(courseId, groupId);
+      this.courseMembersCache.set(cacheKey, members);
+    }
+    return this.courseMembersCache.get(cacheKey) || [];
   }
 
   private getRootContents(contents: CourseContentList[]): CourseContentList[] {
