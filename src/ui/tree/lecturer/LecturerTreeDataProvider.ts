@@ -60,6 +60,172 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     this._onDidChangeTreeData.fire(element);
   }
 
+  /**
+   * Clear cache for a specific course
+   */
+  private clearCourseCache(courseId: string): void {
+    this.courseContentsCache.delete(courseId);
+    this.courseContentTypesCache.delete(courseId);
+    
+    // Clear content types by ID cache for this course
+    const typesToDelete: string[] = [];
+    for (const [typeId, type] of this.courseContentTypesById.entries()) {
+      if (type.course_id === courseId) {
+        typesToDelete.push(typeId);
+      }
+    }
+    typesToDelete.forEach(id => this.courseContentTypesById.delete(id));
+  }
+
+  /**
+   * Update a specific node and refresh related parts of the tree
+   */
+  updateNode(nodeType: string, nodeId: string, updates: any): void {
+    switch (nodeType) {
+      case 'organization':
+        // Full refresh for organization changes
+        this.refresh();
+        break;
+        
+      case 'courseFamily':
+        // Clear course family cache and refresh
+        this.coursesCache.clear();
+        this.refresh();
+        break;
+        
+      case 'course':
+        // Clear course-specific caches
+        this.clearCourseCache(nodeId);
+        this.refresh();
+        break;
+        
+      case 'courseContent':
+        // Clear course content cache and refresh affected course
+        if (updates.course_id) {
+          this.clearCourseCache(updates.course_id);
+        }
+        this.refresh();
+        break;
+        
+      case 'courseContentType':
+        // Clear content type cache and refresh affected course
+        if (updates.course_id) {
+          this.clearCourseCache(updates.course_id);
+          this.courseContentTypesById.delete(nodeId);
+        }
+        this.refresh();
+        break;
+        
+      default:
+        // Default to full refresh
+        this.refresh();
+    }
+  }
+
+  /**
+   * Invalidate cache entries related to a specific item
+   */
+  invalidateCache(itemType: string, itemId?: string, relatedIds?: { courseId?: string; organizationId?: string }): void {
+    switch (itemType) {
+      case 'course':
+        if (itemId) {
+          this.clearCourseCache(itemId);
+        }
+        break;
+        
+      case 'courseFamily':
+        // Clear courses cache when course family changes
+        this.coursesCache.clear();
+        break;
+        
+      case 'organization':
+        // Clear all caches when organization changes
+        this.courseContentsCache.clear();
+        this.courseContentTypesCache.clear();
+        this.courseContentTypesById.clear();
+        this.coursesCache.clear();
+        break;
+        
+      case 'example':
+        // Clear examples cache
+        if (itemId) {
+          this.examplesCache.delete(itemId);
+        } else {
+          this.examplesCache.clear();
+        }
+        break;
+        
+      case 'courseContent':
+        // Clear course content cache for related course
+        if (relatedIds?.courseId) {
+          this.clearCourseCache(relatedIds.courseId);
+        }
+        break;
+        
+      case 'courseContentType':
+        // Clear content type caches
+        if (itemId) {
+          this.courseContentTypesById.delete(itemId);
+        }
+        if (relatedIds?.courseId) {
+          this.courseContentTypesCache.delete(relatedIds.courseId);
+        }
+        break;
+    }
+  }
+
+  /**
+   * Smart refresh - only refreshes the minimal tree parts needed
+   */
+  smartRefresh(changes: Array<{
+    type: 'create' | 'update' | 'delete';
+    nodeType: string;
+    nodeId: string;
+    relatedIds?: { courseId?: string; parentId?: string; organizationId?: string };
+  }>): void {
+    const affectedCourses = new Set<string>();
+    let needsFullRefresh = false;
+
+    changes.forEach(change => {
+      switch (change.nodeType) {
+        case 'organization':
+          needsFullRefresh = true;
+          break;
+          
+        case 'courseFamily':
+          this.coursesCache.clear();
+          needsFullRefresh = true;
+          break;
+          
+        case 'course':
+          if (change.relatedIds?.courseId) {
+            affectedCourses.add(change.relatedIds.courseId);
+          }
+          break;
+          
+        case 'courseContent':
+        case 'courseContentType':
+          if (change.relatedIds?.courseId) {
+            affectedCourses.add(change.relatedIds.courseId);
+          }
+          break;
+      }
+      
+      // Invalidate relevant caches
+      this.invalidateCache(change.nodeType, change.nodeId, change.relatedIds);
+    });
+
+    if (needsFullRefresh) {
+      this.refresh();
+    } else {
+      // Refresh only affected parts
+      affectedCourses.forEach(courseId => {
+        this.clearCourseCache(courseId);
+      });
+      this.refresh();
+    }
+  }
+
   getTreeItem(element: TreeItem): vscode.TreeItem {
     // Create a new tree item with the correct expanded state
     const nodeId = element.id;

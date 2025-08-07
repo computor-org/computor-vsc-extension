@@ -2,13 +2,16 @@ import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { CourseContentList, CourseList, CourseContentTypeList } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
+import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
 
 export class CourseContentWebviewProvider extends BaseWebviewProvider {
   private apiService: ComputorApiService;
+  private treeDataProvider?: LecturerTreeDataProvider;
 
-  constructor(context: vscode.ExtensionContext, apiService: ComputorApiService) {
+  constructor(context: vscode.ExtensionContext, apiService: ComputorApiService, treeDataProvider?: LecturerTreeDataProvider) {
     super(context, 'computor.courseContentView');
     this.apiService = apiService;
+    this.treeDataProvider = treeDataProvider;
   }
 
   protected async getWebviewContent(data?: {
@@ -193,6 +196,14 @@ export class CourseContentWebviewProvider extends BaseWebviewProvider {
           );
           vscode.window.showInformationMessage('Content updated successfully');
           this.panel?.webview.postMessage({ command: 'updateSuccess' });
+          
+          // Update tree with changes
+          if (this.treeDataProvider) {
+            this.treeDataProvider.updateNode('courseContent', message.data.contentId, {
+              ...message.data.updates,
+              course_id: message.data.courseId
+            });
+          }
         } catch (error) {
           vscode.window.showErrorMessage(`Failed to update content: ${error}`);
         }

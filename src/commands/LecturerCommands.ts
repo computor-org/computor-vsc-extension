@@ -27,11 +27,11 @@ export class LecturerCommands {
     this.settingsManager = new ComputorSettingsManager(context);
     this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
     this.apiService = new ComputorApiService(context);
-    this.courseWebviewProvider = new CourseWebviewProvider(context, this.apiService);
-    this.courseContentWebviewProvider = new CourseContentWebviewProvider(context, this.apiService);
-    this.organizationWebviewProvider = new OrganizationWebviewProvider(context, this.apiService);
-    this.courseFamilyWebviewProvider = new CourseFamilyWebviewProvider(context, this.apiService);
-    this.courseContentTypeWebviewProvider = new CourseContentTypeWebviewProvider(context, this.apiService);
+    this.courseWebviewProvider = new CourseWebviewProvider(context, this.apiService, this.treeDataProvider);
+    this.courseContentWebviewProvider = new CourseContentWebviewProvider(context, this.apiService, this.treeDataProvider);
+    this.organizationWebviewProvider = new OrganizationWebviewProvider(context, this.apiService, this.treeDataProvider);
+    this.courseFamilyWebviewProvider = new CourseFamilyWebviewProvider(context, this.apiService, this.treeDataProvider);
+    this.courseContentTypeWebviewProvider = new CourseContentTypeWebviewProvider(context, this.apiService, this.treeDataProvider);
   }
 
   registerCommands(): void {
