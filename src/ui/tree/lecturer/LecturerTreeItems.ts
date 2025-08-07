@@ -83,9 +83,21 @@ export class CourseContentTreeItem extends vscode.TreeItem {
   private getContextValue(): string {
     const parts = ['courseContent'];
     
-    // Check if it's an assignment based on course_content_kind_id
-    // We'll need to check this differently since we don't have the kind details
-    if (this.courseContent.course_content_kind_id) {
+    // Add submittable/nonSubmittable to make the distinction clear
+    if (this.isSubmittable) {
+      parts.push('submittable');
+    } else {
+      parts.push('nonSubmittable');
+    }
+    
+    // Check if it's an assignment based on content type slug or kind
+    const isAssignmentLike = this.contentType?.slug?.toLowerCase().includes('assignment') ||
+                            this.contentType?.slug?.toLowerCase().includes('exercise') ||
+                            this.contentType?.slug?.toLowerCase().includes('homework') ||
+                            this.contentType?.slug?.toLowerCase().includes('task') ||
+                            this.isSubmittable;
+    
+    if (isAssignmentLike) {
       parts.push('assignment');
       if (this.courseContent.example_id) {
         parts.push('hasExample');
