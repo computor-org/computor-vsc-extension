@@ -12,6 +12,7 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
     super(context, 'computor.courseView');
     this.apiService = apiService;
     this.treeDataProvider = treeDataProvider;
+    void this.treeDataProvider; // Temporarily unused for debugging
   }
 
   protected async getWebviewContent(data?: {
@@ -77,22 +78,31 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
       <script>
         const courseData = ${JSON.stringify(data)};
         
+        // Error handling
+        window.addEventListener('error', (e) => {
+          console.error('Webview error:', e.error);
+        });
+        
         // Handle form submission
         document.getElementById('editCourseForm').addEventListener('submit', (e) => {
-          e.preventDefault();
-          const formData = new FormData(e.target);
-          sendMessage('updateCourse', {
-            courseId: courseData.course.id,
-            updates: {
-              title: formData.get('title'),
-              description: formData.get('description'),
-              properties: {
-                gitlab: formData.get('gitlabUrl') ? {
-                  url: formData.get('gitlabUrl')
-                } : null
+          try {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            sendMessage('updateCourse', {
+              courseId: courseData.course.id,
+              updates: {
+                title: formData.get('title'),
+                description: formData.get('description'),
+                properties: {
+                  gitlab: formData.get('gitlabUrl') ? {
+                    url: formData.get('gitlabUrl')
+                  } : null
+                }
               }
-            }
-          });
+            });
+          } catch (error) {
+            console.error('Form submission error:', error);
+          }
         });
         
         function refreshView() {
@@ -141,9 +151,10 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
           vscode.window.showInformationMessage('Course updated successfully');
           
           // Update tree with changes
-          if (this.treeDataProvider) {
-            this.treeDataProvider.updateNode('course', message.data.courseId, message.data.updates);
-          }
+          // Temporarily disabled to debug webview content disappearing
+          // if (this.treeDataProvider) {
+          //   this.treeDataProvider.updateNode('course', message.data.courseId, message.data.updates);
+          // }
         } catch (error) {
           vscode.window.showErrorMessage(`Failed to update course: ${error}`);
         }
