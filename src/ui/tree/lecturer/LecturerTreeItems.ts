@@ -63,7 +63,8 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     public readonly courseFamily: CourseFamilyList,
     public readonly organization: OrganizationList,
     public readonly hasChildren: boolean,
-    public readonly exampleInfo?: any
+    public readonly exampleInfo?: any,
+    public readonly contentType?: CourseContentTypeList
   ) {
     super(
       courseContent.title || courseContent.path,
@@ -97,8 +98,25 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     return parts.join('.');
   }
 
-  private getIcon(): vscode.ThemeIcon {
-    // We'll check based on whether it has an example_id
+  private getIcon(): vscode.ThemeIcon | vscode.Uri {
+    // Use colored icon based on content type
+    if (this.contentType?.color) {
+      try {
+        // Map content type slug to appropriate icon shape
+        const isAssignment = this.contentType.slug?.toLowerCase().includes('assignment') ||
+                            this.contentType.slug?.toLowerCase().includes('exercise') ||
+                            this.contentType.slug?.toLowerCase().includes('homework') ||
+                            this.contentType.slug?.toLowerCase().includes('task');
+        
+        // Use square for assignments, circle for units/others
+        const shape = isAssignment ? 'square' : 'circle';
+        return IconGenerator.getColoredIcon(this.contentType.color, shape);
+      } catch {
+        // Fallback to default icons
+      }
+    }
+    
+    // Fallback to default theme icons
     if (this.courseContent.example_id) {
       return new vscode.ThemeIcon('file-code');
     } else if (this.hasChildren) {

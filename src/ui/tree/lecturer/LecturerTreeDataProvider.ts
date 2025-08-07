@@ -29,6 +29,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   private courseContentsCache: Map<string, CourseContentList[]> = new Map();
   private coursesCache: Map<string, CourseList[]> = new Map();
   private courseContentTypesCache: Map<string, CourseContentTypeList[]> = new Map();
+  private courseContentTypesById: Map<string, CourseContentTypeList> = new Map();
 
   private examplesCache: Map<string, any> = new Map();
 
@@ -39,6 +40,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
 
   refresh(): void {
     this.courseContentsCache.clear();
+    this.courseContentTypesCache.clear();
+    this.courseContentTypesById.clear();
     this.examplesCache.clear();
     this._onDidChangeTreeData.fire();
   }
@@ -88,6 +91,9 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
 
       if (element instanceof CourseFolderTreeItem) {
         if (element.folderType === 'contents') {
+          // Ensure content types are loaded for this course
+          await this.getCourseContentTypes(element.course.id);
+          
           // Show course contents for course
           const contents = await this.getCourseContents(element.course.id);
           
@@ -103,13 +109,17 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
               exampleInfo = await this.getExampleInfo(content.example_id);
             }
             
+            // Get content type info
+            const contentType = this.courseContentTypesById.get(content.course_content_type_id);
+            
             return new CourseContentTreeItem(
               content,
               element.course,
               element.courseFamily,
               element.organization,
               hasChildren,
-              exampleInfo
+              exampleInfo,
+              contentType
             );
           }));
           
@@ -140,13 +150,17 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
             exampleInfo = await this.getExampleInfo(content.example_id);
           }
           
+          // Get content type info
+          const contentType = this.courseContentTypesById.get(content.course_content_type_id);
+          
           return new CourseContentTreeItem(
             content,
             element.course,
             element.courseFamily,
             element.organization,
             hasChildren,
-            exampleInfo
+            exampleInfo,
+            contentType
           );
         }));
         
@@ -172,6 +186,11 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     if (!this.courseContentTypesCache.has(courseId)) {
       const types = await this.apiService.getCourseContentTypes(courseId);
       this.courseContentTypesCache.set(courseId, types);
+      
+      // Also cache by ID for quick lookup
+      types.forEach(type => {
+        this.courseContentTypesById.set(type.id, type);
+      });
     }
     return this.courseContentTypesCache.get(courseId) || [];
   }
@@ -239,13 +258,17 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
             exampleInfo = await this.getExampleInfo(parentContent.example_id);
           }
           
+          // Get content type info
+          const contentType = this.courseContentTypesById.get(parentContent.course_content_type_id);
+          
           return new CourseContentTreeItem(
             parentContent,
             element.course,
             element.courseFamily,
             element.organization,
             hasChildren,
-            exampleInfo
+            exampleInfo,
+            contentType
           );
         }
       }
