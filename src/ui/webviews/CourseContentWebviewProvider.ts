@@ -195,7 +195,6 @@ export class CourseContentWebviewProvider extends BaseWebviewProvider {
             message.data.updates
           );
           vscode.window.showInformationMessage('Content updated successfully');
-          this.panel?.webview.postMessage({ command: 'updateSuccess' });
           
           // Update tree with changes
           if (this.treeDataProvider) {

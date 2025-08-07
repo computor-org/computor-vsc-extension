@@ -114,7 +114,6 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
         try {
           await this.apiService.updateOrganization(message.data.organizationId, message.data.updates);
           vscode.window.showInformationMessage('Organization updated successfully');
-          this.panel?.webview.postMessage({ command: 'updateSuccess' });
           
           // Update tree with changes
           if (this.treeDataProvider) {

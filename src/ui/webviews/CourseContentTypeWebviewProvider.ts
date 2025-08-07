@@ -179,7 +179,6 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
         try {
           await this.apiService.updateCourseContentType(message.data.typeId, message.data.updates);
           vscode.window.showInformationMessage('Content type updated successfully');
-          this.panel?.webview.postMessage({ command: 'updateSuccess' });
           
           // Update tree with changes
           if (this.treeDataProvider) {
