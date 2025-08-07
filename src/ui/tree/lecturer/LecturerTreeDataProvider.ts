@@ -79,10 +79,10 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       }
 
       if (element instanceof CourseTreeItem) {
-        // Show two folders: Contents and Content Types
+        // Show two folders: Content Types and Contents
         return [
-          new CourseFolderTreeItem('contents', element.course, element.courseFamily, element.organization),
-          new CourseFolderTreeItem('contentTypes', element.course, element.courseFamily, element.organization)
+          new CourseFolderTreeItem('contentTypes', element.course, element.courseFamily, element.organization),
+          new CourseFolderTreeItem('contents', element.course, element.courseFamily, element.organization)
         ];
       }
 
