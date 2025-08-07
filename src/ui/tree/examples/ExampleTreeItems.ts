@@ -48,6 +48,11 @@ export class ExampleTreeItem extends vscode.TreeItem {
     this.tooltip = this.getTooltip();
     this.contextValue = type;
     
+    // Enable drag for example items
+    if (type === 'example' && data?.exampleId) {
+      this.id = `example-${data.exampleId}`;
+    }
+    
     // Set description with workspace indicator
     if (type === 'example' && data?.isInWorkspace === true) {
       this.description = `${description} (in workspace)`;

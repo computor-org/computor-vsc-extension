@@ -89,6 +89,7 @@ export function activate(context: vscode.ExtensionContext) {
   const lecturerTreeView = vscode.window.createTreeView('computor.lecturerView', {
     treeDataProvider: lecturerTreeDataProvider,
     showCollapseAll: true
+    // Removed dragAndDropController due to VS Code limitations with tree drag/drop
   });
   context.subscriptions.push(lecturerTreeView);
 
@@ -116,12 +117,14 @@ export function activate(context: vscode.ExtensionContext) {
   const exampleTreeProvider = new ExampleTreeProvider(context, apiService);
   const exampleTreeView = vscode.window.createTreeView('computor.examplesView', {
     treeDataProvider: exampleTreeProvider,
-    showCollapseAll: true
+    showCollapseAll: true,
+    dragAndDropController: exampleTreeProvider
   });
   context.subscriptions.push(exampleTreeView);
 
   // Register example commands
   new ExampleCommands(context, apiService, exampleTreeProvider);
+  
 
   // Check for existing authentication session
   vscode.authentication.getSession('computor', [], { createIfNone: false }).then(session => {

@@ -27,9 +27,13 @@ import {
 
 type TreeItem = OrganizationTreeItem | CourseFamilyTreeItem | CourseTreeItem | CourseContentTreeItem | CourseFolderTreeItem | CourseContentTypeTreeItem | ExampleTreeItem | CourseGroupTreeItem | NoGroupTreeItem | CourseMemberTreeItem;
 
-export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeItem> {
+export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeItem>, vscode.TreeDragAndDropController<TreeItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<TreeItem | undefined | null | void> = new vscode.EventEmitter<TreeItem | undefined | null | void>();
   readonly onDidChangeTreeData: vscode.Event<TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
+
+  // Drag and drop support
+  public readonly dropMimeTypes = ['application/vnd.code.tree.computorexample'];
+  public readonly dragMimeTypes: string[] = []; // This tree only accepts drops, doesn't provide drags
 
   private apiService: ComputorApiService;
   private gitLabTokenManager: GitLabTokenManager;
@@ -767,6 +771,139 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       await this.settingsManager.setNodeExpandedState(nodeId, expanded);
     } catch (error) {
       console.error('Failed to save node expanded state:', error);
+    }
+  }
+
+  // Drag and drop implementation
+  public async handleDrag(source: readonly TreeItem[], treeDataTransfer: vscode.DataTransfer): Promise<void> {
+    void source; // Suppress unused parameter warning
+    void treeDataTransfer; // Suppress unused parameter warning
+    // This tree doesn't provide drag sources - examples are dragged FROM the example tree
+  }
+
+  public async handleDrop(target: TreeItem | undefined, dataTransfer: vscode.DataTransfer): Promise<void> {
+    console.log('handleDrop called with target:', target?.constructor.name, target);
+    console.log('dataTransfer available');
+    
+    // Check if we have example data being dropped
+    const exampleData = dataTransfer.get('application/vnd.code.tree.computorexample');
+    console.log('exampleData:', exampleData);
+    console.log('exampleData type:', typeof exampleData);
+    console.log('exampleData value:', exampleData?.value);
+    console.log('exampleData value type:', typeof exampleData?.value);
+    
+    // Try to get all available MIME types for debugging
+    console.log('Available MIME types in dataTransfer:', Array.from(dataTransfer));
+    
+    if (!exampleData) {
+      console.log('No example data found in dataTransfer');
+      return;
+    }
+    
+    if (!target) {
+      console.log('No target provided');
+      return;
+    }
+
+    // Only allow dropping on course content items
+    if (!(target instanceof CourseContentTreeItem)) {
+      vscode.window.showErrorMessage('Examples can only be dropped on course content items');
+      return;
+    }
+
+    // Log target details for debugging
+    console.log('Target details:', {
+      title: target.courseContent.title,
+      hasExistingExample: !!target.courseContent.example_id,
+      isSubmittable: target.isSubmittable,
+      contextValue: target.contextValue,
+      resourceUri: target.resourceUri?.toString(),
+      command: target.command,
+      description: target.description,
+      tooltip: target.tooltip
+    });
+
+    // First check: only allow drops on submittable content (assignments, exercises, etc.)
+    if (!target.isSubmittable) {
+      vscode.window.showErrorMessage(
+        `Examples can only be assigned to submittable content like assignments or exercises. "${target.courseContent.title}" is not submittable.`
+      );
+      return;
+    }
+
+    // Second check: if the content already has an example assigned, ask for confirmation
+    if (target.courseContent.example_id) {
+      const choice = await vscode.window.showWarningMessage(
+        `Assignment "${target.courseContent.title}" already has an example assigned. Replace it?`,
+        'Replace', 'Cancel'
+      );
+      if (choice !== 'Replace') {
+        return;
+      }
+    }
+
+    try {
+      console.log('Raw example data:', exampleData);
+      const rawValue = exampleData.value;
+      console.log('Raw value:', rawValue);
+      console.log('Raw value type:', typeof rawValue);
+      
+      // Parse the JSON string if it's a string, otherwise use as-is
+      let draggedExamples;
+      if (typeof rawValue === 'string') {
+        console.log('Parsing JSON string:', rawValue);
+        draggedExamples = JSON.parse(rawValue);
+      } else {
+        draggedExamples = rawValue;
+      }
+      
+      console.log('Parsed dragged examples:', draggedExamples);
+      
+      if (!Array.isArray(draggedExamples) || draggedExamples.length === 0) {
+        console.log('Invalid dragged examples array');
+        return;
+      }
+
+      // For simplicity, take the first dragged example
+      const example = draggedExamples[0];
+      console.log('Selected example:', example);
+      
+      if (!example.exampleId) {
+        console.log('Missing exampleId in example data');
+        vscode.window.showErrorMessage('Invalid example data');
+        return;
+      }
+
+      console.log('About to assign example:', {
+        courseId: target.course.id,
+        contentId: target.courseContent.id,
+        exampleId: example.exampleId,
+        exampleVersion: 'latest'
+      });
+
+      // Assign the example to the course content
+      console.log('Making API call to assignExampleToCourseContent...');
+      const result = await this.apiService.assignExampleToCourseContent(
+        target.course.id,
+        target.courseContent.id,
+        example.exampleId,
+        'latest' // Default to latest version
+      );
+      
+      console.log('Assignment result:', result);
+      console.log('Assignment completed successfully!');
+
+      // Clear cache and refresh the tree
+      this.courseContentsCache.delete(target.course.id);
+      this.refresh();
+
+      vscode.window.showInformationMessage(
+        `✅ Example "${example.title}" assigned to "${target.courseContent.title}" successfully!`
+      );
+
+    } catch (error) {
+      console.error('Assignment error details:', error);
+      vscode.window.showErrorMessage(`Failed to assign example: ${error}`);
     }
   }
 }

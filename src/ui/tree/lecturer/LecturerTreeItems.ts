@@ -77,7 +77,27 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     this.contextValue = this.getContextValue();
     this.iconPath = this.getIcon();
     this.tooltip = this.getTooltip();
+    
     this.description = this.getDescription();
+    
+    // Enable as drop target for examples - use consistent URI for all submittable items
+    if (this.isSubmittable) {
+      this.resourceUri = vscode.Uri.parse(`droppable:courseContent:${courseContent.id}`);
+    } else {
+      this.resourceUri = vscode.Uri.parse(`courseContent:${courseContent.id}`);
+    }
+    
+    // Make submittable items droppable by adding properties VS Code recognizes
+    if (this.isSubmittable) {
+      // Add a command to make the item interactive
+      this.command = {
+        command: 'computor.showCourseContentDetails',
+        title: 'Show Details',
+        arguments: [this]
+      };
+      
+      this.description = this.getDescription();
+    }
   }
 
   private getContextValue(): string {

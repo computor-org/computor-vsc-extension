@@ -281,15 +281,51 @@ export class ComputorApiService {
     exampleId: string, 
     exampleVersion?: string
   ): Promise<any> {
-    const client = await this.getHttpClient();
-    const response = await client.post(
-      `/course-contents/${contentId}/assign-example`,
-      {
+    try {
+      console.log('[API] assignExampleToCourseContent called with:', {
+        courseId,
+        contentId,
+        exampleId,
+        exampleVersion: exampleVersion || 'latest'
+      });
+      
+      const client = await this.getHttpClient();
+      console.log('[API] HTTP client obtained, making request...');
+      
+      const requestData = {
         example_id: exampleId,
         example_version: exampleVersion || 'latest'
-      }
-    );
-    return response.data;
+      };
+      console.log('[API] Request data:', requestData);
+      console.log('[API] Request URL:', `/course-contents/${contentId}/assign-example`);
+      
+      const response = await client.post(
+        `/course-contents/${contentId}/assign-example`,
+        requestData
+      );
+      
+      console.log('[API] Response received:', {
+        status: response.status,
+        statusText: response.statusText,
+        data: response.data
+      });
+      
+      return response.data;
+    } catch (error: any) {
+      console.error('[API] assignExampleToCourseContent failed:', error);
+      console.error('[API] Error details:', {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        config: {
+          method: error.config?.method,
+          url: error.config?.url,
+          data: error.config?.data
+        }
+      });
+      throw error;
+    }
   }
 
   async unassignExampleFromCourseContent(courseId: string, contentId: string): Promise<CourseContentGet> {
