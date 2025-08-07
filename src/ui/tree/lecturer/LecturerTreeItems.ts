@@ -61,7 +61,8 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     public readonly course: CourseList,
     public readonly courseFamily: CourseFamilyList,
     public readonly organization: OrganizationList,
-    public readonly hasChildren: boolean
+    public readonly hasChildren: boolean,
+    public readonly exampleInfo?: any
   ) {
     super(
       courseContent.title || courseContent.path,
@@ -124,12 +125,38 @@ export class CourseContentTreeItem extends vscode.TreeItem {
   }
 
   private getDescription(): string | undefined {
-    if (this.courseContent.example_id) {
-      return this.courseContent.example_version ? 
-        `📦 v${this.courseContent.example_version}` : 
-        '📦';
+    const parts: string[] = [];
+    
+    // Show example title and version
+    if (this.courseContent.example_id && this.exampleInfo) {
+      const exampleTitle = this.exampleInfo.title || 'Unknown Example';
+      const versionText = this.courseContent.example_version ? 
+        `v${this.courseContent.example_version}` : 
+        'latest';
+      parts.push(`📦 ${exampleTitle} (${versionText})`);
+    } else if (this.courseContent.example_id) {
+      // Fallback if example info couldn't be loaded
+      const versionText = this.courseContent.example_version ? 
+        `v${this.courseContent.example_version}` : 
+        'latest';
+      parts.push(`📦 ${versionText}`);
     }
-    return undefined;
+    
+    // Show deployment status
+    if (this.courseContent.deployment_status) {
+      const statusIcons: { [key: string]: string } = {
+        'pending': '⏳',
+        'pending_release': '📤',
+        'deploying': '🔄',
+        'deployed': '✅',
+        'released': '🚀',
+        'failed': '❌'
+      };
+      const icon = statusIcons[this.courseContent.deployment_status] || '❓';
+      parts.push(`${icon} ${this.courseContent.deployment_status}`);
+    }
+    
+    return parts.length > 0 ? parts.join(' • ') : undefined;
   }
 }
 

@@ -268,6 +268,12 @@
         "command": "computor.manageGitLabTokens",
         "title": "Manage GitLab Tokens",
         "category": "Computor"
+      },
+      {
+        "command": "computor.releaseCourseContent",
+        "title": "Release Course Content",
+        "icon": "$(rocket)",
+        "category": "Computor Lecturer"
       }
     ],
     "viewsWelcome": [
@@ -378,6 +384,11 @@
           "group": "navigation@2"
         },
         {
+          "command": "computor.releaseCourseContent",
+          "when": "view == computor.lecturerView",
+          "group": "navigation@3"
+        },
+        {
           "command": "computor.refreshExamples",
           "when": "view == computor.examplesView",
           "group": "navigation@1"
@@ -441,7 +452,7 @@
         },
         {
           "command": "computor.createCourseContent",
-          "when": "view == computor.lecturerView && viewItem =~ /courseContent.*hasChildren/",
+          "when": "view == computor.lecturerView && viewItem =~ /courseContent/",
           "group": "1_content@1"
         },
         {
@@ -468,6 +479,11 @@
           "command": "computor.openGitLabRepo",
           "when": "view == computor.lecturerView && viewItem =~ /course/",
           "group": "5_gitlab@1"
+        },
+        {
+          "command": "computor.releaseCourseContent",
+          "when": "view == computor.lecturerView && viewItem == course",
+          "group": "5_gitlab@2"
         },
         {
           "command": "computor.checkoutExample",

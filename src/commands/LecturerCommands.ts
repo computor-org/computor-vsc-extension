@@ -98,6 +98,13 @@ export class LecturerCommands {
         await this.manageGitLabTokens();
       })
     );
+
+    // Release/deployment commands
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.releaseCourseContent', async (item: CourseTreeItem) => {
+        await this.releaseCourseContent(item);
+      })
+    );
   }
 
   private async selectWorkspaceDirectory(): Promise<void> {
@@ -117,24 +124,54 @@ export class LecturerCommands {
   }
 
   private async createCourseContent(item: CourseFolderTreeItem | CourseContentTreeItem): Promise<void> {
-    if (!(item instanceof CourseFolderTreeItem) || item.folderType !== 'contents') {
-      vscode.window.showErrorMessage('Course contents can only be created under the Contents folder');
+    let parentPath: string | undefined;
+    let courseId: string;
+    
+    if (item instanceof CourseFolderTreeItem && item.folderType === 'contents') {
+      // Creating at root level
+      parentPath = undefined;
+      courseId = item.course.id;
+    } else if (item instanceof CourseContentTreeItem) {
+      // Creating under parent content
+      parentPath = item.courseContent.path;
+      courseId = item.course.id;
+      
+      // TODO: Check if parent content type allows children
+      // This would require fetching the full content type with course_content_kind details
+      // For now, we'll allow creating children under any content item
+    } else {
+      vscode.window.showErrorMessage('Course contents can only be created under the Contents folder or another content item');
       return;
     }
 
     // Get available content types
-    const contentTypes = await this.apiService.getCourseContentTypes(item.course.id);
+    const contentTypes = await this.apiService.getCourseContentTypes(courseId);
     if (contentTypes.length === 0) {
       vscode.window.showWarningMessage('No content types available. Please create a content type first.');
       return;
     }
 
+    // Filter content types if creating under parent
+    let availableTypes = contentTypes;
+    if (parentPath) {
+      // TODO: Only show content types that can have ancestors
+      // This would require fetching the full content type with course_content_kind details
+      // For now, we'll show all content types
+      availableTypes = contentTypes;
+    }
+
+    if (availableTypes.length === 0) {
+      vscode.window.showWarningMessage('No suitable content types available for child content.');
+      return;
+    }
+
     // Select content type
     const selectedType = await vscode.window.showQuickPick(
-      contentTypes.map(t => ({
+      availableTypes.map(t => ({
         label: t.title || t.slug,
         description: t.slug,
-        id: t.id
+        id: t.id,
+        contentType: t
       })),
       { placeHolder: 'Select content type' }
     );
@@ -152,7 +189,30 @@ export class LecturerCommands {
       return;
     }
 
-    await this.treeDataProvider.createCourseContent(item, title, selectedType.id);
+    // Generate a slug from the title for the path
+    const slug = await vscode.window.showInputBox({
+      prompt: 'Enter a URL-friendly identifier (slug) for this content',
+      placeHolder: 'e.g., week1, intro, assignment1',
+      value: title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''),
+      validateInput: (value) => {
+        if (!/^[a-z0-9_]+$/.test(value)) {
+          return 'Slug must contain only lowercase letters, numbers, and underscores';
+        }
+        return null;
+      }
+    });
+
+    if (!slug) {
+      return;
+    }
+
+    await this.treeDataProvider.createCourseContent(
+      item instanceof CourseFolderTreeItem ? item : new CourseFolderTreeItem('contents', item.course, item.courseFamily, item.organization), 
+      title, 
+      selectedType.id,
+      parentPath,
+      slug
+    );
   }
 
   private async renameCourseContent(item: CourseContentTreeItem): Promise<void> {
@@ -183,25 +243,41 @@ export class LecturerCommands {
 
   private async assignExample(item: CourseContentTreeItem): Promise<void> {
     try {
+      // Get available examples with search functionality
+      const searchQuery = await vscode.window.showInputBox({
+        prompt: 'Search for examples (optional)',
+        placeHolder: 'Enter search terms or leave empty to see all'
+      });
+
       // Get available examples
-      const examples = await this.apiService.getExamples();
+      const examples = await this.apiService.getAvailableExamples(item.course.id, {
+        search: searchQuery,
+        limit: 50
+      });
       
       if (!examples || examples.length === 0) {
-        vscode.window.showWarningMessage('No examples available');
+        vscode.window.showWarningMessage('No examples found matching your search');
         return;
       }
 
-      // Create quick pick items
-      const quickPickItems = examples.map(example => ({
+      // Create quick pick items with better formatting
+      interface ExampleQuickPickItem extends vscode.QuickPickItem {
+        example: any;
+      }
+      
+      const quickPickItems: ExampleQuickPickItem[] = examples.map((example: any) => ({
         label: example.title,
-        description: 'latest',
-        detail: example.identifier || '',
+        description: [
+          example.identifier && `🔖 ${example.identifier}`,
+          example.repository_id && `📦 latest`
+        ].filter(Boolean).join(' • '),
+        detail: example.description || '',
         example: example
       }));
 
-      // Show quick pick
+      // Show quick pick with categories
       const selected = await vscode.window.showQuickPick(quickPickItems, {
-        placeHolder: 'Select an example to assign',
+        placeHolder: `Select an example to assign (${examples.length} found)`,
         matchOnDescription: true,
         matchOnDetail: true
       });
@@ -210,17 +286,24 @@ export class LecturerCommands {
         return;
       }
 
-      // Assign the example
+      // For now, always use latest version since /examples doesn't provide version info
+      const version = 'latest';
+
+      // Assign the example using the new API
       await this.apiService.assignExampleToCourseContent(
         item.course.id,
         item.courseContent.id,
         selected.example.id,
-        undefined // ExampleList doesn't have version
+        version
       );
 
       // Refresh the tree
-      this.treeDataProvider.refreshNode(item);
-      vscode.window.showInformationMessage(`Example "${selected.label}" assigned successfully`);
+      this.treeDataProvider.refresh();
+      
+      vscode.window.showInformationMessage(
+        `✅ Example "${selected.label}" assigned successfully!\n` +
+        `Status: pending_release - Use "Release Course Content" to deploy.`
+      );
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to assign example: ${error}`);
     }
@@ -470,6 +553,98 @@ export class LecturerCommands {
         // TODO: Implement token testing
         vscode.window.showInformationMessage('Token testing not yet implemented');
       }
+    }
+  }
+
+  private async releaseCourseContent(item: CourseTreeItem): Promise<void> {
+    try {
+      // Force refresh to get latest data
+      this.treeDataProvider.refresh();
+      
+      // Check if there are any pending releases
+      const contents = await this.apiService.getCourseContents(item.course.id);
+      
+      // Debug: Log what we got
+      console.log('Course contents:', contents?.map(c => ({
+        title: c.title,
+        example_id: c.example_id,
+        deployment_status: c.deployment_status
+      })));
+      
+      const pendingContents = contents?.filter(c => 
+        c.example_id && (c.deployment_status === 'pending_release' || c.deployment_status === 'pending')
+      ) || [];
+      
+      if (pendingContents.length === 0) {
+        // Also check for any content with examples but no deployment status
+        const withExamples = contents?.filter(c => c.example_id) || [];
+        if (withExamples.length > 0) {
+          vscode.window.showInformationMessage(
+            `Found ${withExamples.length} content(s) with examples. Their deployment status: ${
+              withExamples.map(c => c.deployment_status || 'not set').join(', ')
+            }`
+          );
+        } else {
+          vscode.window.showInformationMessage('No pending content to release. Assign examples to course contents first.');
+        }
+        return;
+      }
+      
+      // Show confirmation with list of pending content
+      const pendingList = pendingContents.map(c => `• ${c.title || c.path}`).join('\n');
+      const confirmation = await vscode.window.showWarningMessage(
+        `Release ${pendingContents.length} content items to students?\n\n${pendingList}`,
+        { modal: true },
+        'Release',
+        'Cancel'
+      );
+      
+      if (confirmation !== 'Release') {
+        return;
+      }
+      
+      // Start the release process
+      vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: "Releasing course content",
+        cancellable: false
+      }, async (progress) => {
+        progress.report({ increment: 0, message: "Starting release process..." });
+        
+        // Call generate student template API
+        const result = await this.apiService.generateStudentTemplate(item.course.id);
+        if (!result?.task_id) {
+          throw new Error('Failed to start release process');
+        }
+        
+        // Poll for task status
+        let taskStatus = await this.apiService.getTaskStatus(result.task_id);
+        let pollCount = 0;
+        const maxPolls = 60; // 5 minutes max
+        
+        while (taskStatus?.status === 'running' && pollCount < maxPolls) {
+          progress.report({ 
+            increment: (100 / maxPolls), 
+            message: `Processing... ${taskStatus.message || ''}` 
+          });
+          
+          await new Promise(resolve => setTimeout(resolve, 5000)); // Poll every 5 seconds
+          taskStatus = await this.apiService.getTaskStatus(result.task_id);
+          pollCount++;
+        }
+        
+        if (taskStatus?.status === 'completed') {
+          vscode.window.showInformationMessage('✅ Course content released successfully!');
+          // Refresh the tree to show updated deployment status
+          this.treeDataProvider.refresh();
+        } else if (taskStatus?.status === 'failed') {
+          throw new Error(taskStatus.error || 'Release process failed');
+        } else {
+          throw new Error('Release process timed out');
+        }
+      });
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to release course content: ${error}`);
     }
   }
 }

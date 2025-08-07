@@ -95,7 +95,7 @@ typings/
 .serverless
 
 # FuseBox cache
-.fusebox/
+.fusebox/‚
 
 # DynamoDB Local files
 .dynamodb/
@@ -110,3 +110,5 @@ coverage/
 # Temporary files
 tmp/
 temp/
+
+old/
