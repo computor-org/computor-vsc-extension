@@ -9,9 +9,13 @@ import {
   ExampleList
 } from '../../../types/generated/examples';
 
-export class ExampleTreeProvider implements vscode.TreeDataProvider<ExampleTreeItem> {
+export class ExampleTreeProvider implements vscode.TreeDataProvider<ExampleTreeItem>, vscode.TreeDragAndDropController<ExampleTreeItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<ExampleTreeItem | undefined | null | void> = new vscode.EventEmitter<ExampleTreeItem | undefined | null | void>();
   readonly onDidChangeTreeData: vscode.Event<ExampleTreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
+
+  // Drag and drop support
+  public readonly dropMimeTypes = ['application/vnd.code.tree.computorexample'];
+  public readonly dragMimeTypes = ['application/vnd.code.tree.computorexample'];
 
   private repositories: ExampleRepositoryList[] = [];
   private examples: Map<string, ExampleList[]> = new Map();
@@ -383,5 +387,46 @@ export class ExampleTreeProvider implements vscode.TreeDataProvider<ExampleTreeI
 
   getWorkspaceExamples(): Map<string, string> {
     return this.workspaceExamples;
+  }
+
+  // Drag and drop implementation
+  public async handleDrag(source: readonly ExampleTreeItem[], treeDataTransfer: vscode.DataTransfer): Promise<void> {
+    console.log('handleDrag called with source:', source.length, 'items');
+    
+    // Only allow dragging example items
+    const exampleItems = source.filter(item => item.type === 'example' && item.data?.exampleId);
+    console.log('Filtered example items:', exampleItems.length);
+    
+    if (exampleItems.length > 0) {
+      // Store the dragged example data
+      const dragData = exampleItems.map(item => ({
+        exampleId: item.data?.exampleId,
+        identifier: item.data?.identifier,
+        title: item.label?.toString().replace('[LOCAL] ', ''),
+        repositoryId: item.data?.repositoryId
+      }));
+      
+      console.log('Setting drag data:', dragData);
+      console.log('Creating DataTransferItem with:', JSON.stringify(dragData, null, 2));
+      
+      // Try serializing as JSON string instead of object
+      const serializedData = JSON.stringify(dragData);
+      const dataTransferItem = new vscode.DataTransferItem(serializedData);
+      console.log('Created DataTransferItem with JSON string:', dataTransferItem);
+      console.log('DataTransferItem value:', dataTransferItem.value);
+      
+      treeDataTransfer.set('application/vnd.code.tree.computorexample', dataTransferItem);
+      console.log('Drag data set successfully');
+      
+      // Verify what was set
+      const verification = treeDataTransfer.get('application/vnd.code.tree.computorexample');
+      console.log('Verification - what was actually set:', verification);
+      console.log('Verification value:', verification?.value);
+    }
+  }
+
+  public async handleDrop(target: ExampleTreeItem | undefined, dataTransfer: vscode.DataTransfer): Promise<void> {
+    // This tree doesn't accept drops - examples are dragged TO other views
+    // The actual drop handling will be in the course content tree
   }
 }
