@@ -5,6 +5,7 @@ export abstract class BaseWebviewProvider {
   protected readonly context: vscode.ExtensionContext;
   protected panel: vscode.WebviewPanel | undefined;
   protected readonly viewType: string;
+  protected currentData: any;
   
   constructor(context: vscode.ExtensionContext, viewType: string) {
     this.context = context;
@@ -12,6 +13,9 @@ export abstract class BaseWebviewProvider {
   }
 
   public async show(title: string, data?: any): Promise<void> {
+    // Store current data
+    this.currentData = data;
+    
     if (this.panel) {
       this.panel.reveal();
     } else {
@@ -39,6 +43,7 @@ export abstract class BaseWebviewProvider {
       this.panel.onDidDispose(
         () => {
           this.panel = undefined;
+          this.currentData = undefined;
         },
         undefined,
         this.context.subscriptions

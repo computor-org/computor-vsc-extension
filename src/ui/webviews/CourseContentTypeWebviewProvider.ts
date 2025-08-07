@@ -2,13 +2,16 @@ import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { CourseContentTypeList, CourseList, CourseContentKindList } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
+import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
 
 export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
   private apiService: ComputorApiService;
+  private treeDataProvider?: LecturerTreeDataProvider;
 
-  constructor(context: vscode.ExtensionContext, apiService: ComputorApiService) {
+  constructor(context: vscode.ExtensionContext, apiService: ComputorApiService, treeDataProvider?: LecturerTreeDataProvider) {
     super(context, 'computor.courseContentTypeView');
     this.apiService = apiService;
+    this.treeDataProvider = treeDataProvider;
   }
 
   protected async getWebviewContent(data?: {
@@ -177,7 +180,18 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
           await this.apiService.updateCourseContentType(message.data.typeId, message.data.updates);
           vscode.window.showInformationMessage('Content type updated successfully');
           this.panel?.webview.postMessage({ command: 'updateSuccess' });
-          vscode.commands.executeCommand('computor.refreshLecturerTree');
+          
+          // Update tree with changes
+          if (this.treeDataProvider) {
+            // Get the course ID from the data to provide context for the update
+            const courseData = this.currentData as { course: CourseList };
+            this.treeDataProvider.updateNode('courseContentType', message.data.typeId, {
+              ...message.data.updates,
+              course_id: courseData?.course.id
+            });
+          } else {
+            vscode.commands.executeCommand('computor.refreshLecturerTree');
+          }
         } catch (error) {
           vscode.window.showErrorMessage(`Failed to update content type: ${error}`);
         }
