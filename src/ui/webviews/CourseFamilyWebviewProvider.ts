@@ -127,7 +127,6 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
         try {
           await this.apiService.updateCourseFamily(message.data.familyId, message.data.updates);
           vscode.window.showInformationMessage('Course family updated successfully');
-          this.panel?.webview.postMessage({ command: 'updateSuccess' });
           
           // Update tree with changes
           if (this.treeDataProvider) {

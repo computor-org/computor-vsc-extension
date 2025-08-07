@@ -120,7 +120,12 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
         
         // Override updateView
         function updateView(data) {
-          location.reload(); // Simple reload for now
+          // Update form fields with new data if provided
+          if (data && data.course) {
+            document.getElementById('title').value = data.course.title || '';
+            document.getElementById('gitlabUrl').value = data.course.properties?.gitlab?.url || '';
+            courseData.course = data.course;
+          }
         }
       </script>
     `;
@@ -134,7 +139,6 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
         try {
           await this.apiService.updateCourse(message.data.courseId, message.data.updates);
           vscode.window.showInformationMessage('Course updated successfully');
-          this.panel?.webview.postMessage({ command: 'updateSuccess' });
           
           // Update tree with changes
           if (this.treeDataProvider) {
