@@ -78,7 +78,7 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
         </div>
       </div>
 
-      <script>
+      <script nonce="{{NONCE}}">
         const familyData = ${JSON.stringify(data)};
         
         // Handle form submission

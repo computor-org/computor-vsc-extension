@@ -12,7 +12,6 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
     super(context, 'computor.courseView');
     this.apiService = apiService;
     this.treeDataProvider = treeDataProvider;
-    void this.treeDataProvider; // Temporarily unused for debugging
   }
 
   protected async getWebviewContent(data?: {
@@ -75,46 +74,25 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
         </div>
       </div>
 
-      <script>
+      <script nonce="{{NONCE}}">
         const courseData = ${JSON.stringify(data)};
-        
-        // Error handling
-        window.addEventListener('error', (e) => {
-          console.error('Webview error:', e.error);
-          console.log('DOM state:', document.body.innerHTML.length, 'chars');
-        });
-        
-        // Debug all messages
-        window.addEventListener('message', (event) => {
-          console.log('Webview received message:', event.data);
-          if (event.data.command === 'update') {
-            console.log('Update message received, DOM before:', document.body.innerHTML.length);
-          }
-        });
         
         // Handle form submission
         document.getElementById('editCourseForm').addEventListener('submit', (e) => {
-          try {
-            e.preventDefault();
-            console.log('Form submitted, DOM state:', document.body.innerHTML.length);
-            const formData = new FormData(e.target);
-            console.log('Sending update message...');
-            sendMessage('updateCourse', {
-              courseId: courseData.course.id,
-              updates: {
-                title: formData.get('title'),
-                description: formData.get('description'),
-                properties: {
-                  gitlab: formData.get('gitlabUrl') ? {
-                    url: formData.get('gitlabUrl')
-                  } : null
-                }
+          e.preventDefault();
+          const formData = new FormData(e.target);
+          sendMessage('updateCourse', {
+            courseId: courseData.course.id,
+            updates: {
+              title: formData.get('title'),
+              description: formData.get('description'),
+              properties: {
+                gitlab: formData.get('gitlabUrl') ? {
+                  url: formData.get('gitlabUrl')
+                } : null
               }
-            });
-            console.log('Update message sent, DOM still:', document.body.innerHTML.length);
-          } catch (error) {
-            console.error('Form submission error:', error);
-          }
+            }
+          });
         });
         
         function refreshView() {
@@ -142,22 +120,12 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
         
         // Override updateView
         function updateView(data) {
-          console.log('updateView called with:', data);
-          console.log('DOM before update:', document.body.innerHTML.length);
-          
           // Update form fields with new data if provided
           if (data && data.course) {
-            try {
-              document.getElementById('title').value = data.course.title || '';
-              document.getElementById('gitlabUrl').value = data.course.properties?.gitlab?.url || '';
-              courseData.course = data.course;
-              console.log('Form fields updated successfully');
-            } catch (error) {
-              console.error('Error updating form fields:', error);
-            }
+            document.getElementById('title').value = data.course.title || '';
+            document.getElementById('gitlabUrl').value = data.course.properties?.gitlab?.url || '';
+            courseData.course = data.course;
           }
-          
-          console.log('DOM after update:', document.body.innerHTML.length);
         }
       </script>
     `;
@@ -166,21 +134,16 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
   }
 
   protected async handleMessage(message: any): Promise<void> {
-    console.log('Extension received message:', message.command, message.data);
-    
     switch (message.command) {
       case 'updateCourse':
         try {
-          console.log('Processing updateCourse...');
           await this.apiService.updateCourse(message.data.courseId, message.data.updates);
-          console.log('API call completed successfully');
           vscode.window.showInformationMessage('Course updated successfully');
           
           // Update tree with changes
-          // Temporarily disabled to debug webview content disappearing
-          // if (this.treeDataProvider) {
-          //   this.treeDataProvider.updateNode('course', message.data.courseId, message.data.updates);
-          // }
+          if (this.treeDataProvider) {
+            this.treeDataProvider.updateNode('course', message.data.courseId, message.data.updates);
+          }
         } catch (error) {
           vscode.window.showErrorMessage(`Failed to update course: ${error}`);
         }
