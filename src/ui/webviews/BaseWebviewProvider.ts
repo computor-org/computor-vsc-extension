@@ -51,9 +51,10 @@ export abstract class BaseWebviewProvider {
     }
 
     // Update content if data is provided
-    if (data && this.panel) {
-      this.panel.webview.postMessage({ command: 'update', data });
-    }
+    // Temporarily disabled to debug content disappearing
+    // if (data && this.panel) {
+    //   this.panel.webview.postMessage({ command: 'update', data });
+    // }
   }
 
   protected abstract getWebviewContent(data?: any): Promise<string>;
