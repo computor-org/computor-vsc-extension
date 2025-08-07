@@ -12,7 +12,6 @@ export class CourseContentWebviewProvider extends BaseWebviewProvider {
     super(context, 'computor.courseContentView');
     this.apiService = apiService;
     this.treeDataProvider = treeDataProvider;
-    void this.treeDataProvider; // Temporarily unused for debugging
   }
 
   protected async getWebviewContent(data?: {
@@ -104,7 +103,7 @@ export class CourseContentWebviewProvider extends BaseWebviewProvider {
         </div>
       </div>
 
-      <script>
+      <script nonce="{{NONCE}}">
         const contentData = ${JSON.stringify(data)};
         
         // Handle form submission
@@ -198,13 +197,12 @@ export class CourseContentWebviewProvider extends BaseWebviewProvider {
           vscode.window.showInformationMessage('Content updated successfully');
           
           // Update tree with changes
-          // Temporarily disabled to debug webview content disappearing
-          // if (this.treeDataProvider) {
-          //   this.treeDataProvider.updateNode('courseContent', message.data.contentId, {
-          //     ...message.data.updates,
-          //     course_id: message.data.courseId
-          //   });
-          // }
+          if (this.treeDataProvider) {
+            this.treeDataProvider.updateNode('courseContent', message.data.contentId, {
+              ...message.data.updates,
+              course_id: message.data.courseId
+            });
+          }
         } catch (error) {
           vscode.window.showErrorMessage(`Failed to update content: ${error}`);
         }

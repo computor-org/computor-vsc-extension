@@ -71,7 +71,7 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
         </div>
       </div>
 
-      <script>
+      <script nonce="{{NONCE}}">
         const organizationData = ${JSON.stringify(data)};
         
         // Handle form submission

@@ -51,10 +51,9 @@ export abstract class BaseWebviewProvider {
     }
 
     // Update content if data is provided
-    // Temporarily disabled to debug content disappearing
-    // if (data && this.panel) {
-    //   this.panel.webview.postMessage({ command: 'update', data });
-    // }
+    if (data && this.panel) {
+      this.panel.webview.postMessage({ command: 'update', data });
+    }
   }
 
   protected abstract getWebviewContent(data?: any): Promise<string>;
@@ -75,6 +74,9 @@ export abstract class BaseWebviewProvider {
 
   protected getBaseHtml(title: string, content: string): string {
     const nonce = this.getNonce();
+    
+    // Replace nonce placeholders in content
+    const contentWithNonce = content.replace(/{{NONCE}}/g, nonce);
     
     return `<!DOCTYPE html>
     <html lang="en">
@@ -169,7 +171,7 @@ export abstract class BaseWebviewProvider {
     </head>
     <body>
       <div class="container">
-        ${content}
+        ${contentWithNonce}
       </div>
       <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();

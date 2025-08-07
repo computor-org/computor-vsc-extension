@@ -99,7 +99,7 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
         </div>
       </div>
 
-      <script>
+      <script nonce="{{NONCE}}">
         const contentTypeData = ${JSON.stringify(data)};
         
         // Handle form submission
