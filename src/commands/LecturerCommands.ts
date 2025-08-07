@@ -2,13 +2,23 @@ import * as vscode from 'vscode';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
 import { LecturerTreeDataProvider } from '../ui/tree/lecturer/LecturerTreeDataProvider';
-import { CourseTreeItem, CourseContentTreeItem, CourseFolderTreeItem, CourseContentTypeTreeItem } from '../ui/tree/lecturer/LecturerTreeItems';
+import { OrganizationTreeItem, CourseFamilyTreeItem, CourseTreeItem, CourseContentTreeItem, CourseFolderTreeItem, CourseContentTypeTreeItem } from '../ui/tree/lecturer/LecturerTreeItems';
 import { ComputorApiService } from '../services/ComputorApiService';
+import { CourseWebviewProvider } from '../ui/webviews/CourseWebviewProvider';
+import { CourseContentWebviewProvider } from '../ui/webviews/CourseContentWebviewProvider';
+import { OrganizationWebviewProvider } from '../ui/webviews/OrganizationWebviewProvider';
+import { CourseFamilyWebviewProvider } from '../ui/webviews/CourseFamilyWebviewProvider';
+import { CourseContentTypeWebviewProvider } from '../ui/webviews/CourseContentTypeWebviewProvider';
 
 export class LecturerCommands {
   private settingsManager: ComputorSettingsManager;
   private gitLabTokenManager: GitLabTokenManager;
   private apiService: ComputorApiService;
+  private courseWebviewProvider: CourseWebviewProvider;
+  private courseContentWebviewProvider: CourseContentWebviewProvider;
+  private organizationWebviewProvider: OrganizationWebviewProvider;
+  private courseFamilyWebviewProvider: CourseFamilyWebviewProvider;
+  private courseContentTypeWebviewProvider: CourseContentTypeWebviewProvider;
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -17,6 +27,11 @@ export class LecturerCommands {
     this.settingsManager = new ComputorSettingsManager(context);
     this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
     this.apiService = new ComputorApiService(context);
+    this.courseWebviewProvider = new CourseWebviewProvider(context, this.apiService);
+    this.courseContentWebviewProvider = new CourseContentWebviewProvider(context, this.apiService);
+    this.organizationWebviewProvider = new OrganizationWebviewProvider(context, this.apiService);
+    this.courseFamilyWebviewProvider = new CourseFamilyWebviewProvider(context, this.apiService);
+    this.courseContentTypeWebviewProvider = new CourseContentTypeWebviewProvider(context, this.apiService);
   }
 
   registerCommands(): void {
@@ -103,6 +118,37 @@ export class LecturerCommands {
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.releaseCourseContent', async (item: CourseTreeItem) => {
         await this.releaseCourseContent(item);
+      })
+    );
+
+    // Webview commands
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.showCourseDetails', async (item: CourseTreeItem) => {
+        await this.showCourseDetails(item);
+      })
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.showCourseContentDetails', async (item: CourseContentTreeItem) => {
+        await this.showCourseContentDetails(item);
+      })
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.showOrganizationDetails', async (item: OrganizationTreeItem) => {
+        await this.showOrganizationDetails(item);
+      })
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.showCourseFamilyDetails', async (item: CourseFamilyTreeItem) => {
+        await this.showCourseFamilyDetails(item);
+      })
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.showCourseContentTypeDetails', async (item: CourseContentTypeTreeItem) => {
+        await this.showCourseContentTypeDetails(item);
       })
     );
   }
@@ -646,5 +692,68 @@ export class LecturerCommands {
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to release course content: ${error}`);
     }
+  }
+
+  private async showCourseDetails(item: CourseTreeItem): Promise<void> {
+    await this.courseWebviewProvider.show(
+      `Course: ${item.course.title || item.course.path}`,
+      {
+        course: item.course,
+        courseFamily: item.courseFamily,
+        organization: item.organization
+      }
+    );
+  }
+
+  private async showCourseContentDetails(item: CourseContentTreeItem): Promise<void> {
+    await this.courseContentWebviewProvider.show(
+      `Content: ${item.courseContent.title || item.courseContent.path}`,
+      {
+        courseContent: item.courseContent,
+        course: item.course,
+        contentType: item.contentType,
+        exampleInfo: item.exampleInfo,
+        isSubmittable: item.isSubmittable
+      }
+    );
+  }
+
+  private async showOrganizationDetails(item: OrganizationTreeItem): Promise<void> {
+    await this.organizationWebviewProvider.show(
+      `Organization: ${item.organization.title || item.organization.path}`,
+      {
+        organization: item.organization
+      }
+    );
+  }
+
+  private async showCourseFamilyDetails(item: CourseFamilyTreeItem): Promise<void> {
+    await this.courseFamilyWebviewProvider.show(
+      `Course Family: ${item.courseFamily.title || item.courseFamily.path}`,
+      {
+        courseFamily: item.courseFamily,
+        organization: item.organization
+      }
+    );
+  }
+
+  private async showCourseContentTypeDetails(item: CourseContentTypeTreeItem): Promise<void> {
+    // Get content kind info
+    let contentKind;
+    try {
+      const kinds = await this.apiService.getCourseContentKinds();
+      contentKind = kinds.find(k => k.id === item.contentType.course_content_kind_id);
+    } catch (error) {
+      console.error('Failed to get content kind:', error);
+    }
+
+    await this.courseContentTypeWebviewProvider.show(
+      `Content Type: ${item.contentType.title || item.contentType.slug}`,
+      {
+        contentType: item.contentType,
+        course: item.course,
+        contentKind
+      }
+    );
   }
 }

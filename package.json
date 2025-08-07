@@ -243,6 +243,36 @@
         "category": "Computor Lecturer"
       },
       {
+        "command": "computor.showCourseDetails",
+        "title": "Show Details",
+        "icon": "$(info)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.showCourseContentDetails",
+        "title": "Show Details",
+        "icon": "$(info)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.showOrganizationDetails",
+        "title": "Show Details",
+        "icon": "$(info)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.showCourseFamilyDetails",
+        "title": "Show Details",
+        "icon": "$(info)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.showCourseContentTypeDetails",
+        "title": "Show Details",
+        "icon": "$(info)",
+        "category": "Computor Lecturer"
+      },
+      {
         "command": "computor.renameCourseContent",
         "title": "Rename",
         "category": "Computor Lecturer"
@@ -485,6 +515,31 @@
           "command": "computor.unassignExample",
           "when": "view == computor.lecturerView && viewItem =~ /courseContent.*assignment.*hasExample/",
           "group": "4_example@1"
+        },
+        {
+          "command": "computor.showCourseDetails",
+          "when": "view == computor.lecturerView && viewItem == course",
+          "group": "5_details@1"
+        },
+        {
+          "command": "computor.showCourseContentDetails",
+          "when": "view == computor.lecturerView && viewItem =~ /courseContent/",
+          "group": "5_details@1"
+        },
+        {
+          "command": "computor.showOrganizationDetails",
+          "when": "view == computor.lecturerView && viewItem == organization",
+          "group": "5_details@1"
+        },
+        {
+          "command": "computor.showCourseFamilyDetails",
+          "when": "view == computor.lecturerView && viewItem == courseFamily",
+          "group": "5_details@1"
+        },
+        {
+          "command": "computor.showCourseContentTypeDetails",
+          "when": "view == computor.lecturerView && viewItem == courseContentType",
+          "group": "5_details@1"
         },
         {
           "command": "computor.openGitLabRepo",
