@@ -10,12 +10,16 @@ import { GitLabTokenManager } from './services/GitLabTokenManager';
 import { ExampleTreeProvider } from './ui/tree/examples/ExampleTreeProvider';
 import { ExampleCommands } from './commands/exampleCommands';
 import { ComputorApiService } from './services/ComputorApiService';
+import { IconGenerator } from './utils/iconGenerator';
 
 // Export the GitLab token manager for use by other components
 export let gitLabTokenManager: GitLabTokenManager;
 
 export function activate(context: vscode.ExtensionContext) {
   console.log('Computor VS Code Extension is now active!');
+
+  // Initialize Icon Generator
+  IconGenerator.initialize(context);
 
   // Initialize GitLab token manager (singleton - shared by all views)
   gitLabTokenManager = GitLabTokenManager.getInstance(context);
@@ -140,4 +144,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 export function deactivate() {
   console.log('Computor VS Code Extension is now deactivated!');
+  
+  // Cleanup generated icons
+  IconGenerator.cleanup();
 }

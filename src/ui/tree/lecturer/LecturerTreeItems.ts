@@ -7,6 +7,7 @@ import {
   CourseContentTypeList,
   ExampleList 
 } from '../../../types/generated';
+import { IconGenerator } from '../../../utils/iconGenerator';
 
 export class OrganizationTreeItem extends vscode.TreeItem {
   constructor(
@@ -206,7 +207,19 @@ export class CourseContentTypeTreeItem extends vscode.TreeItem {
     super(contentType.title || contentType.slug, vscode.TreeItemCollapsibleState.None);
     this.id = `contentType-${contentType.id}`;
     this.contextValue = 'courseContentType';
-    this.iconPath = new vscode.ThemeIcon('symbol-enum');
+    
+    // Use colored icon if color is available
+    if (contentType.color) {
+      try {
+        this.iconPath = IconGenerator.getColoredIcon(contentType.color, 'square');
+      } catch {
+        // Fallback to default icon if color generation fails
+        this.iconPath = new vscode.ThemeIcon('symbol-enum');
+      }
+    } else {
+      this.iconPath = new vscode.ThemeIcon('symbol-enum');
+    }
+    
     this.tooltip = `${contentType.title || contentType.slug}\nSlug: ${contentType.slug}`;
     
     // Show color as description if available
