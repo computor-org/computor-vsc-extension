@@ -64,7 +64,8 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     public readonly organization: OrganizationList,
     public readonly hasChildren: boolean,
     public readonly exampleInfo?: any,
-    public readonly contentType?: CourseContentTypeList
+    public readonly contentType?: CourseContentTypeList,
+    public readonly isSubmittable: boolean = false
   ) {
     super(
       courseContent.title || courseContent.path,
@@ -161,8 +162,8 @@ export class CourseContentTreeItem extends vscode.TreeItem {
       parts.push(`📦 ${versionText}`);
     }
     
-    // Show deployment status
-    if (this.courseContent.deployment_status) {
+    // Show deployment status only for submittable content (assignments)
+    if (this.isSubmittable && this.courseContent.deployment_status) {
       const statusIcons: { [key: string]: string } = {
         'pending': '⏳',
         'pending_release': '📤',

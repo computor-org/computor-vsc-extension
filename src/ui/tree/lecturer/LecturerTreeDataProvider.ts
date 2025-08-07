@@ -15,7 +15,8 @@ import {
   CourseContentCreate, 
   CourseContentUpdate, 
   CourseList,
-  CourseContentTypeList
+  CourseContentTypeList,
+  CourseContentKindList
 } from '../../../types/generated';
 
 type TreeItem = OrganizationTreeItem | CourseFamilyTreeItem | CourseTreeItem | CourseContentTreeItem | CourseFolderTreeItem | CourseContentTypeTreeItem | ExampleTreeItem;
@@ -30,6 +31,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   private coursesCache: Map<string, CourseList[]> = new Map();
   private courseContentTypesCache: Map<string, CourseContentTypeList[]> = new Map();
   private courseContentTypesById: Map<string, CourseContentTypeList> = new Map();
+  private courseContentKindsCache: Map<string, CourseContentKindList> = new Map();
 
   private examplesCache: Map<string, any> = new Map();
 
@@ -42,6 +44,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     this.courseContentsCache.clear();
     this.courseContentTypesCache.clear();
     this.courseContentTypesById.clear();
+    this.courseContentKindsCache.clear();
     this.examplesCache.clear();
     this._onDidChangeTreeData.fire();
   }
@@ -111,6 +114,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
             
             // Get content type info
             const contentType = this.courseContentTypesById.get(content.course_content_type_id);
+            const isSubmittable = this.isContentSubmittable(contentType);
             
             return new CourseContentTreeItem(
               content,
@@ -119,7 +123,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
               element.organization,
               hasChildren,
               exampleInfo,
-              contentType
+              contentType,
+              isSubmittable
             );
           }));
           
@@ -152,6 +157,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
           
           // Get content type info
           const contentType = this.courseContentTypesById.get(content.course_content_type_id);
+          const isSubmittable = this.isContentSubmittable(contentType);
           
           return new CourseContentTreeItem(
             content,
@@ -160,7 +166,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
             element.organization,
             hasChildren,
             exampleInfo,
-            contentType
+            contentType,
+            isSubmittable
           );
         }));
         
@@ -191,8 +198,20 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       types.forEach(type => {
         this.courseContentTypesById.set(type.id, type);
       });
+      
+      // Load content kinds if not already loaded
+      await this.loadContentKinds();
     }
     return this.courseContentTypesCache.get(courseId) || [];
+  }
+  
+  private async loadContentKinds(): Promise<void> {
+    if (this.courseContentKindsCache.size === 0) {
+      const kinds = await this.apiService.getCourseContentKinds();
+      kinds.forEach(kind => {
+        this.courseContentKindsCache.set(kind.id, kind);
+      });
+    }
   }
 
   private getRootContents(contents: CourseContentList[]): CourseContentList[] {
@@ -260,6 +279,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
           
           // Get content type info
           const contentType = this.courseContentTypesById.get(parentContent.course_content_type_id);
+          const isSubmittable = this.isContentSubmittable(contentType);
           
           return new CourseContentTreeItem(
             parentContent,
@@ -268,7 +288,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
             element.organization,
             hasChildren,
             exampleInfo,
-            contentType
+            contentType,
+            isSubmittable
           );
         }
       }
@@ -363,6 +384,13 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       const roots = this.getRootContents(contents);
       return roots.length + 1;
     }
+  }
+  
+  private isContentSubmittable(contentType?: CourseContentTypeList): boolean {
+    if (!contentType) return false;
+    
+    const kind = this.courseContentKindsCache.get(contentType.course_content_kind_id);
+    return kind?.submittable || false;
   }
 
   /**
