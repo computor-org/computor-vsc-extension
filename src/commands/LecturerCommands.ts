@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
 import { LecturerTreeDataProvider } from '../ui/tree/lecturer/LecturerTreeDataProvider';
-import { OrganizationTreeItem, CourseFamilyTreeItem, CourseTreeItem, CourseContentTreeItem, CourseFolderTreeItem, CourseContentTypeTreeItem } from '../ui/tree/lecturer/LecturerTreeItems';
+import { OrganizationTreeItem, CourseFamilyTreeItem, CourseTreeItem, CourseContentTreeItem, CourseFolderTreeItem, CourseContentTypeTreeItem, CourseGroupTreeItem } from '../ui/tree/lecturer/LecturerTreeItems';
 import { CourseGroupCommands } from './lecturer/courseGroupCommands';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { CourseWebviewProvider } from '../ui/webviews/CourseWebviewProvider';
@@ -10,6 +10,7 @@ import { CourseContentWebviewProvider } from '../ui/webviews/CourseContentWebvie
 import { OrganizationWebviewProvider } from '../ui/webviews/OrganizationWebviewProvider';
 import { CourseFamilyWebviewProvider } from '../ui/webviews/CourseFamilyWebviewProvider';
 import { CourseContentTypeWebviewProvider } from '../ui/webviews/CourseContentTypeWebviewProvider';
+import { CourseGroupWebviewProvider } from '../ui/webviews/CourseGroupWebviewProvider';
 
 export class LecturerCommands {
   private settingsManager: ComputorSettingsManager;
@@ -20,6 +21,7 @@ export class LecturerCommands {
   private organizationWebviewProvider: OrganizationWebviewProvider;
   private courseFamilyWebviewProvider: CourseFamilyWebviewProvider;
   private courseContentTypeWebviewProvider: CourseContentTypeWebviewProvider;
+  private courseGroupWebviewProvider: CourseGroupWebviewProvider;
   private courseGroupCommands: CourseGroupCommands;
 
   constructor(
@@ -34,6 +36,7 @@ export class LecturerCommands {
     this.organizationWebviewProvider = new OrganizationWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.courseFamilyWebviewProvider = new CourseFamilyWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.courseContentTypeWebviewProvider = new CourseContentTypeWebviewProvider(context, this.apiService, this.treeDataProvider);
+    this.courseGroupWebviewProvider = new CourseGroupWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.courseGroupCommands = new CourseGroupCommands(this.apiService, this.treeDataProvider);
   }
 
@@ -159,6 +162,12 @@ export class LecturerCommands {
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.showCourseContentTypeDetails', async (item: CourseContentTypeTreeItem) => {
         await this.showCourseContentTypeDetails(item);
+      })
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.showCourseGroupDetails', async (item: CourseGroupTreeItem) => {
+        await this.showCourseGroupDetails(item);
       })
     );
   }
@@ -765,5 +774,31 @@ export class LecturerCommands {
         contentKind
       }
     );
+  }
+
+  private async showCourseGroupDetails(item: CourseGroupTreeItem): Promise<void> {
+    try {
+      // Get detailed group information
+      const detailedGroup = await this.apiService.getCourseGroup(item.group.id);
+      if (!detailedGroup) {
+        vscode.window.showErrorMessage('Failed to load group details');
+        return;
+      }
+
+      // Get group members
+      const members = await this.apiService.getCourseMembers(item.course.id, item.group.id);
+
+      await this.courseGroupWebviewProvider.show(
+        `Group: ${item.group.title || item.group.id}`,
+        {
+          group: detailedGroup,
+          members: members,
+          courseTitle: item.course.title || item.course.path,
+          organizationTitle: item.organization.title || item.organization.path
+        }
+      );
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to show group details: ${error}`);
+    }
   }
 }
