@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { GitLabTokenManager } from '../../../services/GitLabTokenManager';
+import { ComputorSettingsManager } from '../../../settings/ComputorSettingsManager';
 import {
   OrganizationTreeItem,
   CourseFamilyTreeItem,
@@ -27,6 +28,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
 
   private apiService: ComputorApiService;
   private gitLabTokenManager: GitLabTokenManager;
+  private settingsManager: ComputorSettingsManager;
   private courseContentsCache: Map<string, CourseContentList[]> = new Map();
   private coursesCache: Map<string, CourseList[]> = new Map();
   private courseContentTypesCache: Map<string, CourseContentTypeList[]> = new Map();
@@ -34,10 +36,15 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   private courseContentKindsCache: Map<string, CourseContentKindList> = new Map();
 
   private examplesCache: Map<string, any> = new Map();
+  private expandedStates: Record<string, boolean> = {};
 
   constructor(context: vscode.ExtensionContext) {
     this.apiService = new ComputorApiService(context);
     this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
+    this.settingsManager = new ComputorSettingsManager(context);
+    
+    // Load expanded states on startup
+    this.loadExpandedStates();
   }
 
   refresh(): void {
@@ -54,6 +61,20 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   }
 
   getTreeItem(element: TreeItem): vscode.TreeItem {
+    // Create a new tree item with the correct expanded state
+    const nodeId = element.id;
+    if (nodeId && this.expandedStates[nodeId] && element.collapsibleState === vscode.TreeItemCollapsibleState.Collapsed) {
+      const expandedItem = new vscode.TreeItem(element.label || '', vscode.TreeItemCollapsibleState.Expanded);
+      expandedItem.id = element.id;
+      expandedItem.contextValue = element.contextValue;
+      expandedItem.iconPath = element.iconPath;
+      expandedItem.tooltip = element.tooltip;
+      expandedItem.description = element.description;
+      expandedItem.command = element.command;
+      expandedItem.resourceUri = element.resourceUri;
+      return expandedItem;
+    }
+    
     return element;
   }
 
@@ -442,5 +463,35 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     }
     
     return await this.gitLabTokenManager.ensureTokenForUrl(gitlabUrl);
+  }
+
+  /**
+   * Load expanded states from settings
+   */
+  private async loadExpandedStates(): Promise<void> {
+    try {
+      this.expandedStates = await this.settingsManager.getTreeExpandedStates();
+    } catch (error) {
+      console.error('Failed to load expanded states:', error);
+      this.expandedStates = {};
+    }
+  }
+
+
+  /**
+   * Set node expanded state
+   */
+  public async setNodeExpanded(nodeId: string, expanded: boolean): Promise<void> {
+    if (expanded) {
+      this.expandedStates[nodeId] = true;
+    } else {
+      delete this.expandedStates[nodeId];
+    }
+    
+    try {
+      await this.settingsManager.setNodeExpandedState(nodeId, expanded);
+    } catch (error) {
+      console.error('Failed to save node expanded state:', error);
+    }
   }
 }

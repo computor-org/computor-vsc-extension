@@ -112,6 +112,39 @@ export class ComputorSettingsManager {
     settings.workspace.gitlabTokens[instanceUrl] = token;
     await this.settingsStorage.save(settings);
   }
+
+  async getTreeExpandedStates(): Promise<Record<string, boolean>> {
+    const settings = await this.settingsStorage.load();
+    return settings.ui?.lecturerTree?.expandedStates || {};
+  }
+
+  async setTreeExpandedStates(states: Record<string, boolean>): Promise<void> {
+    const settings = await this.settingsStorage.load();
+    if (!settings.ui) {
+      settings.ui = { lecturerTree: { expandedStates: {} } };
+    }
+    if (!settings.ui.lecturerTree) {
+      settings.ui.lecturerTree = { expandedStates: {} };
+    }
+    settings.ui.lecturerTree.expandedStates = states;
+    await this.settingsStorage.save(settings);
+  }
+
+  async setNodeExpandedState(nodeId: string, expanded: boolean): Promise<void> {
+    const settings = await this.settingsStorage.load();
+    if (!settings.ui) {
+      settings.ui = { lecturerTree: { expandedStates: {} } };
+    }
+    if (!settings.ui.lecturerTree) {
+      settings.ui.lecturerTree = { expandedStates: {} };
+    }
+    if (expanded) {
+      settings.ui.lecturerTree.expandedStates[nodeId] = true;
+    } else {
+      delete settings.ui.lecturerTree.expandedStates[nodeId];
+    }
+    await this.settingsStorage.save(settings);
+  }
   
   async clearSettings(): Promise<void> {
     await this.settingsStorage.clear();
