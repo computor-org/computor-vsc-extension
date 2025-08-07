@@ -500,7 +500,7 @@
         },
         {
           "command": "computor.createCourseContent",
-          "when": "view == computor.lecturerView && viewItem =~ /courseContent/",
+          "when": "view == computor.lecturerView && viewItem =~ /courseContent\\.nonSubmittable/",
           "group": "1_content@1"
         },
         {
