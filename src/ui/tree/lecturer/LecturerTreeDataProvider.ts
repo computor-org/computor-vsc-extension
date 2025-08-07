@@ -30,6 +30,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   private coursesCache: Map<string, CourseList[]> = new Map();
   private courseContentTypesCache: Map<string, CourseContentTypeList[]> = new Map();
 
+  private examplesCache: Map<string, any> = new Map();
+
   constructor(context: vscode.ExtensionContext) {
     this.apiService = new ComputorApiService(context);
     this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
@@ -37,6 +39,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
 
   refresh(): void {
     this.courseContentsCache.clear();
+    this.examplesCache.clear();
     this._onDidChangeTreeData.fire();
   }
 
@@ -90,16 +93,27 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
           
           // Build tree structure from ltree paths
           const rootContents = this.getRootContents(contents);
-          return rootContents.map(content => {
+          
+          // Fetch example info for contents that have examples
+          const contentItems = await Promise.all(rootContents.map(async content => {
             const hasChildren = this.hasChildContents(content, contents);
+            let exampleInfo = null;
+            
+            if (content.example_id) {
+              exampleInfo = await this.getExampleInfo(content.example_id);
+            }
+            
             return new CourseContentTreeItem(
               content,
               element.course,
               element.courseFamily,
               element.organization,
-              hasChildren
+              hasChildren,
+              exampleInfo
             );
-          });
+          }));
+          
+          return contentItems;
         } else {
           // Show course content types
           const contentTypes = await this.getCourseContentTypes(element.course.id);
@@ -117,16 +131,26 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         const allContents = await this.getCourseContents(element.course.id);
         const childContents = this.getChildContents(element.courseContent, allContents);
         
-        return childContents.map(content => {
+        // Fetch example info for child contents
+        const childItems = await Promise.all(childContents.map(async content => {
           const hasChildren = this.hasChildContents(content, allContents);
+          let exampleInfo = null;
+          
+          if (content.example_id) {
+            exampleInfo = await this.getExampleInfo(content.example_id);
+          }
+          
           return new CourseContentTreeItem(
             content,
             element.course,
             element.courseFamily,
             element.organization,
-            hasChildren
+            hasChildren,
+            exampleInfo
           );
-        });
+        }));
+        
+        return childItems;
       }
 
       return [];
@@ -209,12 +233,19 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         
         if (parentContent) {
           const hasChildren = this.hasChildContents(parentContent, allContents);
+          let exampleInfo = null;
+          
+          if (parentContent.example_id) {
+            exampleInfo = await this.getExampleInfo(parentContent.example_id);
+          }
+          
           return new CourseContentTreeItem(
             parentContent,
             element.course,
             element.courseFamily,
             element.organization,
-            hasChildren
+            hasChildren,
+            exampleInfo
           );
         }
       }
@@ -224,10 +255,20 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   }
 
   // Helper methods for course content management
-  async createCourseContent(folderItem: CourseFolderTreeItem, title: string, contentTypeId: string, parentPath?: string): Promise<void> {
+  async createCourseContent(folderItem: CourseFolderTreeItem, title: string, contentTypeId: string, parentPath?: string, slug?: string): Promise<void> {
     try {
       const position = await this.getNextPosition(folderItem.course.id, parentPath);
-      const path = parentPath ? `${parentPath}.${position}` : `${position}`;
+      
+      // Use slug if provided, otherwise fall back to position number
+      const pathSegment = slug || `item${position}`;
+      const path = parentPath ? `${parentPath}.${pathSegment}` : pathSegment;
+      
+      // Check if path already exists
+      const existingContents = await this.getCourseContents(folderItem.course.id);
+      if (existingContents.some(c => c.path === path)) {
+        vscode.window.showErrorMessage(`A content item with path '${path}' already exists. Please use a different slug.`);
+        return;
+      }
       
       const contentData: CourseContentCreate = {
         title,
@@ -241,7 +282,17 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       
       // Clear cache and refresh
       this.courseContentsCache.delete(folderItem.course.id);
-      this.refreshNode(folderItem);
+      
+      // If creating under a parent, refresh the parent node
+      if (parentPath) {
+        const parentContent = existingContents.find(c => c.path === parentPath);
+        if (parentContent) {
+          // Don't need to create new item, just refresh
+          this.refreshNode();
+        }
+      } else {
+        this.refreshNode(folderItem);
+      }
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to create course content: ${error}`);
     }
@@ -294,6 +345,25 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   /**
    * Ensure we have GitLab tokens for all unique GitLab instances in courses
    */
+  private async getExampleInfo(exampleId: string): Promise<any> {
+    // Check cache first
+    if (this.examplesCache.has(exampleId)) {
+      return this.examplesCache.get(exampleId);
+    }
+    
+    try {
+      const example = await this.apiService.getExample(exampleId);
+      if (example) {
+        this.examplesCache.set(exampleId, example);
+        return example;
+      }
+    } catch (error) {
+      console.error(`Failed to fetch example ${exampleId}:`, error);
+    }
+    
+    return null;
+  }
+
   private async ensureGitLabTokensForCourses(courses: CourseList[]): Promise<void> {
     const gitlabUrls = new Set<string>();
     

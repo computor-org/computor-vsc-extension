@@ -103,9 +103,7 @@ export class ComputorApiService {
 
   async getCourseContents(courseId: string): Promise<CourseContentList[]> {
     const client = await this.getHttpClient();
-    const response = await client.get<CourseContentList[]>('/course-contents', {
-      course_id: courseId
-    });
+    const response = await client.get<CourseContentList[]>(`/course-contents?course_id=${courseId}`);
     return response.data;
   }
 
@@ -117,7 +115,7 @@ export class ComputorApiService {
 
   async updateCourseContent(courseId: string, contentId: string, content: CourseContentUpdate): Promise<CourseContentGet> {
     const client = await this.getHttpClient();
-    const response = await client.put<CourseContentGet>(`/course-contents/${contentId}`, content);
+    const response = await client.patch<CourseContentGet>(`/course-contents/${contentId}`, content);
     return response.data;
   }
 
@@ -134,9 +132,7 @@ export class ComputorApiService {
 
   async getCourseContentTypes(courseId: string): Promise<CourseContentTypeList[]> {
     const client = await this.getHttpClient();
-    const response = await client.get<CourseContentTypeList[]>('/course-content-types', {
-      course_id: courseId
-    });
+    const response = await client.get<CourseContentTypeList[]>(`/course-content-types?course_id=${courseId}`);
     return response.data;
   }
 
@@ -148,7 +144,7 @@ export class ComputorApiService {
 
   async updateCourseContentType(typeId: string, contentType: CourseContentTypeUpdate): Promise<CourseContentTypeGet> {
     const client = await this.getHttpClient();
-    const response = await client.put<CourseContentTypeGet>(`/course-content-types/${typeId}`, contentType);
+    const response = await client.patch<CourseContentTypeGet>(`/course-content-types/${typeId}`, contentType);
     return response.data;
   }
 
@@ -249,13 +245,13 @@ export class ComputorApiService {
     contentId: string, 
     exampleId: string, 
     exampleVersion?: string
-  ): Promise<CourseContentGet> {
+  ): Promise<any> {
     const client = await this.getHttpClient();
-    const response = await client.patch<CourseContentGet>(
-      `/course-contents/${contentId}`,
+    const response = await client.post(
+      `/course-contents/${contentId}/assign-example`,
       {
         example_id: exampleId,
-        example_version: exampleVersion
+        example_version: exampleVersion || 'latest'
       }
     );
     return response.data;
@@ -270,6 +266,45 @@ export class ComputorApiService {
         example_version: null
       }
     );
+    return response.data;
+  }
+
+  async generateStudentTemplate(courseId: string): Promise<{ task_id: string }> {
+    const client = await this.getHttpClient();
+    const response = await client.post<{ task_id: string }>(
+      `/system/courses/${courseId}/generate-student-template`,
+      {}
+    );
+    return response.data;
+  }
+
+  async getTaskStatus(taskId: string): Promise<any> {
+    const client = await this.getHttpClient();
+    const response = await client.get(`/tasks/${taskId}/status`);
+    return response.data;
+  }
+
+  async getAvailableExamples(courseId: string, params?: {
+    search?: string;
+    category?: string;
+    language?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<any> {
+    const client = await this.getHttpClient();
+    const queryParams = new URLSearchParams();
+    
+    if (params?.search) queryParams.append('search', params.search);
+    if (params?.category) queryParams.append('category', params.category);
+    if (params?.language) queryParams.append('language', params.language);
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.offset) queryParams.append('offset', params.offset.toString());
+    
+    const url = queryParams.toString() 
+      ? `/examples?${queryParams.toString()}`
+      : '/examples';
+    
+    const response = await client.get(url);
     return response.data;
   }
 }
