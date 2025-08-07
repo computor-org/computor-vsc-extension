@@ -92,6 +92,19 @@ export function activate(context: vscode.ExtensionContext) {
   });
   context.subscriptions.push(lecturerTreeView);
 
+  // Listen to tree view expansion/collapse events
+  lecturerTreeView.onDidExpandElement((e) => {
+    if (e.element.id) {
+      lecturerTreeDataProvider.setNodeExpanded(e.element.id, true);
+    }
+  });
+
+  lecturerTreeView.onDidCollapseElement((e) => {
+    if (e.element.id) {
+      lecturerTreeDataProvider.setNodeExpanded(e.element.id, false);
+    }
+  });
+
   // Register lecturer commands
   const lecturerCommands = new LecturerCommands(context, lecturerTreeDataProvider);
   lecturerCommands.registerCommands();
