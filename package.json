@@ -237,6 +237,12 @@
         "category": "Computor Lecturer"
       },
       {
+        "command": "computor.createCourseContentType",
+        "title": "Create Content Type",
+        "icon": "$(add)",
+        "category": "Computor Lecturer"
+      },
+      {
         "command": "computor.renameCourseContent",
         "title": "Rename",
         "category": "Computor Lecturer"
@@ -447,12 +453,17 @@
         },
         {
           "command": "computor.createCourseContent",
-          "when": "view == computor.lecturerView && viewItem =~ /course/",
+          "when": "view == computor.lecturerView && viewItem =~ /course\\.contents/",
           "group": "1_content@1"
         },
         {
           "command": "computor.createCourseContent",
           "when": "view == computor.lecturerView && viewItem =~ /courseContent/",
+          "group": "1_content@1"
+        },
+        {
+          "command": "computor.createCourseContentType",
+          "when": "view == computor.lecturerView && viewItem == course.contentTypes",
           "group": "1_content@1"
         },
         {
