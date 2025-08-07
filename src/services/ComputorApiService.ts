@@ -6,6 +6,8 @@ import {
   OrganizationList,
   CourseFamilyList,
   CourseList,
+  CourseGet,
+  CourseUpdate,
   CourseContentList,
   CourseContentGet,
   CourseContentCreate,
@@ -85,6 +87,12 @@ export class ComputorApiService {
     return response.data;
   }
 
+  async updateOrganization(organizationId: string, updates: any): Promise<any> {
+    const client = await this.getHttpClient();
+    const response = await client.patch(`/organizations/${organizationId}`, updates);
+    return response.data;
+  }
+
   async getCourseFamilies(organizationId: string): Promise<CourseFamilyList[]> {
     const client = await this.getHttpClient();
     const response = await client.get<CourseFamilyList[]>('/course-families', {
@@ -93,11 +101,34 @@ export class ComputorApiService {
     return response.data;
   }
 
+  async updateCourseFamily(familyId: string, updates: any): Promise<any> {
+    const client = await this.getHttpClient();
+    const response = await client.patch(`/course-families/${familyId}`, updates);
+    return response.data;
+  }
+
   async getCourses(courseFamilyId: string): Promise<CourseList[]> {
     const client = await this.getHttpClient();
     const response = await client.get<CourseList[]>('/courses', {
       course_family_id: courseFamilyId
     });
+    return response.data;
+  }
+
+  async getCourse(courseId: string): Promise<CourseGet | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<CourseGet>(`/courses/${courseId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to get course:', error);
+      return undefined;
+    }
+  }
+
+  async updateCourse(courseId: string, updates: CourseUpdate): Promise<CourseGet> {
+    const client = await this.getHttpClient();
+    const response = await client.patch<CourseGet>(`/courses/${courseId}`, updates);
     return response.data;
   }
 
