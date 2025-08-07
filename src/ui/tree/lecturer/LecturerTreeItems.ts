@@ -281,7 +281,7 @@ export class CourseGroupTreeItem extends vscode.TreeItem {
     );
     this.id = `group-${group.id}`;
     this.contextValue = 'course.group';
-    this.iconPath = new vscode.ThemeIcon('people');
+    this.iconPath = new vscode.ThemeIcon('symbol-array');
     this.tooltip = `Group: ${group.title || group.id}\nMembers: ${memberCount}`;
     this.description = memberCount > 0 ? `${memberCount} members` : 'No members';
   }

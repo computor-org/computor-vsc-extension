@@ -3,6 +3,7 @@ import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
 import { LecturerTreeDataProvider } from '../ui/tree/lecturer/LecturerTreeDataProvider';
 import { OrganizationTreeItem, CourseFamilyTreeItem, CourseTreeItem, CourseContentTreeItem, CourseFolderTreeItem, CourseContentTypeTreeItem } from '../ui/tree/lecturer/LecturerTreeItems';
+import { CourseGroupCommands } from './lecturer/courseGroupCommands';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { CourseWebviewProvider } from '../ui/webviews/CourseWebviewProvider';
 import { CourseContentWebviewProvider } from '../ui/webviews/CourseContentWebviewProvider';
@@ -19,6 +20,7 @@ export class LecturerCommands {
   private organizationWebviewProvider: OrganizationWebviewProvider;
   private courseFamilyWebviewProvider: CourseFamilyWebviewProvider;
   private courseContentTypeWebviewProvider: CourseContentTypeWebviewProvider;
+  private courseGroupCommands: CourseGroupCommands;
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -32,6 +34,7 @@ export class LecturerCommands {
     this.organizationWebviewProvider = new OrganizationWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.courseFamilyWebviewProvider = new CourseFamilyWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.courseContentTypeWebviewProvider = new CourseContentTypeWebviewProvider(context, this.apiService, this.treeDataProvider);
+    this.courseGroupCommands = new CourseGroupCommands(this.apiService, this.treeDataProvider);
   }
 
   registerCommands(): void {
@@ -60,6 +63,13 @@ export class LecturerCommands {
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.createCourseContentType', async (item: CourseFolderTreeItem) => {
         await this.createCourseContentType(item);
+      })
+    );
+
+    // Course group management
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.createCourseGroup', async (item: CourseFolderTreeItem) => {
+        await this.courseGroupCommands.createCourseGroup(item);
       })
     );
 

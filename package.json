@@ -243,6 +243,12 @@
         "category": "Computor Lecturer"
       },
       {
+        "command": "computor.createCourseGroup",
+        "title": "Create Course Group",
+        "icon": "$(add)",
+        "category": "Computor Lecturer"
+      },
+      {
         "command": "computor.showCourseDetails",
         "title": "Show Details",
         "icon": "$(info)",
@@ -494,6 +500,11 @@
         {
           "command": "computor.createCourseContentType",
           "when": "view == computor.lecturerView && viewItem == course.contentTypes",
+          "group": "1_content@1"
+        },
+        {
+          "command": "computor.createCourseGroup",
+          "when": "view == computor.lecturerView && viewItem == course.groups",
           "group": "1_content@1"
         },
         {

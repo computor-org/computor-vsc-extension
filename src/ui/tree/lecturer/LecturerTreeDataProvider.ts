@@ -75,6 +75,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   private clearCourseCache(courseId: string): void {
     this.courseContentsCache.delete(courseId);
     this.courseContentTypesCache.delete(courseId);
+    this.courseGroupsCache.delete(courseId);
+    this.courseMembersCache.delete(courseId);
     
     // Clear content types by ID cache for this course
     const typesToDelete: string[] = [];
@@ -84,6 +86,15 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       }
     }
     typesToDelete.forEach(id => this.courseContentTypesById.delete(id));
+    
+    // Clear course members cache for this course (including group-specific caches)
+    const memberKeysToDelete: string[] = [];
+    for (const [cacheKey] of this.courseMembersCache.entries()) {
+      if (cacheKey === courseId || cacheKey.startsWith(`${courseId}-`)) {
+        memberKeysToDelete.push(cacheKey);
+      }
+    }
+    memberKeysToDelete.forEach(key => this.courseMembersCache.delete(key));
   }
 
   /**
@@ -178,6 +189,22 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         }
         if (relatedIds?.courseId) {
           this.courseContentTypesCache.delete(relatedIds.courseId);
+        }
+        break;
+        
+      case 'courseGroup':
+        // Clear course group and member caches
+        if (relatedIds?.courseId) {
+          this.courseGroupsCache.delete(relatedIds.courseId);
+          
+          // Clear course members cache for this course (including group-specific caches)
+          const memberKeysToDelete: string[] = [];
+          for (const [cacheKey] of this.courseMembersCache.entries()) {
+            if (cacheKey === relatedIds.courseId || cacheKey.startsWith(`${relatedIds.courseId}-`)) {
+              memberKeysToDelete.push(cacheKey);
+            }
+          }
+          memberKeysToDelete.forEach(key => this.courseMembersCache.delete(key));
         }
         break;
     }

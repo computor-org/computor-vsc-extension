@@ -350,6 +350,15 @@ export class ComputorApiService {
     return response.data;
   }
 
+  async createCourseGroup(courseId: string, title: string): Promise<CourseGroupGet> {
+    const client = await this.getHttpClient();
+    const response = await client.post<CourseGroupGet>('/course-groups', {
+      course_id: courseId,
+      title: title
+    });
+    return response.data;
+  }
+
   async getCourseGroup(groupId: string): Promise<CourseGroupGet | undefined> {
     try {
       const client = await this.getHttpClient();
