@@ -21,7 +21,11 @@ import {
   ExampleRepositoryList,
   ExampleRepositoryGet,
   ExampleGet,
-  ExampleDownloadResponse
+  ExampleDownloadResponse,
+  CourseGroupList,
+  CourseGroupGet,
+  CourseMemberList,
+  CourseMemberGet
 } from '../types/generated';
 
 // Query interface for examples (not generated yet)
@@ -337,5 +341,47 @@ export class ComputorApiService {
     
     const response = await client.get(url);
     return response.data;
+  }
+
+  // Course Groups API methods
+  async getCourseGroups(courseId: string): Promise<CourseGroupList[]> {
+    const client = await this.getHttpClient();
+    const response = await client.get<CourseGroupList[]>(`/course-groups?course_id=${courseId}`);
+    return response.data;
+  }
+
+  async getCourseGroup(groupId: string): Promise<CourseGroupGet | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<CourseGroupGet>(`/course-groups/${groupId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to get course group:', error);
+      return undefined;
+    }
+  }
+
+  // Course Members API methods
+  async getCourseMembers(courseId: string, groupId?: string): Promise<CourseMemberList[]> {
+    const client = await this.getHttpClient();
+    const queryParams = new URLSearchParams();
+    queryParams.append('course_id', courseId);
+    if (groupId) {
+      queryParams.append('course_group_id', groupId);
+    }
+    
+    const response = await client.get<CourseMemberList[]>(`/course-members?${queryParams.toString()}`);
+    return response.data;
+  }
+
+  async getCourseMember(memberId: string): Promise<CourseMemberGet | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<CourseMemberGet>(`/course-members/${memberId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to get course member:', error);
+      return undefined;
+    }
   }
 }
