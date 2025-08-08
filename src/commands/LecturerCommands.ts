@@ -11,6 +11,7 @@ import { OrganizationWebviewProvider } from '../ui/webviews/OrganizationWebviewP
 import { CourseFamilyWebviewProvider } from '../ui/webviews/CourseFamilyWebviewProvider';
 import { CourseContentTypeWebviewProvider } from '../ui/webviews/CourseContentTypeWebviewProvider';
 import { CourseGroupWebviewProvider } from '../ui/webviews/CourseGroupWebviewProvider';
+import { ExampleGet } from '../types/generated/examples';
 
 export class LecturerCommands {
   private settingsManager: ComputorSettingsManager;
@@ -327,10 +328,10 @@ export class LecturerCommands {
 
       // Create quick pick items with better formatting
       interface ExampleQuickPickItem extends vscode.QuickPickItem {
-        example: any;
+        example: ExampleGet;
       }
       
-      const quickPickItems: ExampleQuickPickItem[] = examples.map((example: any) => ({
+      const quickPickItems: ExampleQuickPickItem[] = examples.map((example: ExampleGet) => ({
         label: example.title,
         description: [
           example.identifier && `🔖 ${example.identifier}`,

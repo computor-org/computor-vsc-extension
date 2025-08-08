@@ -2,9 +2,14 @@ import * as vscode from 'vscode';
 import { JwtHttpClient } from '../http/JwtHttpClient';
 import { ComputorAuthenticationProvider } from '../authentication/ComputorAuthenticationProvider';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
+import { ComputorAuthenticationSession } from '../types/AuthenticationTypes';
 import {
   OrganizationList,
+  OrganizationGet,
+  OrganizationUpdate,
   CourseFamilyList,
+  CourseFamilyGet,
+  CourseFamilyUpdate,
   CourseList,
   CourseGet,
   CourseUpdate,
@@ -21,11 +26,13 @@ import {
   ExampleRepositoryList,
   ExampleRepositoryGet,
   ExampleGet,
+  ExampleUploadRequest,
   ExampleDownloadResponse,
   CourseGroupList,
   CourseGroupGet,
   CourseMemberList,
-  CourseMemberGet
+  CourseMemberGet,
+  TaskResponse
 } from '../types/generated';
 
 // Query interface for examples (not generated yet)
@@ -56,7 +63,7 @@ export class ComputorApiService {
         throw new Error('Not authenticated. Please sign in first.');
       }
 
-      const authHeaders = ComputorAuthenticationProvider.getAuthHeaders(sessions as any);
+      const authHeaders = ComputorAuthenticationProvider.getAuthHeaders(sessions as ComputorAuthenticationSession);
       
       // For now, use a dummy Keycloak config since we're using token auth
       const keycloakConfig = {
@@ -91,7 +98,7 @@ export class ComputorApiService {
     return response.data;
   }
 
-  async updateOrganization(organizationId: string, updates: any): Promise<any> {
+  async updateOrganization(organizationId: string, updates: OrganizationUpdate): Promise<OrganizationGet> {
     const client = await this.getHttpClient();
     const response = await client.patch(`/organizations/${organizationId}`, updates);
     return response.data;
@@ -105,7 +112,7 @@ export class ComputorApiService {
     return response.data;
   }
 
-  async updateCourseFamily(familyId: string, updates: any): Promise<any> {
+  async updateCourseFamily(familyId: string, updates: CourseFamilyUpdate): Promise<CourseFamilyGet> {
     const client = await this.getHttpClient();
     const response = await client.patch(`/course-families/${familyId}`, updates);
     return response.data;
@@ -264,7 +271,7 @@ export class ComputorApiService {
     }
   }
 
-  async uploadExample(uploadRequest: { repository_id: string; directory: string; files: { [key: string]: string } }): Promise<any> {
+  async uploadExample(uploadRequest: ExampleUploadRequest): Promise<ExampleGet> {
     try {
       const client = await this.getHttpClient();
       const response = await client.post('/examples/upload', uploadRequest);
@@ -280,52 +287,20 @@ export class ComputorApiService {
     contentId: string, 
     exampleId: string, 
     exampleVersion?: string
-  ): Promise<any> {
-    try {
-      console.log('[API] assignExampleToCourseContent called with:', {
-        courseId,
-        contentId,
-        exampleId,
-        exampleVersion: exampleVersion || 'latest'
-      });
-      
-      const client = await this.getHttpClient();
-      console.log('[API] HTTP client obtained, making request...');
-      
-      const requestData = {
-        example_id: exampleId,
-        example_version: exampleVersion || 'latest'
-      };
-      console.log('[API] Request data:', requestData);
-      console.log('[API] Request URL:', `/course-contents/${contentId}/assign-example`);
-      
-      const response = await client.post(
-        `/course-contents/${contentId}/assign-example`,
-        requestData
-      );
-      
-      console.log('[API] Response received:', {
-        status: response.status,
-        statusText: response.statusText,
-        data: response.data
-      });
-      
-      return response.data;
-    } catch (error: any) {
-      console.error('[API] assignExampleToCourseContent failed:', error);
-      console.error('[API] Error details:', {
-        message: error.message,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
-        config: {
-          method: error.config?.method,
-          url: error.config?.url,
-          data: error.config?.data
-        }
-      });
-      throw error;
-    }
+  ): Promise<CourseContentGet> {
+    const client = await this.getHttpClient();
+    
+    const requestData = {
+      example_id: exampleId,
+      example_version: exampleVersion || 'latest'
+    };
+    
+    const response = await client.post(
+      `/course-contents/${contentId}/assign-example`,
+      requestData
+    );
+    
+    return response.data;
   }
 
   async unassignExampleFromCourseContent(courseId: string, contentId: string): Promise<CourseContentGet> {
@@ -349,7 +324,7 @@ export class ComputorApiService {
     return response.data;
   }
 
-  async getTaskStatus(taskId: string): Promise<any> {
+  async getTaskStatus(taskId: string): Promise<TaskResponse> {
     const client = await this.getHttpClient();
     const response = await client.get(`/tasks/${taskId}/status`);
     return response.data;
@@ -361,7 +336,7 @@ export class ComputorApiService {
     language?: string;
     limit?: number;
     offset?: number;
-  }): Promise<any> {
+  }): Promise<ExampleGet[]> {
     const client = await this.getHttpClient();
     const queryParams = new URLSearchParams();
     
