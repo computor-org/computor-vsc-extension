@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { GitLabTokenManager } from '../../../services/GitLabTokenManager';
 import { ComputorSettingsManager } from '../../../settings/ComputorSettingsManager';
+import { errorRecoveryService } from '../../../services/ErrorRecoveryService';
 import {
   OrganizationTreeItem,
   CourseFamilyTreeItem,
@@ -323,8 +324,16 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   async getChildren(element?: TreeItem): Promise<TreeItem[]> {
     try {
       if (!element) {
-        // Root level - show organizations
-        const organizations = await this.apiService.getOrganizations();
+        // Root level - show organizations with error recovery
+        const organizations = await errorRecoveryService.executeWithRecovery(
+          () => this.apiService.getOrganizations(),
+          { 
+            maxRetries: 3,
+            onRetry: (attempt) => {
+              vscode.window.showInformationMessage(`Retrying connection... (attempt ${attempt})`);
+            }
+          }
+        );
         return organizations.map(org => new OrganizationTreeItem(org));
       }
 
