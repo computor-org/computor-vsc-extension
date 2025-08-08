@@ -395,30 +395,6 @@ export class ComputorApiService {
     this.invalidateCachePattern('courseContentTypes-');
   }
 
-  async getExampleRepositories(): Promise<ExampleRepositoryList[]> {
-    const cacheKey = 'exampleRepositories';
-    
-    // Check cache first
-    const cached = multiTierCache.get<ExampleRepositoryList[]>(cacheKey);
-    if (cached) {
-      return cached;
-    }
-    
-    // Fetch with error recovery
-    const result = await errorRecoveryService.executeWithRecovery(async () => {
-      const client = await this.getHttpClient();
-      const response = await client.get<ExampleRepositoryList[]>('/example-repositories');
-      return response.data;
-    }, {
-      maxRetries: 3,
-      exponentialBackoff: true
-    });
-    
-    // Cache in cold tier (repositories rarely change)
-    multiTierCache.set(cacheKey, result, 'cold');
-    
-    return result;
-  }
 
   async getExampleRepository(repositoryId: string): Promise<ExampleRepositoryGet | undefined> {
     const cacheKey = `exampleRepository-${repositoryId}`;
@@ -448,59 +424,6 @@ export class ComputorApiService {
     }
   }
 
-  async getExamples(query?: ExampleQuery): Promise<ExampleList[] | undefined> {
-    // Create cache key from query parameters
-    const cacheKey = `examples-${JSON.stringify(query || {})}`;
-    
-    // Check cache first (hot tier for frequently accessed examples)
-    const cached = multiTierCache.get<ExampleList[]>(cacheKey);
-    if (cached) {
-      return cached;
-    }
-    
-    try {
-      const result = await errorRecoveryService.executeWithRecovery(async () => {
-        const client = await this.getHttpClient();
-        const params = new URLSearchParams();
-        
-        if (query?.repository_id) {
-          params.append('repository_id', query.repository_id);
-        }
-        if (query?.identifier) {
-          params.append('identifier', query.identifier);
-        }
-        if (query?.title) {
-          params.append('title', query.title);
-        }
-        if (query?.category) {
-          params.append('category', query.category);
-        }
-        if (query?.tags && query.tags.length > 0) {
-          query.tags.forEach(tag => params.append('tags', tag));
-        }
-        if (query?.search) {
-          params.append('search', query.search);
-        }
-        if (query?.directory) {
-          params.append('directory', query.directory);
-        }
-        
-        const url = params.toString() ? `/examples?${params.toString()}` : '/examples';
-        const response = await client.get<ExampleList[]>(url);
-        return response.data;
-      }, {
-        maxRetries: 2,
-        exponentialBackoff: true
-      });
-      
-      // Cache in hot tier for frequently accessed queries
-      multiTierCache.set(cacheKey, result, 'hot');
-      return result;
-    } catch (error) {
-      console.error('Failed to get examples:', error);
-      return undefined;
-    }
-  }
 
   async getExample(exampleId: string): Promise<ExampleGet | undefined> {
     const cacheKey = `example-${exampleId}`;
@@ -979,6 +902,204 @@ export class ComputorApiService {
       return result || [];
     } catch (error) {
       console.error('Failed to get student submission groups:', error);
+      return [];
+    }
+  }
+
+  async getExampleRepositories(organizationId?: string): Promise<ExampleRepositoryList[]> {
+    const queryParams = organizationId ? `?organization_id=${organizationId}` : '';
+    const cacheKey = `exampleRepositories-${organizationId || 'all'}`;
+    
+    // Check cache first
+    const cached = multiTierCache.get<ExampleRepositoryList[]>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const response = await client.get<ExampleRepositoryList[]>(`/example-repositories${queryParams}`);
+        return response.data;
+      }, {
+        maxRetries: 2,
+        exponentialBackoff: true
+      });
+      
+      // Cache in cold tier (repositories rarely change)
+      multiTierCache.set(cacheKey, result, 'cold');
+      return result || [];
+    } catch (error) {
+      console.error('Failed to get example repositories:', error);
+      return [];
+    }
+  }
+
+  async getExamples(repositoryId?: string): Promise<ExampleList[]> {
+    const query: ExampleQuery = repositoryId ? { repository_id: repositoryId } : {};
+    const cacheKey = `examples-${JSON.stringify(query)}`;
+    
+    // Check cache first
+    const cached = multiTierCache.get<ExampleList[]>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const params = new URLSearchParams();
+        
+        if (query.repository_id) {
+          params.append('repository_id', query.repository_id);
+        }
+        if (query.identifier) {
+          params.append('identifier', query.identifier);
+        }
+        if (query.title) {
+          params.append('title', query.title);
+        }
+        if (query.category) {
+          params.append('category', query.category);
+        }
+        if (query.tags && query.tags.length > 0) {
+          query.tags.forEach(tag => params.append('tags', tag));
+        }
+        if (query.search) {
+          params.append('search', query.search);
+        }
+        if (query.directory) {
+          params.append('directory', query.directory);
+        }
+        
+        const url = params.toString() ? `/examples?${params.toString()}` : '/examples';
+        const response = await client.get<ExampleList[]>(url);
+        return response.data;
+      }, {
+        maxRetries: 2,
+        exponentialBackoff: true
+      });
+      
+      // Cache in hot tier for frequently accessed queries
+      multiTierCache.set(cacheKey, result, 'hot');
+      return result || [];
+    } catch (error) {
+      console.error('Failed to get examples:', error);
+      return [];
+    }
+  }
+
+  // Tutor API methods
+  async getTutorCourses(): Promise<any[]> {
+    const cacheKey = 'tutorCourses';
+    
+    // Check cache first
+    const cached = multiTierCache.get<any[]>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        // For now use regular courses endpoint - this might need to be updated when tutor endpoint is available
+        const response = await client.get<any[]>('/courses');
+        return response.data;
+      }, {
+        maxRetries: 2,
+        exponentialBackoff: true
+      });
+      
+      // Cache in warm tier
+      multiTierCache.set(cacheKey, result, 'warm');
+      return result;
+    } catch (error) {
+      console.error('Failed to get tutor courses:', error);
+      return [];
+    }
+  }
+
+  async getExampleRepositories(organizationId?: string): Promise<ExampleRepositoryList[]> {
+    const queryParams = organizationId ? `?organization_id=${organizationId}` : '';
+    const cacheKey = `exampleRepositories-${organizationId || 'all'}`;
+    
+    // Check cache first
+    const cached = multiTierCache.get<ExampleRepositoryList[]>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const response = await client.get<ExampleRepositoryList[]>(`/example-repositories${queryParams}`);
+        return response.data;
+      }, {
+        maxRetries: 2,
+        exponentialBackoff: true
+      });
+      
+      // Cache in cold tier (repositories rarely change)
+      multiTierCache.set(cacheKey, result, 'cold');
+      return result || [];
+    } catch (error) {
+      console.error('Failed to get example repositories:', error);
+      return [];
+    }
+  }
+
+  async getExamples(repositoryId?: string): Promise<ExampleList[]> {
+    const query: ExampleQuery = repositoryId ? { repository_id: repositoryId } : {};
+    
+    // Create cache key from query parameters
+    const cacheKey = `examples-${JSON.stringify(query)}`;
+    
+    // Check cache first (hot tier for frequently accessed examples)
+    const cached = multiTierCache.get<ExampleList[]>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const params = new URLSearchParams();
+        
+        if (query.repository_id) {
+          params.append('repository_id', query.repository_id);
+        }
+        if (query.identifier) {
+          params.append('identifier', query.identifier);
+        }
+        if (query.title) {
+          params.append('title', query.title);
+        }
+        if (query.category) {
+          params.append('category', query.category);
+        }
+        if (query.tags && query.tags.length > 0) {
+          query.tags.forEach(tag => params.append('tags', tag));
+        }
+        if (query.search) {
+          params.append('search', query.search);
+        }
+        if (query.directory) {
+          params.append('directory', query.directory);
+        }
+        
+        const url = params.toString() ? `/examples?${params.toString()}` : '/examples';
+        const response = await client.get<ExampleList[]>(url);
+        return response.data;
+      }, {
+        maxRetries: 2,
+        exponentialBackoff: true
+      });
+      
+      // Cache in hot tier for frequently accessed queries
+      multiTierCache.set(cacheKey, result, 'hot');
+      return result || [];
+    } catch (error) {
+      console.error('Failed to get examples:', error);
       return [];
     }
   }
