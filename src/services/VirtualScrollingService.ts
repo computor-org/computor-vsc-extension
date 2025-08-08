@@ -67,7 +67,7 @@ export class VirtualScrollingService<T> {
       
       if (page && page.items.length > 0) {
         const pageStartIndex = pageNum * pageSize;
-        const pageEndIndex = pageStartIndex + page.items.length;
+        void (pageStartIndex + page.items.length); // pageEndIndex - not used
         
         // Calculate which items from this page we need
         const itemStartIndex = Math.max(0, startIndex - pageStartIndex);
@@ -279,7 +279,8 @@ export class VirtualScrollingService<T> {
       getChildren: async (element?: TItem): Promise<TItem[] | undefined> => {
         if (!element) {
           // Root level - use original provider
-          return originalProvider.getChildren?.(element);
+          const result = await originalProvider.getChildren?.(element);
+          return result === null ? undefined : result;
         }
         
         // Get total count for this element
@@ -287,7 +288,8 @@ export class VirtualScrollingService<T> {
         
         if (totalCount <= this.state.config.pageSize) {
           // Small dataset - use original provider
-          return originalProvider.getChildren?.(element);
+          const result = await originalProvider.getChildren?.(element);
+          return result === null ? undefined : result;
         }
         
         // Large dataset - use virtual scrolling

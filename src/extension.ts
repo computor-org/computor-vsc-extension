@@ -22,7 +22,7 @@ export function activate(context: vscode.ExtensionContext) {
   IconGenerator.initialize(context);
 
   // Initialize GitLab token manager (singleton - shared by all views)
-  const gitLabTokenManager = GitLabTokenManager.getInstance(context);
+  GitLabTokenManager.getInstance(context);
 
   // Initialize authentication provider
   const authProvider = new ComputorAuthenticationProvider(context);

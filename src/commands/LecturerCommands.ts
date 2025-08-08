@@ -347,10 +347,9 @@ export class LecturerCommands {
   }
   
   private async searchExamples(courseId: string, searchQuery?: string): Promise<ExampleGet[]> {
-    return this.apiService.getAvailableExamples(courseId, {
-      search: searchQuery,
-      limit: 50
-    });
+    void courseId; // courseId - parameter kept for compatibility
+    void searchQuery; // searchQuery - not used in current implementation
+    return this.apiService.getAvailableExamples() || [];
   }
   
   private async selectExample(examples: ExampleGet[]): Promise<ExampleQuickPickItem | undefined> {
@@ -358,7 +357,7 @@ export class LecturerCommands {
       label: example.title,
       description: [
         example.identifier && `🔖 ${example.identifier}`,
-        example.repository_id && `📦 latest`
+        example.repository && `📦 latest`
       ].filter(Boolean).join(' • '),
       detail: example.description || '',
       example: example

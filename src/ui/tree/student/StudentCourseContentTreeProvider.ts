@@ -179,8 +179,9 @@ class CourseContentPathItem extends TreeItem {
 class CourseContentItem extends TreeItem {
     constructor(
         public readonly submissionGroup: any,
-        private courseSelection: CourseSelectionService
+        courseSelection: CourseSelectionService
     ) {
+        void courseSelection; // Not used but required for type consistency
         const label = submissionGroup.course_content_title || 'Untitled';
         super(label, vscode.TreeItemCollapsibleState.None);
         
