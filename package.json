@@ -22,6 +22,7 @@
     "onView:computor.jsonTreeView",
     "onView:computor.testResultsView",
     "onView:computor.lecturerView",
+    "onView:computor.studentView",
     "onView:computor.examplesView"
   ],
   "main": "./out/extension.js",
@@ -231,6 +232,46 @@
         "category": "Computor Lecturer"
       },
       {
+        "command": "computor.student.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "Computor Student"
+      },
+      {
+        "command": "computor.student.viewCourse",
+        "title": "View Course Details",
+        "category": "Computor Student"
+      },
+      {
+        "command": "computor.student.cloneCourseRepository",
+        "title": "Clone Course Repository",
+        "icon": "$(cloud-download)",
+        "category": "Computor Student"
+      },
+      {
+        "command": "computor.student.viewContent",
+        "title": "View Content Details",
+        "category": "Computor Student"
+      },
+      {
+        "command": "computor.student.startAssignment",
+        "title": "Start Assignment",
+        "icon": "$(play)",
+        "category": "Computor Student"
+      },
+      {
+        "command": "computor.student.submitAssignment",
+        "title": "Submit Assignment",
+        "icon": "$(cloud-upload)",
+        "category": "Computor Student"
+      },
+      {
+        "command": "computor.student.openInBrowser",
+        "title": "Open in Browser",
+        "icon": "$(link-external)",
+        "category": "Computor Student"
+      },
+      {
         "command": "computor.createCourseContent",
         "title": "Create Course Content",
         "icon": "$(add)",
@@ -340,6 +381,13 @@
           "when": "computor.authenticated"
         },
         {
+          "id": "computor.studentView",
+          "name": "Student View",
+          "icon": "$(book)",
+          "contextualTitle": "Computor Student View",
+          "when": "computor.authenticated"
+        },
+        {
           "id": "computor.examplesView",
           "name": "Example Workbench",
           "icon": "$(repo)",
@@ -424,6 +472,11 @@
         {
           "command": "computor.refreshLecturerTree",
           "when": "view == computor.lecturerView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "computor.student.refresh",
+          "when": "view == computor.studentView",
           "group": "navigation@1"
         },
         {
@@ -572,6 +625,36 @@
           "command": "computor.releaseCourseContent",
           "when": "view == computor.lecturerView && viewItem == course",
           "group": "5_gitlab@2"
+        },
+        {
+          "command": "computor.student.viewCourse",
+          "when": "view == computor.studentView && viewItem == studentCourse",
+          "group": "1_details@1"
+        },
+        {
+          "command": "computor.student.cloneCourseRepository",
+          "when": "view == computor.studentView && viewItem == studentCourse",
+          "group": "2_actions@1"
+        },
+        {
+          "command": "computor.student.openInBrowser",
+          "when": "view == computor.studentView && viewItem == studentCourse",
+          "group": "2_actions@2"
+        },
+        {
+          "command": "computor.student.viewContent",
+          "when": "view == computor.studentView && viewItem =~ /studentContent/",
+          "group": "1_details@1"
+        },
+        {
+          "command": "computor.student.startAssignment",
+          "when": "view == computor.studentView && viewItem == studentContentWithExample",
+          "group": "2_actions@1"
+        },
+        {
+          "command": "computor.student.submitAssignment",
+          "when": "view == computor.studentView && viewItem == studentContentWithExample",
+          "group": "2_actions@2"
         },
         {
           "command": "computor.checkoutExample",
