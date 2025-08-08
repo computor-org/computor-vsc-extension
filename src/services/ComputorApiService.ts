@@ -4,6 +4,7 @@ import { ComputorAuthenticationProvider } from '../authentication/ComputorAuthen
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { ComputorAuthenticationSession } from '../types/AuthenticationTypes';
 import { errorRecoveryService } from './ErrorRecoveryService';
+import { requestBatchingService } from './RequestBatchingService';
 import {
   OrganizationList,
   OrganizationGet,
@@ -50,9 +51,26 @@ interface ExampleQuery {
 export class ComputorApiService {
   private httpClient?: JwtHttpClient;
   private settingsManager: ComputorSettingsManager;
+  
+  // Batched method versions for improved performance
+  public readonly batchedGetCourseContents: (courseId: string) => Promise<CourseContentList[] | undefined>;
+  public readonly batchedGetCourseContentTypes: (courseId: string) => Promise<CourseContentTypeList[] | undefined>;
 
   constructor(context: vscode.ExtensionContext) {
     this.settingsManager = new ComputorSettingsManager(context);
+    
+    // Create batched versions of frequently called methods
+    this.batchedGetCourseContents = requestBatchingService.createBatchedFunction(
+      this.getCourseContents.bind(this),
+      (courseId) => `getCourseContents-${courseId}`,
+      { maxBatchSize: 5, batchDelay: 100 }
+    );
+    
+    this.batchedGetCourseContentTypes = requestBatchingService.createBatchedFunction(
+      this.getCourseContentTypes.bind(this),
+      (courseId) => `getCourseContentTypes-${courseId}`,
+      { maxBatchSize: 5, batchDelay: 100 }
+    );
   }
 
   private async getHttpClient(): Promise<JwtHttpClient> {
@@ -342,6 +360,30 @@ export class ComputorApiService {
     const client = await this.getHttpClient();
     const response = await client.get(`/tasks/${taskId}/status`);
     return response.data;
+  }
+  
+  /**
+   * Batch multiple API calls for improved performance
+   */
+  async batchApiCalls<T extends Record<string, any>>(
+    calls: Array<{
+      key: keyof T;
+      fn: () => Promise<T[keyof T]>;
+    }>
+  ): Promise<T> {
+    const batchedCalls = calls.map(call => ({
+      key: String(call.key),
+      fn: call.fn
+    }));
+    
+    const results = await requestBatchingService.batchApiCalls(batchedCalls);
+    
+    const typedResults: any = {};
+    for (const [key, value] of results.entries()) {
+      typedResults[key] = value;
+    }
+    
+    return typedResults as T;
   }
 
   async getAvailableExamples(courseId: string, params?: {
