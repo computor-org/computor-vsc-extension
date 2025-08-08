@@ -12,9 +12,6 @@ import { ExampleCommands } from './commands/exampleCommands';
 import { ComputorApiService } from './services/ComputorApiService';
 import { IconGenerator } from './utils/iconGenerator';
 
-// Export the GitLab token manager for use by other components
-export let gitLabTokenManager: GitLabTokenManager;
-
 export function activate(context: vscode.ExtensionContext) {
   console.log('Computor VS Code Extension is now active!');
 
@@ -22,7 +19,7 @@ export function activate(context: vscode.ExtensionContext) {
   IconGenerator.initialize(context);
 
   // Initialize GitLab token manager (singleton - shared by all views)
-  gitLabTokenManager = GitLabTokenManager.getInstance(context);
+  const gitLabTokenManager = GitLabTokenManager.getInstance(context);
 
   // Initialize authentication provider
   const authProvider = new ComputorAuthenticationProvider(context);
