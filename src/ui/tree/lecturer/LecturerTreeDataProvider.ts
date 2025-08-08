@@ -12,7 +12,8 @@ import {
   ExampleTreeItem,
   CourseGroupTreeItem,
   NoGroupTreeItem,
-  CourseMemberTreeItem
+  CourseMemberTreeItem,
+  LoadMoreTreeItem
 } from './LecturerTreeItems';
 import { 
   CourseContentList, 
@@ -26,11 +27,18 @@ import {
   ExampleGet
 } from '../../../types/generated';
 
-type TreeItem = OrganizationTreeItem | CourseFamilyTreeItem | CourseTreeItem | CourseContentTreeItem | CourseFolderTreeItem | CourseContentTypeTreeItem | ExampleTreeItem | CourseGroupTreeItem | NoGroupTreeItem | CourseMemberTreeItem;
+type TreeItem = OrganizationTreeItem | CourseFamilyTreeItem | CourseTreeItem | CourseContentTreeItem | CourseFolderTreeItem | CourseContentTypeTreeItem | ExampleTreeItem | CourseGroupTreeItem | NoGroupTreeItem | CourseMemberTreeItem | LoadMoreTreeItem;
 
 interface NodeUpdateData {
   course_id?: string;
   [key: string]: unknown;
+}
+
+interface PaginationInfo {
+  offset: number;
+  limit: number;
+  total?: number;
+  hasMore: boolean;
 }
 
 export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeItem>, vscode.TreeDragAndDropController<TreeItem> {
@@ -54,6 +62,10 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
 
   private examplesCache: Map<string, ExampleGet> = new Map();
   private expandedStates: Record<string, boolean> = {};
+  
+  // Pagination state for different node types
+  private paginationState: Map<string, PaginationInfo> = new Map();
+  private readonly PAGE_SIZE = 20; // Items per page
 
   constructor(context: vscode.ExtensionContext) {
     this.apiService = new ComputorApiService(context);
@@ -72,11 +84,29 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     this.courseGroupsCache.clear();
     this.courseMembersCache.clear();
     this.examplesCache.clear();
+    this.paginationState.clear(); // Clear pagination state on full refresh
     this._onDidChangeTreeData.fire();
   }
 
   refreshNode(element?: TreeItem): void {
     this._onDidChangeTreeData.fire(element);
+  }
+  
+  /**
+   * Load more items for paginated lists
+   */
+  async loadMore(loadMoreItem: LoadMoreTreeItem): Promise<void> {
+    const paginationKey = `${loadMoreItem.parentType}-${loadMoreItem.parentId}`;
+    const pagination = this.paginationState.get(paginationKey);
+    
+    if (pagination) {
+      // Update offset to load more items
+      pagination.offset = loadMoreItem.currentOffset;
+      
+      // Find the parent element and refresh it
+      // This will trigger getChildren again with the updated pagination
+      this._onDidChangeTreeData.fire(undefined);
+    }
   }
 
   /**
@@ -331,15 +361,36 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
           // Ensure content types are loaded for this course
           await this.getCourseContentTypes(element.course.id);
           
-          // Show course contents for course
-          const contents = await this.getCourseContents(element.course.id);
+          // Get pagination info for this folder
+          const paginationKey = `contents-${element.course.id}`;
+          let pagination = this.paginationState.get(paginationKey);
+          
+          if (!pagination) {
+            pagination = {
+              offset: 0,
+              limit: this.PAGE_SIZE,
+              hasMore: true
+            };
+            this.paginationState.set(paginationKey, pagination);
+          }
+          
+          // Show course contents for course with pagination
+          const allContents = await this.getCourseContents(element.course.id);
           
           // Build tree structure from ltree paths
-          const rootContents = this.getRootContents(contents);
+          const rootContents = this.getRootContents(allContents);
+          
+          // Apply pagination
+          const paginatedContents = rootContents.slice(0, pagination.offset + pagination.limit);
+          const hasMore = paginatedContents.length < rootContents.length;
+          
+          // Update pagination state
+          pagination.hasMore = hasMore;
+          pagination.total = rootContents.length;
           
           // Fetch example info for contents that have examples
-          const contentItems = await Promise.all(rootContents.map(async content => {
-            const hasChildren = this.hasChildContents(content, contents);
+          const contentItems = await Promise.all(paginatedContents.map(async content => {
+            const hasChildren = this.hasChildContents(content, allContents);
             let exampleInfo = null;
             
             if (content.example_id) {
@@ -361,6 +412,16 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
               isSubmittable
             );
           }));
+          
+          // Add "Load More" item if there are more items to load
+          if (hasMore) {
+            contentItems.push(new LoadMoreTreeItem(
+              element.course.id,
+              'contents',
+              pagination.offset + pagination.limit,
+              this.PAGE_SIZE
+            ));
+          }
           
           return contentItems;
         } else if (element.folderType === 'groups') {
