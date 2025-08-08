@@ -39,9 +39,7 @@ export class ExampleTreeProvider implements vscode.TreeDataProvider<ExampleTreeI
       
       // Load examples for each repository
       for (const repo of this.repositories) {
-        const examples = await this.apiService.getExamples({ 
-          repository_id: repo.id 
-        });
+        const examples = await this.apiService.getExamples(repo.id);
         this.examples.set(repo.id, examples || []);
       }
       

@@ -7,6 +7,8 @@ import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataPro
 import { LecturerCommands } from './commands/LecturerCommands';
 import { StudentTreeDataProvider } from './ui/tree/student/StudentTreeDataProvider';
 import { StudentCommands } from './commands/StudentCommands';
+import { TutorTreeDataProvider } from './ui/tree/tutor/TutorTreeDataProvider';
+import { TutorCommands } from './commands/TutorCommands';
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
 import { GitLabTokenManager } from './services/GitLabTokenManager';
 import { ExampleTreeProvider } from './ui/tree/examples/ExampleTreeProvider';
@@ -135,6 +137,18 @@ export function activate(context: vscode.ExtensionContext) {
   // Register student commands
   const studentCommands = new StudentCommands(context, studentTreeDataProvider);
   studentCommands.registerCommands();
+
+  // Initialize Tutor View
+  const tutorTreeDataProvider = new TutorTreeDataProvider(context);
+  const tutorTreeView = vscode.window.createTreeView('computor.tutorView', {
+    treeDataProvider: tutorTreeDataProvider,
+    showCollapseAll: true
+  });
+  context.subscriptions.push(tutorTreeView);
+  
+  // Register tutor commands
+  const tutorCommands = new TutorCommands(context, tutorTreeDataProvider);
+  tutorCommands.registerCommands();
 
   // Initialize API service
   const apiService = new ComputorApiService(context);
