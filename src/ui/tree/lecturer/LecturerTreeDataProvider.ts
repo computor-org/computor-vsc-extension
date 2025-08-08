@@ -3,6 +3,8 @@ import { ComputorApiService } from '../../../services/ComputorApiService';
 import { GitLabTokenManager } from '../../../services/GitLabTokenManager';
 import { ComputorSettingsManager } from '../../../settings/ComputorSettingsManager';
 import { errorRecoveryService } from '../../../services/ErrorRecoveryService';
+import { performanceMonitor } from '../../../services/PerformanceMonitoringService';
+import { VirtualScrollingService, VirtualScrollingFactory } from '../../../services/VirtualScrollingService';
 import {
   OrganizationTreeItem,
   CourseFamilyTreeItem,
@@ -67,6 +69,9 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   // Pagination state for different node types
   private paginationState: Map<string, PaginationInfo> = new Map();
   private readonly PAGE_SIZE = 20; // Items per page
+  
+  // Virtual scrolling services for large datasets
+  private virtualScrollServices: Map<string, VirtualScrollingService<any>> = new Map();
 
   constructor(context: vscode.ExtensionContext) {
     this.apiService = new ComputorApiService(context);
@@ -86,6 +91,13 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     this.courseMembersCache.clear();
     this.examplesCache.clear();
     this.paginationState.clear(); // Clear pagination state on full refresh
+    
+    // Clear all virtual scrolling services
+    for (const service of this.virtualScrollServices.values()) {
+      service.reset();
+    }
+    this.virtualScrollServices.clear();
+    
     this._onDidChangeTreeData.fire();
   }
 
@@ -97,16 +109,29 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
    * Load more items for paginated lists
    */
   async loadMore(loadMoreItem: LoadMoreTreeItem): Promise<void> {
-    const paginationKey = `${loadMoreItem.parentType}-${loadMoreItem.parentId}`;
-    const pagination = this.paginationState.get(paginationKey);
+    const virtualKey = `${loadMoreItem.parentType}-${loadMoreItem.parentId}`;
+    const virtualService = this.virtualScrollServices.get(virtualKey);
     
-    if (pagination) {
-      // Update offset to load more items
-      pagination.offset = loadMoreItem.currentOffset;
+    if (virtualService) {
+      // Load next page using virtual scrolling
+      const currentOffset = loadMoreItem.currentOffset;
+      const pageSize = loadMoreItem.pageSize;
       
-      // Find the parent element and refresh it
-      // This will trigger getChildren again with the updated pagination
+      // Trigger refresh to load more items
       this._onDidChangeTreeData.fire(undefined);
+    } else {
+      // Fallback to pagination state
+      const paginationKey = `${loadMoreItem.parentType}-${loadMoreItem.parentId}`;
+      const pagination = this.paginationState.get(paginationKey);
+      
+      if (pagination) {
+        // Update offset to load more items
+        pagination.offset = loadMoreItem.currentOffset;
+        
+        // Find the parent element and refresh it
+        // This will trigger getChildren again with the updated pagination
+        this._onDidChangeTreeData.fire(undefined);
+      }
     }
   }
 
@@ -322,6 +347,15 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   }
 
   async getChildren(element?: TreeItem): Promise<TreeItem[]> {
+    return performanceMonitor.measureAsync(
+      `getChildren-${element?.contextValue || 'root'}`,
+      async () => this.getChildrenInternal(element),
+      'tree',
+      { elementType: element?.contextValue || 'root' }
+    );
+  }
+  
+  private async getChildrenInternal(element?: TreeItem): Promise<TreeItem[]> {
     try {
       if (!element) {
         // Root level - show organizations with error recovery
@@ -370,69 +404,98 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
           // Ensure content types are loaded for this course
           await this.getCourseContentTypes(element.course.id);
           
-          // Get pagination info for this folder
-          const paginationKey = `contents-${element.course.id}`;
-          let pagination = this.paginationState.get(paginationKey);
-          
-          if (!pagination) {
-            pagination = {
-              offset: 0,
-              limit: this.PAGE_SIZE,
-              hasMore: true
-            };
-            this.paginationState.set(paginationKey, pagination);
-          }
-          
-          // Show course contents for course with pagination
+          // Show course contents for course with virtual scrolling for large lists
           const allContents = await this.getCourseContents(element.course.id);
           
           // Build tree structure from ltree paths
           const rootContents = this.getRootContents(allContents);
           
-          // Apply pagination
-          const paginatedContents = rootContents.slice(0, pagination.offset + pagination.limit);
-          const hasMore = paginatedContents.length < rootContents.length;
-          
-          // Update pagination state
-          pagination.hasMore = hasMore;
-          pagination.total = rootContents.length;
-          
-          // Fetch example info for contents that have examples
-          const contentItems = await Promise.all(paginatedContents.map(async content => {
-            const hasChildren = this.hasChildContents(content, allContents);
-            let exampleInfo = null;
+          // Use virtual scrolling for large lists (> 100 items)
+          if (rootContents.length > 100) {
+            const virtualKey = `contents-${element.course.id}`;
             
-            if (content.example_id) {
-              exampleInfo = await this.getExampleInfo(content.example_id);
+            // Get or create virtual scrolling service
+            let virtualService = this.virtualScrollServices.get(virtualKey);
+            if (!virtualService) {
+              virtualService = new VirtualScrollingService(
+                async (page: number, pageSize: number) => {
+                  const start = page * pageSize;
+                  const items = rootContents.slice(start, start + pageSize);
+                  
+                  // Transform to tree items
+                  const treeItems = await Promise.all(items.map(async content => {
+                    const hasChildren = this.hasChildContents(content, allContents);
+                    let exampleInfo = null;
+                    
+                    if (content.example_id) {
+                      exampleInfo = await this.getExampleInfo(content.example_id);
+                    }
+                    
+                    const contentType = this.courseContentTypesById.get(content.course_content_type_id);
+                    const isSubmittable = this.isContentSubmittable(contentType);
+                    
+                    return new CourseContentTreeItem(
+                      content,
+                      element.course,
+                      element.courseFamily,
+                      element.organization,
+                      hasChildren,
+                      exampleInfo,
+                      contentType,
+                      isSubmittable
+                    );
+                  }));
+                  
+                  return { items: treeItems, total: rootContents.length };
+                },
+                { pageSize: 50, preloadPages: 2, maxCachedPages: 10 }
+              );
+              
+              this.virtualScrollServices.set(virtualKey, virtualService);
             }
             
-            // Get content type info
-            const contentType = this.courseContentTypesById.get(content.course_content_type_id);
-            const isSubmittable = this.isContentSubmittable(contentType);
+            // Get first page of items
+            const items = await virtualService.getItems(0, 50);
             
-            return new CourseContentTreeItem(
-              content,
-              element.course,
-              element.courseFamily,
-              element.organization,
-              hasChildren,
-              exampleInfo,
-              contentType,
-              isSubmittable
-            );
-          }));
-          
-          // Add "Load More" item if there are more items to load
-          if (hasMore) {
-            contentItems.push(new LoadMoreTreeItem(
-              element.course.id,
-              'contents',
-              pagination.offset + pagination.limit,
-              this.PAGE_SIZE
-            ));
+            // Add load more if there are more items
+            if (rootContents.length > items.length) {
+              items.push(new LoadMoreTreeItem(
+                element.course.id,
+                'contents',
+                items.length,
+                50
+              ));
+            }
+            
+            return items;
+          } else {
+            // Small list - load all at once
+            const contentItems = await Promise.all(rootContents.map(async content => {
+              const hasChildren = this.hasChildContents(content, allContents);
+              let exampleInfo = null;
+              
+              if (content.example_id) {
+                exampleInfo = await this.getExampleInfo(content.example_id);
+              }
+              
+              // Get content type info
+              const contentType = this.courseContentTypesById.get(content.course_content_type_id);
+              const isSubmittable = this.isContentSubmittable(contentType);
+              
+              return new CourseContentTreeItem(
+                content,
+                element.course,
+                element.courseFamily,
+                element.organization,
+                hasChildren,
+                exampleInfo,
+                contentType,
+                isSubmittable
+              );
+            }));
+            
+            return contentItems;
           }
-          
-          return contentItems;
         } else if (element.folderType === 'groups') {
           // Show course groups and ungrouped members
           const groups = await this.getCourseGroups(element.course.id);
@@ -512,25 +575,108 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       if (element instanceof CourseGroupTreeItem) {
         // Show members in this group
         const members = await this.getCourseMembers(element.course.id, element.group.id);
-        return members.map((member: CourseMemberList) => new CourseMemberTreeItem(
-          member,
-          element.course,
-          element.courseFamily,
-          element.organization,
-          element.group
-        ));
+        
+        // Use virtual scrolling for large member lists (> 100)
+        if (members.length > 100) {
+          const virtualKey = `members-${element.course.id}-${element.group.id}`;
+          
+          let virtualService = this.virtualScrollServices.get(virtualKey);
+          if (!virtualService) {
+            virtualService = new VirtualScrollingService(
+              async (page: number, pageSize: number) => {
+                const start = page * pageSize;
+                const items = members.slice(start, start + pageSize);
+                
+                const treeItems = items.map((member: CourseMemberList) => new CourseMemberTreeItem(
+                  member,
+                  element.course,
+                  element.courseFamily,
+                  element.organization,
+                  element.group
+                ));
+                
+                return { items: treeItems, total: members.length };
+              },
+              { pageSize: 50, preloadPages: 1, maxCachedPages: 5 }
+            );
+            
+            this.virtualScrollServices.set(virtualKey, virtualService);
+          }
+          
+          const items = await virtualService.getItems(0, 50);
+          
+          if (members.length > items.length) {
+            items.push(new LoadMoreTreeItem(
+              element.group.id,
+              'members',
+              items.length,
+              50
+            ));
+          }
+          
+          return items;
+        } else {
+          return members.map((member: CourseMemberList) => new CourseMemberTreeItem(
+            member,
+            element.course,
+            element.courseFamily,
+            element.organization,
+            element.group
+          ));
+        }
       }
 
       if (element instanceof NoGroupTreeItem) {
         // Show members not in any group
         const members = await this.getCourseMembers(element.course.id);
         const ungroupedMembers = members.filter((m: CourseMemberList) => !m.course_group_id);
-        return ungroupedMembers.map((member: CourseMemberList) => new CourseMemberTreeItem(
-          member,
-          element.course,
-          element.courseFamily,
-          element.organization
-        ));
+        
+        // Use virtual scrolling for large member lists (> 100)
+        if (ungroupedMembers.length > 100) {
+          const virtualKey = `members-${element.course.id}-ungrouped`;
+          
+          let virtualService = this.virtualScrollServices.get(virtualKey);
+          if (!virtualService) {
+            virtualService = new VirtualScrollingService(
+              async (page: number, pageSize: number) => {
+                const start = page * pageSize;
+                const items = ungroupedMembers.slice(start, start + pageSize);
+                
+                const treeItems = items.map((member: CourseMemberList) => new CourseMemberTreeItem(
+                  member,
+                  element.course,
+                  element.courseFamily,
+                  element.organization
+                ));
+                
+                return { items: treeItems, total: ungroupedMembers.length };
+              },
+              { pageSize: 50, preloadPages: 1, maxCachedPages: 5 }
+            );
+            
+            this.virtualScrollServices.set(virtualKey, virtualService);
+          }
+          
+          const items = await virtualService.getItems(0, 50);
+          
+          if (ungroupedMembers.length > items.length) {
+            items.push(new LoadMoreTreeItem(
+              element.course.id,
+              'members-ungrouped',
+              items.length,
+              50
+            ));
+          }
+          
+          return items;
+        } else {
+          return ungroupedMembers.map((member: CourseMemberList) => new CourseMemberTreeItem(
+            member,
+            element.course,
+            element.courseFamily,
+            element.organization
+          ));
+        }
       }
 
       return [];

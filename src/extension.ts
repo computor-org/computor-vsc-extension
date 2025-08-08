@@ -5,12 +5,15 @@ import { ComputorAuthenticationProvider } from './authentication/ComputorAuthent
 import { GitManager } from './git/GitManager';
 import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataProvider';
 import { LecturerCommands } from './commands/LecturerCommands';
+import { StudentTreeDataProvider } from './ui/tree/student/StudentTreeDataProvider';
+import { StudentCommands } from './commands/StudentCommands';
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
 import { GitLabTokenManager } from './services/GitLabTokenManager';
 import { ExampleTreeProvider } from './ui/tree/examples/ExampleTreeProvider';
 import { ExampleCommands } from './commands/exampleCommands';
 import { ComputorApiService } from './services/ComputorApiService';
 import { IconGenerator } from './utils/iconGenerator';
+import { performanceMonitor } from './services/PerformanceMonitoringService';
 
 export function activate(context: vscode.ExtensionContext) {
   console.log('Computor VS Code Extension is now active!');
@@ -80,6 +83,11 @@ export function activate(context: vscode.ExtensionContext) {
   const gitStatusCommand = vscode.commands.registerCommand('computor.showGitStatus', async () => {
     await gitManager.showGitStatus();
   });
+  
+  // Performance monitoring command
+  const performanceReportCommand = vscode.commands.registerCommand('computor.showPerformanceReport', () => {
+    performanceMonitor.showReport();
+  });
 
   // Initialize Lecturer View
   const lecturerTreeDataProvider = new LecturerTreeDataProvider(context);
@@ -115,6 +123,18 @@ export function activate(context: vscode.ExtensionContext) {
   // Register lecturer commands
   const lecturerCommands = new LecturerCommands(context, lecturerTreeDataProvider);
   lecturerCommands.registerCommands();
+  
+  // Initialize Student View
+  const studentTreeDataProvider = new StudentTreeDataProvider(context);
+  const studentTreeView = vscode.window.createTreeView('computor.studentView', {
+    treeDataProvider: studentTreeDataProvider,
+    showCollapseAll: true
+  });
+  context.subscriptions.push(studentTreeView);
+  
+  // Register student commands
+  const studentCommands = new StudentCommands(context, studentTreeDataProvider);
+  studentCommands.registerCommands();
 
   // Initialize API service
   const apiService = new ComputorApiService(context);
@@ -160,7 +180,8 @@ export function activate(context: vscode.ExtensionContext) {
     settingsCommand,
     signInCommand,
     signOutCommand,
-    gitStatusCommand
+    gitStatusCommand,
+    performanceReportCommand
   );
 }
 

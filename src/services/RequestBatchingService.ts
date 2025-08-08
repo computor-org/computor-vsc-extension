@@ -1,4 +1,3 @@
-import * as vscode from 'vscode';
 
 interface BatchRequest<T> {
   id: string;
@@ -115,10 +114,12 @@ export class RequestBatchingService {
     // Resolve/reject individual promises
     results.forEach((result, index) => {
       const request = batch[index];
-      if (result.status === 'fulfilled') {
-        request.resolve(result.value);
-      } else {
-        request.reject(result.reason);
+      if (request) {
+        if (result.status === 'fulfilled') {
+          request.resolve(result.value);
+        } else {
+          request.reject(result.reason);
+        }
       }
     });
   }
@@ -201,7 +202,7 @@ export class RequestBatchingService {
     // Extract operation type from key
     // e.g., "getCourse-123" -> "getCourse"
     const match = key.match(/^([a-zA-Z]+)/);
-    return match ? match[1] : 'default';
+    return match?.[1] || 'default';
   }
   
   /**
