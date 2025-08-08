@@ -3,6 +3,7 @@ import { JwtHttpClient } from '../http/JwtHttpClient';
 import { ComputorAuthenticationProvider } from '../authentication/ComputorAuthenticationProvider';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { ComputorAuthenticationSession } from '../types/AuthenticationTypes';
+import { errorRecoveryService } from './ErrorRecoveryService';
 import {
   OrganizationList,
   OrganizationGet,
@@ -93,9 +94,17 @@ export class ComputorApiService {
   }
 
   async getOrganizations(): Promise<OrganizationList[]> {
-    const client = await this.getHttpClient();
-    const response = await client.get<OrganizationList[]>('/organizations');
-    return response.data;
+    return errorRecoveryService.executeWithRecovery(async () => {
+      const client = await this.getHttpClient();
+      const response = await client.get<OrganizationList[]>('/organizations');
+      return response.data;
+    }, {
+      maxRetries: 3,
+      exponentialBackoff: true,
+      onRetry: (attempt, error) => {
+        console.log(`Retry attempt ${attempt} for getOrganizations: ${error.message}`);
+      }
+    });
   }
 
   async updateOrganization(organizationId: string, updates: OrganizationUpdate): Promise<OrganizationGet> {
@@ -288,19 +297,24 @@ export class ComputorApiService {
     exampleId: string, 
     exampleVersion?: string
   ): Promise<CourseContentGet> {
-    const client = await this.getHttpClient();
-    
-    const requestData = {
-      example_id: exampleId,
-      example_version: exampleVersion || 'latest'
-    };
-    
-    const response = await client.post(
-      `/course-contents/${contentId}/assign-example`,
-      requestData
-    );
-    
-    return response.data;
+    return errorRecoveryService.executeWithRecovery(async () => {
+      const client = await this.getHttpClient();
+      
+      const requestData = {
+        example_id: exampleId,
+        example_version: exampleVersion || 'latest'
+      };
+      
+      const response = await client.post(
+        `/course-contents/${contentId}/assign-example`,
+        requestData
+      );
+      
+      return response.data;
+    }, {
+      maxRetries: 2,
+      exponentialBackoff: true
+    });
   }
 
   async unassignExampleFromCourseContent(courseId: string, contentId: string): Promise<CourseContentGet> {
