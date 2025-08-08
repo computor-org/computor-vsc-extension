@@ -1,5 +1,3 @@
-import * as vscode from 'vscode';
-
 interface CacheEntry<T> {
   data: T;
   timestamp: number;

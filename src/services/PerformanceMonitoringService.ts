@@ -281,7 +281,7 @@ export class PerformanceMonitoringService {
           'tree'
         );
       },
-      getChildren: provider.getChildren ? async (element?: T) => {
+      getChildren: provider.getChildren ? (element?: T) => {
         return this.measureAsync(
           'TreeDataProvider.getChildren',
           async () => {
@@ -291,7 +291,7 @@ export class PerformanceMonitoringService {
           'tree',
           { hasElement: !!element }
         );
-      } : undefined,
+      } : undefined as any,
       getParent: provider.getParent ? (element: T) => {
         return this.measure(
           'TreeDataProvider.getParent',

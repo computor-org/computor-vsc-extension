@@ -75,7 +75,7 @@ export class StudentCommands {
           openLabel: 'Select Clone Location'
         });
 
-        if (!folderUri || folderUri.length === 0) {
+        if (!folderUri || folderUri.length === 0 || !folderUri[0]) {
           return;
         }
 

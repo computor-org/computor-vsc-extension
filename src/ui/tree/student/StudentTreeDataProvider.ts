@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import { ComputorApiService } from '../../../services/ComputorApiService';
-import { ComputorSettingsManager } from '../../../settings/ComputorSettingsManager';
 import { performanceMonitor } from '../../../services/PerformanceMonitoringService';
 import { errorRecoveryService } from '../../../services/ErrorRecoveryService';
 
@@ -75,7 +74,6 @@ export class StudentTreeDataProvider implements vscode.TreeDataProvider<vscode.T
   readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
 
   private apiService: ComputorApiService;
-  private settingsManager: ComputorSettingsManager;
   
   // Caches
   private coursesCache: StudentCourse[] | null = null;
@@ -83,7 +81,6 @@ export class StudentTreeDataProvider implements vscode.TreeDataProvider<vscode.T
 
   constructor(context: vscode.ExtensionContext) {
     this.apiService = new ComputorApiService(context);
-    this.settingsManager = new ComputorSettingsManager(context);
   }
 
   refresh(): void {

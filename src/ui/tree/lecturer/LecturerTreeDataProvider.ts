@@ -4,7 +4,7 @@ import { GitLabTokenManager } from '../../../services/GitLabTokenManager';
 import { ComputorSettingsManager } from '../../../settings/ComputorSettingsManager';
 import { errorRecoveryService } from '../../../services/ErrorRecoveryService';
 import { performanceMonitor } from '../../../services/PerformanceMonitoringService';
-import { VirtualScrollingService, VirtualScrollingFactory } from '../../../services/VirtualScrollingService';
+import { VirtualScrollingService } from '../../../services/VirtualScrollingService';
 import {
   OrganizationTreeItem,
   CourseFamilyTreeItem,
@@ -68,7 +68,6 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   
   // Pagination state for different node types
   private paginationState: Map<string, PaginationInfo> = new Map();
-  private readonly PAGE_SIZE = 20; // Items per page
   
   // Virtual scrolling services for large datasets
   private virtualScrollServices: Map<string, VirtualScrollingService<any>> = new Map();
@@ -114,8 +113,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     
     if (virtualService) {
       // Load next page using virtual scrolling
-      const currentOffset = loadMoreItem.currentOffset;
-      const pageSize = loadMoreItem.pageSize;
+      void loadMoreItem.currentOffset; // currentOffset - accessed but not used in this context
+      void loadMoreItem.pageSize; // pageSize - accessed but not used in this context
       
       // Trigger refresh to load more items
       this._onDidChangeTreeData.fire(undefined);
