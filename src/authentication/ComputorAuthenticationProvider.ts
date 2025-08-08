@@ -179,6 +179,53 @@ export class ComputorAuthenticationProvider implements vscode.AuthenticationProv
   private generateSessionId(): string {
     return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   }
+  
+  /**
+   * Check if a session needs refresh based on expiration
+   */
+  public async refreshSessionIfNeeded(sessionId: string): Promise<ComputorAuthenticationSession | undefined> {
+    const session = this.sessions.find(s => s.id === sessionId);
+    if (!session) {
+      return undefined;
+    }
+    
+    // Check if credentials have an expiration date
+    if (session.credentials.expiresAt) {
+      const now = new Date();
+      const expiryWithBuffer = new Date(session.credentials.expiresAt.getTime() - 60000); // 1 minute buffer
+      
+      if (now >= expiryWithBuffer) {
+        // Token is expired or about to expire, need to refresh
+        return this.refreshSession(session);
+      }
+    }
+    
+    return session;
+  }
+  
+  /**
+   * Refresh an expired session
+   */
+  private async refreshSession(session: ComputorAuthenticationSession): Promise<ComputorAuthenticationSession> {
+    // For token-based auth, we can't refresh - user needs to re-authenticate
+    if (session.credentials.token) {
+      throw new Error('Token expired. Please re-authenticate.');
+    }
+    
+    // For basic auth, we can generate a new session token
+    if (session.credentials.username && session.credentials.password) {
+      // In a real implementation, this would call the backend to get a new token
+      // For now, we'll just update the expiration
+      session.credentials.expiresAt = new Date(Date.now() + 3600000); // 1 hour from now
+      
+      // Update the stored credentials
+      await this.credentialStorage.store(session.id, session.credentials);
+      
+      return session;
+    }
+    
+    throw new Error('Unable to refresh session');
+  }
 
   private async loadSessions(): Promise<void> {
     try {

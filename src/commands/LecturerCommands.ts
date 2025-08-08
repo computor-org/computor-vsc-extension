@@ -12,6 +12,8 @@ import { CourseFamilyWebviewProvider } from '../ui/webviews/CourseFamilyWebviewP
 import { CourseContentTypeWebviewProvider } from '../ui/webviews/CourseContentTypeWebviewProvider';
 import { CourseGroupWebviewProvider } from '../ui/webviews/CourseGroupWebviewProvider';
 import { ExampleGet } from '../types/generated/examples';
+import { GitWrapper } from '../git/GitWrapper';
+import * as path from 'path';
 
 export class LecturerCommands {
   private settingsManager: ComputorSettingsManager;
@@ -431,14 +433,68 @@ export class LecturerCommands {
       return;
     }
 
-    // TODO: Here we could clone the repository using the token
-    // For now, just open the URL in browser
-    vscode.env.openExternal(vscode.Uri.parse(repoUrl));
+    // Parse repository details
+    const repoName = repoUrl.split('/').pop()?.replace('.git', '') || 'course-repo';
+    const targetPath = path.join(workspaceDir, repoName);
     
-    // Show info about cloning
-    vscode.window.showInformationMessage(
-      `Repository URL: ${repoUrl}\nYou can clone it with your GitLab token.`
-    );
+    // Check if directory already exists
+    const fs = require('fs');
+    if (fs.existsSync(targetPath)) {
+      const action = await vscode.window.showWarningMessage(
+        `Directory "${repoName}" already exists. What would you like to do?`,
+        'Open in VS Code',
+        'Delete and Re-clone',
+        'Cancel'
+      );
+      
+      if (action === 'Open in VS Code') {
+        vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(targetPath), true);
+        return;
+      } else if (action === 'Delete and Re-clone') {
+        // Remove existing directory
+        await vscode.workspace.fs.delete(vscode.Uri.file(targetPath), { recursive: true });
+      } else {
+        return;
+      }
+    }
+    
+    // Show progress while cloning
+    await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: `Cloning ${repoName}...`,
+      cancellable: false
+    }, async (progress) => {
+      try {
+        // Create authenticated URL with token
+        const urlParts = new URL(repoUrl);
+        urlParts.username = 'oauth2';
+        urlParts.password = token;
+        const authenticatedUrl = urlParts.toString();
+        
+        // Clone the repository
+        const gitWrapper = new GitWrapper();
+        await gitWrapper.clone(authenticatedUrl, targetPath);
+        
+        progress.report({ increment: 100 });
+        
+        // Ask if user wants to open the cloned repository
+        const openAction = await vscode.window.showInformationMessage(
+          `Repository "${repoName}" cloned successfully!`,
+          'Open in New Window',
+          'Open in This Window',
+          'Close'
+        );
+        
+        if (openAction === 'Open in New Window') {
+          vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(targetPath), true);
+        } else if (openAction === 'Open in This Window') {
+          vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(targetPath), false);
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        vscode.window.showErrorMessage(`Failed to clone repository: ${errorMessage}`);
+      }
+    });
   }
 
   private async createCourseContentType(item: CourseFolderTreeItem): Promise<void> {
