@@ -89,6 +89,15 @@ export function activate(context: vscode.ExtensionContext) {
     // Removed dragAndDropController due to VS Code limitations with tree drag/drop
   });
   context.subscriptions.push(lecturerTreeView);
+  
+  // Register load more command for pagination
+  context.subscriptions.push(
+    vscode.commands.registerCommand('computor.loadMoreItems', async (loadMoreItem) => {
+      if (loadMoreItem) {
+        await lecturerTreeDataProvider.loadMore(loadMoreItem);
+      }
+    })
+  );
 
   // Listen to tree view expansion/collapse events
   lecturerTreeView.onDidExpandElement((e) => {

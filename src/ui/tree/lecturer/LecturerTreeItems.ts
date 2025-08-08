@@ -374,3 +374,23 @@ export class CourseMemberTreeItem extends vscode.TreeItem {
     this.description = member.course_role_id;
   }
 }
+
+export class LoadMoreTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly parentId: string,
+    public readonly parentType: string,
+    public readonly currentOffset: number,
+    public readonly pageSize: number = 20
+  ) {
+    super('Load more...', vscode.TreeItemCollapsibleState.None);
+    this.id = `loadmore-${parentId}-${currentOffset}`;
+    this.contextValue = 'loadMore';
+    this.iconPath = new vscode.ThemeIcon('ellipsis');
+    this.tooltip = `Load ${pageSize} more items`;
+    this.command = {
+      command: 'computor.loadMoreItems',
+      title: 'Load More',
+      arguments: [this]
+    };
+  }
+}
