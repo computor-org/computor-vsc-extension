@@ -57,8 +57,8 @@ export class LecturerCommands {
 
     // Tree refresh
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.refreshLecturerTree', () => {
-        this.treeDataProvider.refresh();
+      vscode.commands.registerCommand('computor.refreshLecturerTree', async () => {
+        await this.treeDataProvider.refresh();
       })
     );
 
@@ -380,7 +380,7 @@ export class LecturerCommands {
       version
     );
 
-    this.treeDataProvider.refresh();
+    await this.treeDataProvider.refresh();
   }
 
   private async unassignExample(item: CourseContentTreeItem): Promise<void> {
@@ -759,10 +759,9 @@ export class LecturerCommands {
         // If no task ID but the request succeeded (200 OK), consider it a synchronous success
         if (result) {
           vscode.window.showInformationMessage('✅ Course content released successfully!');
-          // Clear both API and tree caches to force refresh
+          // Clear API cache and force refresh the course data
           this.apiService.clearCourseCache(courseId);
-          this.treeDataProvider.invalidateCache('course', courseId);
-          this.treeDataProvider.refresh();
+          await this.treeDataProvider.forceRefreshCourse(courseId);
           return;
         }
         throw new Error('Failed to start release process - no task ID returned');
@@ -772,10 +771,9 @@ export class LecturerCommands {
       
       if (taskStatus?.status === 'completed') {
         vscode.window.showInformationMessage('✅ Course content released successfully!');
-        // Clear both API and tree caches to force refresh
+        // Clear API cache and force refresh the course data
         this.apiService.clearCourseCache(courseId);
-        this.treeDataProvider.invalidateCache('course', courseId);
-        this.treeDataProvider.refresh();
+        await this.treeDataProvider.forceRefreshCourse(courseId);
       } else if (taskStatus?.status === 'failed') {
         throw new Error(taskStatus.error || 'Release process failed');
       } else {

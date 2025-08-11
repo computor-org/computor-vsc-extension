@@ -81,7 +81,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     this.loadExpandedStates();
   }
 
-  refresh(): void {
+  async refresh(): Promise<void> {
+    console.log('Full tree refresh requested');
     this.courseContentsCache.clear();
     this.coursesCache.clear();
     this.courseContentTypesCache.clear();
@@ -98,11 +99,53 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     }
     this.virtualScrollServices.clear();
     
+    // Pre-fetch data for expanded courses to ensure fresh data is loaded
+    for (const nodeId of Object.keys(this.expandedStates)) {
+      if (nodeId.startsWith('course-') && this.expandedStates[nodeId]) {
+        const courseId = nodeId.replace('course-', '');
+        try {
+          console.log(`Pre-fetching data for expanded course ${courseId}`);
+          const contents = await this.apiService.getCourseContents(courseId, true); // skipCache = true
+          if (contents) {
+            this.courseContentsCache.set(courseId, contents);
+          }
+        } catch (error) {
+          console.error(`Failed to pre-fetch course contents for ${courseId}:`, error);
+        }
+      }
+    }
+    
+    // Fire with undefined to refresh entire tree
     this._onDidChangeTreeData.fire();
   }
 
   refreshNode(element?: TreeItem): void {
     this._onDidChangeTreeData.fire(element);
+  }
+  
+  /**
+   * Force refresh a specific course by clearing its cache and pre-fetching data
+   * This ensures the data is refreshed even if the node is collapsed
+   */
+  async forceRefreshCourse(courseId: string): Promise<void> {
+    console.log(`Force refreshing course ${courseId}`);
+    
+    // Clear all caches for this course
+    this.clearCourseCache(courseId);
+    
+    // Pre-fetch the course contents to ensure fresh data is loaded
+    try {
+      const contents = await this.apiService.getCourseContents(courseId, true); // skipCache = true
+      if (contents) {
+        this.courseContentsCache.set(courseId, contents);
+        console.log(`Pre-fetched ${contents.length} course contents for course ${courseId}`);
+      }
+    } catch (error) {
+      console.error(`Failed to pre-fetch course contents for ${courseId}:`, error);
+    }
+    
+    // Fire tree data change event to update the UI
+    this._onDidChangeTreeData.fire();
   }
   
   /**
