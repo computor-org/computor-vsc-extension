@@ -325,7 +325,6 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   }
   
   private async getChildrenInternal(element?: TreeItem): Promise<TreeItem[]> {
-    console.log(`getChildrenInternal called for:`, element?.contextValue || 'root', element?.id);
     try {
       if (!element) {
         // Root level - show organizations with error recovery
@@ -921,20 +920,10 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       
       console.log('Delete API call successful, clearing cache and refreshing tree...');
       
-      // Clear API cache for this course
+      // Clear API cache for this course - this ensures fresh data will be fetched
       this.apiService.clearCourseCache(contentItem.course.id);
       
-      // Get the parent node to refresh
-      const parent = await this.getParent(contentItem);
-      if (parent) {
-        console.log(`Refreshing parent node: ${parent.id}`);
-        // Fire change event for the specific parent node
-        this._onDidChangeTreeData.fire(parent);
-      } else {
-        console.log('No parent found, refreshing entire tree');
-        // If no parent found, refresh entire tree
-        this._onDidChangeTreeData.fire(undefined);
-      }
+      this.refresh();
       
       vscode.window.showInformationMessage(`Deleted "${title}" successfully`);
     } catch (error) {
