@@ -815,11 +815,11 @@
     },
     "yamlValidation": [
       {
-        "fileMatch": "**/meta.yaml",
+        "fileMatch": ["**/examples/**/meta.yaml", "**/example/**/meta.yaml", "**/test-example/**/meta.yaml"],
         "url": "./schemas/meta-yaml-schema.json"
       },
       {
-        "fileMatch": "**/meta.yml",
+        "fileMatch": ["**/examples/**/meta.yml", "**/example/**/meta.yml", "**/test-example/**/meta.yml"],
         "url": "./schemas/meta-yaml-schema.json"
       }
     ]
