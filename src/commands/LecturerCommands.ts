@@ -380,7 +380,9 @@ export class LecturerCommands {
       version
     );
 
-    await this.treeDataProvider.refresh();
+    // Clear API cache and force refresh to show the updated assignment
+    this.apiService.clearCourseCache(item.course.id);
+    await this.treeDataProvider.forceRefreshCourse(item.course.id);
   }
 
   private async unassignExample(item: CourseContentTreeItem): Promise<void> {
@@ -396,7 +398,9 @@ export class LecturerCommands {
           item.course.id,
           item.courseContent.id
         );
-        this.treeDataProvider.refreshNode(item);
+        // Clear API cache and force refresh to show the updated state
+        this.apiService.clearCourseCache(item.course.id);
+        await this.treeDataProvider.forceRefreshCourse(item.course.id);
         vscode.window.showInformationMessage('Example unassigned successfully');
       } catch (error) {
         vscode.window.showErrorMessage(`Failed to unassign example: ${error}`);
