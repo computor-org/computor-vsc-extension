@@ -1116,9 +1116,9 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         'latest' // Default to latest version
       );
 
-      // Clear cache and refresh the tree
+      // Clear cache and force refresh to show the updated assignment
       this.courseContentsCache.delete(target.course.id);
-      this.refresh();
+      await this.forceRefreshCourse(target.course.id);
 
       vscode.window.showInformationMessage(
         `✅ Example "${example.title}" assigned to "${target.courseContent.title}" successfully!`
