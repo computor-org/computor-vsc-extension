@@ -428,7 +428,9 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
                     let exampleInfo = null;
                     
                     if (content.example_id) {
+                      console.log(`[Virtual scroll] Fetching example info for content "${content.title}" with example_id: ${content.example_id}`);
                       exampleInfo = await this.getExampleInfo(content.example_id);
+                      console.log(`[Virtual scroll] Example info fetched:`, exampleInfo ? `${exampleInfo.title}` : 'null');
                     }
                     
                     const contentType = this.courseContentTypesById.get(content.course_content_type_id);
@@ -475,7 +477,9 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
               let exampleInfo = null;
               
               if (content.example_id) {
+                console.log(`Fetching example info for content "${content.title}" with example_id: ${content.example_id}`);
                 exampleInfo = await this.getExampleInfo(content.example_id);
+                console.log(`Example info fetched:`, exampleInfo ? `${exampleInfo.title}` : 'null');
               }
               
               // Get content type info
@@ -929,9 +933,13 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       if (example) {
         this.examplesCache.set(exampleId, example);
         return example;
+      } else {
+        console.warn(`Example ${exampleId} not found or returned undefined`);
       }
     } catch (error) {
       console.error(`Failed to fetch example ${exampleId}:`, error);
+      // Show a more user-friendly error message
+      vscode.window.showWarningMessage(`Failed to load example information for ID: ${exampleId}`);
     }
     
     return null;
