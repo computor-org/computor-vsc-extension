@@ -1,0 +1,212 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CodeAbility Meta Schema",
+  "description": "Schema for meta.yaml files in Computor examples",
+  "type": "object",
+  "required": ["slug", "title"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Version of the meta format",
+      "default": "1.0",
+      "pattern": "^([1-9]\\d*|0)(\\.(([1-9]\\d*)|0)){0,3}$"
+    },
+    "slug": {
+      "type": "string",
+      "description": "Unique identifier for the assignment (e.g., 'hello-world-python')",
+      "pattern": "^[a-z0-9-]+$"
+    },
+    "title": {
+      "type": "string",
+      "description": "Human-readable title for the example",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of what this example demonstrates"
+    },
+    "language": {
+      "type": "string",
+      "description": "Primary language of the content",
+      "default": "en",
+      "enum": ["en", "de", "fr", "es", "it", "pt", "nl", "pl", "ru", "ja", "zh", "ko"]
+    },
+    "license": {
+      "type": "string",
+      "description": "License information for this example",
+      "default": "Not specified"
+    },
+    "keywords": {
+      "type": "array",
+      "description": "Keywords for categorization and search",
+      "items": {
+        "type": "string"
+      }
+    },
+    "authors": {
+      "type": "array",
+      "description": "Content authors",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Full name of the author"
+          },
+          "email": {
+            "type": "string",
+            "description": "Email address",
+            "format": "email"
+          },
+          "affiliation": {
+            "type": "string",
+            "description": "Institutional affiliation"
+          }
+        }
+      }
+    },
+    "maintainers": {
+      "type": "array",
+      "description": "Content maintainers",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Full name of the maintainer"
+          },
+          "email": {
+            "type": "string",
+            "description": "Email address",
+            "format": "email"
+          },
+          "affiliation": {
+            "type": "string",
+            "description": "Institutional affiliation"
+          }
+        }
+      }
+    },
+    "links": {
+      "type": "array",
+      "description": "Related links and resources",
+      "items": {
+        "type": "object",
+        "required": ["description", "url"],
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "Description of the link"
+          },
+          "url": {
+            "type": "string",
+            "description": "URL of the resource",
+            "format": "uri"
+          }
+        }
+      }
+    },
+    "supportingMaterial": {
+      "type": "array",
+      "description": "Supporting material links",
+      "items": {
+        "type": "object",
+        "required": ["description", "url"],
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "Description of the supporting material"
+          },
+          "url": {
+            "type": "string",
+            "description": "URL of the material",
+            "format": "uri"
+          }
+        }
+      }
+    },
+    "properties": {
+      "type": "object",
+      "description": "Assignment-specific properties",
+      "properties": {
+        "studentSubmissionFiles": {
+          "type": "array",
+          "description": "Files that students must submit",
+          "items": {
+            "type": "string",
+            "description": "File path or pattern (e.g., 'solution.py', '*.java')"
+          }
+        },
+        "additionalFiles": {
+          "type": "array",
+          "description": "Additional files provided to students",
+          "items": {
+            "type": "string",
+            "description": "File path"
+          }
+        },
+        "testFiles": {
+          "type": "array",
+          "description": "Test files for automated grading",
+          "items": {
+            "type": "string",
+            "description": "Test file path (e.g., 'test_solution.py')"
+          }
+        },
+        "studentTemplates": {
+          "type": "array",
+          "description": "Template files for student projects",
+          "items": {
+            "type": "string",
+            "description": "Template file path"
+          }
+        },
+        "testDependencies": {
+          "type": "array",
+          "description": "List of example dependencies for testing",
+          "items": {
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "Simple dependency slug (uses latest version)"
+              },
+              {
+                "type": "object",
+                "required": ["slug"],
+                "properties": {
+                  "slug": {
+                    "type": "string",
+                    "description": "Hierarchical slug of the dependency (e.g., 'physics.math.vectors')"
+                  },
+                  "version": {
+                    "type": "string",
+                    "description": "Version constraint (e.g., '>=1.2.0', '^2.1.0')"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "executionBackend": {
+          "type": ["object", "null"],
+          "description": "Execution backend configuration",
+          "properties": {
+            "slug": {
+              "type": "string",
+              "description": "Backend identifier (e.g., 'python', 'java', 'matlab')"
+            },
+            "version": {
+              "type": "string",
+              "description": "Backend version (e.g., '3.10', 'r2024b')"
+            },
+            "settings": {
+              "type": "object",
+              "description": "Backend-specific settings"
+            }
+          },
+          "required": ["slug", "version"]
+        }
+      }
+    }
+  }
+}

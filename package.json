@@ -227,6 +227,12 @@
         "category": "Computor Examples"
       },
       {
+        "command": "computor.createNewExample",
+        "title": "Create New Example",
+        "icon": "$(add)",
+        "category": "Computor Examples"
+      },
+      {
         "command": "computor.uploadNewExample",
         "title": "Upload as New Example",
         "icon": "$(cloud-upload)",
@@ -498,6 +504,21 @@
     },
     "menus": {
       "view/title": [
+        {
+          "command": "computor.createNewExample",
+          "when": "view == computor.examplesView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "computor.refreshExamples",
+          "when": "view == computor.examplesView",
+          "group": "navigation@2"
+        },
+        {
+          "command": "computor.scanWorkspace",
+          "when": "view == computor.examplesView",
+          "group": "navigation@3"
+        },
         {
           "command": "computor.refreshApiTree",
           "when": "view == computor.apiTreeView",
@@ -791,7 +812,17 @@
           "group": "2_workspace@1"
         }
       ]
-    }
+    },
+    "yamlValidation": [
+      {
+        "fileMatch": "**/meta.yaml",
+        "url": "./schemas/meta-yaml-schema.json"
+      },
+      {
+        "fileMatch": "**/meta.yml",
+        "url": "./schemas/meta-yaml-schema.json"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
