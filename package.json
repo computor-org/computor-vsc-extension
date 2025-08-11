@@ -499,14 +499,9 @@
     "menus": {
       "view/title": [
         {
-          "command": "computor.createNewExample",
-          "when": "view == computor.examplesView",
-          "group": "navigation@1"
-        },
-        {
           "command": "computor.refreshExamples",
           "when": "view == computor.examplesView",
-          "group": "navigation@2"
+          "group": "navigation@1"
         },
         {
           "command": "computor.scanWorkspace",
@@ -605,6 +600,11 @@
         }
       ],
       "view/item/context": [
+        {
+          "command": "computor.createNewExample",
+          "when": "view == computor.examplesView && viewItem == repository",
+          "group": "1_actions@1"
+        },
         {
           "command": "computor.copyApiItemData",
           "when": "view == computor.apiTreeView && viewItem =~ /apiTreeItem/",
