@@ -233,6 +233,11 @@
         "category": "Computor Examples"
       },
       {
+        "command": "computor.disableCondaSchema",
+        "title": "Disable Conda Schema for meta.yaml",
+        "category": "Computor Settings"
+      },
+      {
         "command": "computor.uploadNewExample",
         "title": "Upload as New Example",
         "icon": "$(cloud-upload)",
