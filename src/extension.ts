@@ -15,6 +15,7 @@ import { ExampleTreeProvider } from './ui/tree/examples/ExampleTreeProvider';
 import { ExampleCommands } from './commands/exampleCommands';
 import { ExampleCodeLensProvider } from './providers/ExampleCodeLensProvider';
 import { YamlSchemaOverrideProvider } from './providers/YamlSchemaOverrideProvider';
+import { MetaYamlCompletionProvider } from './providers/MetaYamlCompletionProvider';
 import { ComputorApiService } from './services/ComputorApiService';
 import { IconGenerator } from './utils/iconGenerator';
 import { performanceMonitor } from './services/PerformanceMonitoringService';
@@ -184,6 +185,19 @@ export function activate(context: vscode.ExtensionContext) {
   // Override YAML schemas to prevent Conda conflicts
   const yamlSchemaOverride = new YamlSchemaOverrideProvider(context);
   context.subscriptions.push(yamlSchemaOverride);
+  
+  // Register custom completion provider for meta.yaml files
+  const metaYamlCompletionProvider = new MetaYamlCompletionProvider(context);
+  context.subscriptions.push(
+    vscode.languages.registerCompletionItemProvider(
+      [
+        { language: 'yaml', pattern: '**/meta.yaml' },
+        { language: 'yaml', pattern: '**/meta.yml' }
+      ],
+      metaYamlCompletionProvider,
+      ' ', ':', '\n'  // Trigger characters
+    )
+  );
   
   // Command to manually disable Conda schema
   context.subscriptions.push(

@@ -4,7 +4,8 @@ import * as path from 'path';
 export class YamlSchemaOverrideProvider {
   private disposables: vscode.Disposable[] = [];
 
-  constructor(private context: vscode.ExtensionContext) {
+  constructor(context: vscode.ExtensionContext) {
+    void context;
     this.setupSchemaOverrides();
     this.monitorYamlFiles();
   }
@@ -14,43 +15,36 @@ export class YamlSchemaOverrideProvider {
     const yamlConfig = vscode.workspace.getConfiguration('yaml');
     const currentSchemas = yamlConfig.get<any>('schemas') || {};
     
-    // Remove Conda schema associations for meta.yaml
-    const schemasToRemove = [
-      'https://raw.githubusercontent.com/conda-forge/conda-smithy/master/conda_smithy/data/conda-forge.json',
-      'https://json.schemastore.org/conda.json',
-      'https://squidfunk.github.io/mkdocs-material/schema.json'
-    ];
-    
+    // Remove ALL schema associations for meta.yaml files
+    // This prevents any schema from showing in the status bar
     let modified = false;
-    for (const schemaUrl of schemasToRemove) {
-      if (currentSchemas[schemaUrl]) {
-        // Check if it includes meta.yaml
-        const patterns = currentSchemas[schemaUrl];
-        if (Array.isArray(patterns)) {
-          const filtered = patterns.filter((p: string) => 
-            !p.includes('meta.yaml') && !p.includes('meta.yml')
-          );
-          if (filtered.length > 0) {
-            currentSchemas[schemaUrl] = filtered;
-          } else {
-            delete currentSchemas[schemaUrl];
-          }
+    
+    for (const schemaUrl in currentSchemas) {
+      const patterns = currentSchemas[schemaUrl];
+      if (Array.isArray(patterns)) {
+        const filtered = patterns.filter((p: string) => 
+          !p.includes('meta.yaml') && !p.includes('meta.yml')
+        );
+        if (filtered.length > 0) {
+          currentSchemas[schemaUrl] = filtered;
+        } else {
+          delete currentSchemas[schemaUrl];
+        }
+        modified = true;
+      } else if (typeof patterns === 'string') {
+        if (patterns.includes('meta.yaml') || patterns.includes('meta.yml')) {
+          delete currentSchemas[schemaUrl];
           modified = true;
         }
       }
     }
     
-    // Add our schema for meta.yaml files
-    const ourSchemaPath = vscode.Uri.file(
-      path.join(this.context.extensionPath, 'schemas', 'meta-yaml-schema.json')
-    ).toString();
-    
-    currentSchemas[ourSchemaPath] = ['**/meta.yaml', '**/meta.yml'];
-    modified = true;
-    
     if (modified) {
       yamlConfig.update('schemas', currentSchemas, vscode.ConfigurationTarget.Workspace);
     }
+    
+    // Note: We don't add our own schema here to avoid it showing in the status bar
+    // The validation still works through our CodeLens provider
   }
 
   private monitorYamlFiles(): void {
