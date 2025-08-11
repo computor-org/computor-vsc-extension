@@ -262,13 +262,15 @@ export class ComputorApiService {
     return response.data;
   }
 
-  async getCourseContents(courseId: string): Promise<CourseContentList[]> {
+  async getCourseContents(courseId: string, skipCache: boolean = false): Promise<CourseContentList[]> {
     const cacheKey = `courseContents-${courseId}`;
     
-    // Check cache first
-    const cached = multiTierCache.get<CourseContentList[]>(cacheKey);
-    if (cached) {
-      return cached;
+    // Check cache first (unless explicitly skipping)
+    if (!skipCache) {
+      const cached = multiTierCache.get<CourseContentList[]>(cacheKey);
+      if (cached) {
+        return cached;
+      }
     }
     
     // Fetch with error recovery
@@ -520,12 +522,31 @@ export class ComputorApiService {
     return response.data;
   }
 
+  clearCourseCache(courseId: string): void {
+    // Clear all caches related to a specific course
+    const cacheKey = `courseContents-${courseId}`;
+    multiTierCache.delete(cacheKey);
+    
+    // Also clear content types cache
+    const contentTypesKey = `courseContentTypes-${courseId}`;
+    multiTierCache.delete(contentTypesKey);
+    
+    // Clear course groups cache
+    const groupsKey = `courseGroups-${courseId}`;
+    multiTierCache.delete(groupsKey);
+    
+    // Clear course members cache
+    const membersKey = `courseMembers-${courseId}`;
+    multiTierCache.delete(membersKey);
+  }
+
   async generateStudentTemplate(courseId: string): Promise<{ task_id: string }> {
     const client = await this.getHttpClient();
     const response = await client.post<{ task_id: string }>(
       `/system/courses/${courseId}/generate-student-template`,
       {}
     );
+    console.log('Generate student template response:', response.data);
     return response.data;
   }
 
