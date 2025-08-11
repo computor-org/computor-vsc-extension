@@ -34,17 +34,12 @@ export class ExampleCodeLensProvider implements vscode.CodeLensProvider {
         return [];
       }
 
+      // Try to position at the very beginning
       const range = new vscode.Range(0, 0, 0, 0);
       
       codeLenses.push(new vscode.CodeLens(range, {
-        title: "📤 Upload as New Example",
+        title: "📤 Upload Example",
         command: "computor.uploadNewExample",
-        arguments: [document.uri.fsPath]
-      }));
-
-      codeLenses.push(new vscode.CodeLens(range, {
-        title: "🔄 Update Existing Example",
-        command: "computor.updateExistingExample", 
         arguments: [document.uri.fsPath]
       }));
 

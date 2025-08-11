@@ -14,8 +14,8 @@ import { GitLabTokenManager } from './services/GitLabTokenManager';
 import { ExampleTreeProvider } from './ui/tree/examples/ExampleTreeProvider';
 import { ExampleCommands } from './commands/exampleCommands';
 import { ExampleCodeLensProvider } from './providers/ExampleCodeLensProvider';
-import { YamlSchemaOverrideProvider } from './providers/YamlSchemaOverrideProvider';
 import { MetaYamlCompletionProvider } from './providers/MetaYamlCompletionProvider';
+import { MetaYamlStatusBarProvider } from './providers/MetaYamlStatusBarProvider';
 import { ComputorApiService } from './services/ComputorApiService';
 import { IconGenerator } from './utils/iconGenerator';
 import { performanceMonitor } from './services/PerformanceMonitoringService';
@@ -182,10 +182,6 @@ export function activate(context: vscode.ExtensionContext) {
     )
   );
   
-  // Override YAML schemas to prevent Conda conflicts
-  const yamlSchemaOverride = new YamlSchemaOverrideProvider(context);
-  context.subscriptions.push(yamlSchemaOverride);
-  
   // Register custom completion provider for meta.yaml files
   const metaYamlCompletionProvider = new MetaYamlCompletionProvider(context);
   context.subscriptions.push(
@@ -199,54 +195,9 @@ export function activate(context: vscode.ExtensionContext) {
     )
   );
   
-  // Command to manually disable Conda schema
-  context.subscriptions.push(
-    vscode.commands.registerCommand('computor.disableCondaSchema', async () => {
-      const yamlConfig = vscode.workspace.getConfiguration('yaml');
-      const schemas = yamlConfig.get<any>('schemas') || {};
-      
-      // Remove all Conda-related schemas
-      const condaSchemas = [
-        'https://raw.githubusercontent.com/conda-forge/conda-smithy/master/conda_smithy/data/conda-forge.json',
-        'https://json.schemastore.org/conda.json',
-        'https://raw.githubusercontent.com/conda-forge/conda-smithy/main/conda_smithy/data/conda-forge.json'
-      ];
-      
-      let removed = false;
-      for (const schemaUrl of condaSchemas) {
-        if (schemas[schemaUrl]) {
-          delete schemas[schemaUrl];
-          removed = true;
-        }
-      }
-      
-      // Also remove any meta.yaml patterns
-      for (const schemaUrl in schemas) {
-        const patterns = schemas[schemaUrl];
-        if (Array.isArray(patterns)) {
-          const filtered = patterns.filter((p: string) => 
-            !p.includes('meta.yaml') && !p.includes('meta.yml')
-          );
-          if (filtered.length !== patterns.length) {
-            if (filtered.length > 0) {
-              schemas[schemaUrl] = filtered;
-            } else {
-              delete schemas[schemaUrl];
-            }
-            removed = true;
-          }
-        }
-      }
-      
-      if (removed) {
-        await yamlConfig.update('schemas', schemas, vscode.ConfigurationTarget.Global);
-        await yamlConfig.update('schemas', schemas, vscode.ConfigurationTarget.Workspace);
-        vscode.window.showInformationMessage('Conda schema disabled for meta.yaml files');
-      } else {
-        vscode.window.showInformationMessage('No Conda schema found to disable');
-      }
-    })
-  );
+  // Register status bar buttons for meta.yaml files
+  const metaYamlStatusBarProvider = new MetaYamlStatusBarProvider(context);
+  context.subscriptions.push(metaYamlStatusBarProvider);
 
   // Check for existing authentication session
   vscode.authentication.getSession('computor', [], { createIfNone: false }).then(session => {

@@ -233,20 +233,9 @@
         "category": "Computor Examples"
       },
       {
-        "command": "computor.disableCondaSchema",
-        "title": "Disable Conda Schema for meta.yaml",
-        "category": "Computor Settings"
-      },
-      {
         "command": "computor.uploadNewExample",
         "title": "Upload as New Example",
         "icon": "$(cloud-upload)",
-        "category": "Computor Examples"
-      },
-      {
-        "command": "computor.updateExistingExample",
-        "title": "Update Existing Example",
-        "icon": "$(sync)",
         "category": "Computor Examples"
       },
       {
@@ -817,17 +806,7 @@
           "group": "2_workspace@1"
         }
       ]
-    },
-    "yamlValidation": [
-      {
-        "fileMatch": "**/meta.yaml",
-        "url": "./schemas/meta-yaml-schema.json"
-      },
-      {
-        "fileMatch": "**/meta.yml",
-        "url": "./schemas/meta-yaml-schema.json"
-      }
-    ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
