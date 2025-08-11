@@ -3,33 +3,67 @@ import * as path from 'path';
 
 export class YamlSchemaOverrideProvider {
   private disposables: vscode.Disposable[] = [];
+  private condaSchemas = [
+    'https://raw.githubusercontent.com/conda-forge/conda-smithy/master/conda_smithy/data/conda-forge.json',
+    'https://json.schemastore.org/conda.json',
+    'https://raw.githubusercontent.com/conda-forge/conda-smithy/main/conda_smithy/data/conda-forge.json'
+  ];
 
   constructor(context: vscode.ExtensionContext) {
     void context;
     this.setupSchemaOverrides();
     this.monitorYamlFiles();
+    this.startContinuousMonitoring();
   }
 
   private setupSchemaOverrides(): void {
-    // Override YAML extension settings when our extension activates
+    this.removeCondaSchemas();
+  }
+  
+  private removeCondaSchemas(): void {
+    // Override YAML extension settings
     const yamlConfig = vscode.workspace.getConfiguration('yaml');
     
-    // Disable schema store to prevent automatic schema associations
-    yamlConfig.update('schemaStore.enable', false, vscode.ConfigurationTarget.Workspace);
+    // Get current schemas
+    const currentSchemas = yamlConfig.get<any>('schemas') || {};
+    let modified = false;
     
-    // Clear ALL schemas to ensure nothing shows in status bar
-    yamlConfig.update('schemas', {}, vscode.ConfigurationTarget.Workspace);
+    // Remove all Conda schemas
+    for (const condaSchema of this.condaSchemas) {
+      if (currentSchemas[condaSchema]) {
+        delete currentSchemas[condaSchema];
+        modified = true;
+      }
+    }
     
-    // Also disable validation temporarily to ensure clean slate
-    yamlConfig.update('validate', false, vscode.ConfigurationTarget.Workspace);
+    // Also remove any schema patterns that include meta.yaml
+    for (const schemaUrl in currentSchemas) {
+      const patterns = currentSchemas[schemaUrl];
+      if (Array.isArray(patterns)) {
+        const filtered = patterns.filter((p: string) => 
+          !p.includes('meta.yaml') && !p.includes('meta.yml') &&
+          !p.includes('**/meta.yaml') && !p.includes('**/meta.yml')
+        );
+        if (filtered.length !== patterns.length) {
+          if (filtered.length > 0) {
+            currentSchemas[schemaUrl] = filtered;
+          } else {
+            delete currentSchemas[schemaUrl];
+          }
+          modified = true;
+        }
+      } else if (typeof patterns === 'string') {
+        if (patterns.includes('meta.yaml') || patterns.includes('meta.yml')) {
+          delete currentSchemas[schemaUrl];
+          modified = true;
+        }
+      }
+    }
     
-    // Re-enable validation after a short delay (without schemas)
-    setTimeout(() => {
-      yamlConfig.update('validate', true, vscode.ConfigurationTarget.Workspace);
-    }, 500);
-    
-    // Note: We don't add any schema associations to keep status bar clean
-    // IntelliSense is provided through our custom completion provider
+    if (modified) {
+      yamlConfig.update('schemas', currentSchemas, vscode.ConfigurationTarget.Global);
+      yamlConfig.update('schemas', currentSchemas, vscode.ConfigurationTarget.Workspace);
+    }
   }
 
   private monitorYamlFiles(): void {
@@ -93,6 +127,37 @@ export class YamlSchemaOverrideProvider {
     return (content.includes('package:') && content.includes('source:')) ||
            (content.includes('package:') && content.includes('build:')) ||
            content.includes('conda_build_config');
+  }
+  
+  private startContinuousMonitoring(): void {
+    // Monitor configuration changes
+    this.disposables.push(
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('yaml.schemas')) {
+          // Configuration changed, remove Conda schemas again
+          this.removeCondaSchemas();
+        }
+      })
+    );
+    
+    // Periodically check and remove Conda schemas (every 2 seconds)
+    const interval = setInterval(() => {
+      this.removeCondaSchemas();
+    }, 2000);
+    
+    // Store interval for cleanup
+    this.disposables.push({
+      dispose: () => clearInterval(interval)
+    });
+    
+    // Also check when text documents are opened
+    this.disposables.push(
+      vscode.workspace.onDidOpenTextDocument((document) => {
+        if (this.isMetaYamlFile(document)) {
+          this.removeCondaSchemas();
+        }
+      })
+    );
   }
 
   dispose(): void {

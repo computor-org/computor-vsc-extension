@@ -208,7 +208,8 @@ export function activate(context: vscode.ExtensionContext) {
       // Remove all Conda-related schemas
       const condaSchemas = [
         'https://raw.githubusercontent.com/conda-forge/conda-smithy/master/conda_smithy/data/conda-forge.json',
-        'https://json.schemastore.org/conda.json'
+        'https://json.schemastore.org/conda.json',
+        'https://raw.githubusercontent.com/conda-forge/conda-smithy/main/conda_smithy/data/conda-forge.json'
       ];
       
       let removed = false;
@@ -219,8 +220,27 @@ export function activate(context: vscode.ExtensionContext) {
         }
       }
       
+      // Also remove any meta.yaml patterns
+      for (const schemaUrl in schemas) {
+        const patterns = schemas[schemaUrl];
+        if (Array.isArray(patterns)) {
+          const filtered = patterns.filter((p: string) => 
+            !p.includes('meta.yaml') && !p.includes('meta.yml')
+          );
+          if (filtered.length !== patterns.length) {
+            if (filtered.length > 0) {
+              schemas[schemaUrl] = filtered;
+            } else {
+              delete schemas[schemaUrl];
+            }
+            removed = true;
+          }
+        }
+      }
+      
       if (removed) {
         await yamlConfig.update('schemas', schemas, vscode.ConfigurationTarget.Global);
+        await yamlConfig.update('schemas', schemas, vscode.ConfigurationTarget.Workspace);
         vscode.window.showInformationMessage('Conda schema disabled for meta.yaml files');
       } else {
         vscode.window.showInformationMessage('No Conda schema found to disable');
