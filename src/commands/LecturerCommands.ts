@@ -57,8 +57,8 @@ export class LecturerCommands {
 
     // Tree refresh
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.refreshLecturerTree', async () => {
-        await this.treeDataProvider.refresh();
+      vscode.commands.registerCommand('computor.refreshLecturerTree', () => {
+        this.treeDataProvider.refresh();
       })
     );
 

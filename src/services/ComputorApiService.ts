@@ -283,8 +283,10 @@ export class ComputorApiService {
       exponentialBackoff: true
     });
     
-    // Cache the result in warm tier (course contents change moderately)
-    multiTierCache.set(cacheKey, result, 'warm');
+    // Only cache if we're not skipping cache
+    if (!skipCache) {
+      multiTierCache.set(cacheKey, result, 'warm');
+    }
     
     return result;
   }
