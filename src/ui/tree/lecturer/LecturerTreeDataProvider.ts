@@ -81,10 +81,10 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     this.loadExpandedStates();
   }
 
-  async refresh(): Promise<void> {
+  refresh(): void {
     console.log('Full tree refresh requested');
     
-    // Clear all tree-level caches
+    // Clear ALL caches - tree level
     this.courseContentsCache.clear();
     this.coursesCache.clear();
     this.courseContentTypesCache.clear();
@@ -93,7 +93,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     this.courseGroupsCache.clear();
     this.courseMembersCache.clear();
     this.examplesCache.clear();
-    this.paginationState.clear(); // Clear pagination state on full refresh
+    this.paginationState.clear();
     
     // Clear all virtual scrolling services
     for (const service of this.virtualScrollServices.values()) {
@@ -101,35 +101,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     }
     this.virtualScrollServices.clear();
     
-    // Clear API-level caches for all expanded courses
-    const expandedCourseIds: string[] = [];
-    for (const nodeId of Object.keys(this.expandedStates)) {
-      if (nodeId.startsWith('course-') && this.expandedStates[nodeId]) {
-        const courseId = nodeId.replace('course-', '');
-        expandedCourseIds.push(courseId);
-        // Clear API cache for this course
-        this.apiService.clearCourseCache(courseId);
-      }
-    }
-    
-    // Pre-fetch data for expanded courses to ensure fresh data is loaded
-    for (const courseId of expandedCourseIds) {
-      try {
-        console.log(`Pre-fetching data for expanded course ${courseId}`);
-        const contents = await this.apiService.getCourseContents(courseId, true); // skipCache = true
-        if (contents) {
-          this.courseContentsCache.set(courseId, contents);
-          
-          // Log for debugging
-          const withExamples = contents.filter(c => c.example_id);
-          if (withExamples.length > 0) {
-            console.log(`Course ${courseId} has ${withExamples.length} contents with examples`);
-          }
-        }
-      } catch (error) {
-        console.error(`Failed to pre-fetch course contents for ${courseId}:`, error);
-      }
-    }
+    // DON'T pre-fetch anything - let the tree fetch fresh data when needed
     
     // Fire with undefined to refresh entire tree
     this._onDidChangeTreeData.fire(undefined);
@@ -146,45 +118,11 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   async forceRefreshCourse(courseId: string): Promise<void> {
     console.log(`Force refreshing course ${courseId}`);
     
-    // Clear all caches for this course
+    // Clear API cache FIRST, then tree cache
+    this.apiService.clearCourseCache(courseId);
     this.clearCourseCache(courseId);
     
-    // Also clear the API cache to ensure fresh data
-    this.apiService.clearCourseCache(courseId);
-    
-    // Pre-fetch the course contents to ensure fresh data is loaded
-    try {
-      const contents = await this.apiService.getCourseContents(courseId, true); // skipCache = true
-      if (contents) {
-        this.courseContentsCache.set(courseId, contents);
-        console.log(`Pre-fetched ${contents.length} course contents for course ${courseId}`);
-        
-        // Log contents with examples for debugging
-        const withExamples = contents.filter(c => c.example_id);
-        if (withExamples.length > 0) {
-          console.log(`Contents with examples:`, withExamples.map(c => ({
-            title: c.title,
-            example_id: c.example_id,
-            example_version: c.example_version,
-            deployment_status: c.deployment_status
-          })));
-        }
-        
-        // Also pre-fetch content types to ensure they're available
-        const contentTypes = await this.apiService.getCourseContentTypes(courseId);
-        if (contentTypes) {
-          this.courseContentTypesCache.set(courseId, contentTypes);
-          contentTypes.forEach(type => {
-            this.courseContentTypesById.set(type.id, type);
-          });
-        }
-      }
-    } catch (error) {
-      console.error(`Failed to pre-fetch course contents for ${courseId}:`, error);
-    }
-    
     // Fire tree data change event with undefined to refresh entire tree
-    // This ensures all nodes are refreshed, not just visible ones
     this._onDidChangeTreeData.fire(undefined);
   }
   
@@ -788,7 +726,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
 
   private async getCourseContents(courseId: string): Promise<CourseContentList[]> {
     if (!this.courseContentsCache.has(courseId)) {
-      const contents = await this.apiService.getCourseContents(courseId);
+      // Always skip API cache to get fresh data
+      const contents = await this.apiService.getCourseContents(courseId, true); // skipCache = true
       this.courseContentsCache.set(courseId, contents);
     }
     return this.courseContentsCache.get(courseId) || [];
