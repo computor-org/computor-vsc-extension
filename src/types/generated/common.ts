@@ -2,7 +2,7 @@
 
  * Auto-generated TypeScript interfaces from Pydantic models
 
- * Generated on: 2025-08-06T13:19:53.337845
+ * Generated on: 2025-08-11T18:45:40.504618
 
  * Category: Common
 
@@ -610,6 +610,67 @@ export interface SubmissionGroupUpdate {
   max_group_size?: number | null;
   max_submissions?: number | null;
   status?: string | null;
+}
+
+/**
+ * Repository information for a submission group
+ */
+export interface SubmissionGroupRepository {
+  provider?: string;
+  url: string;
+  full_path: string;
+  clone_url?: string | null;
+  web_url?: string | null;
+}
+
+/**
+ * Basic member information
+ */
+export interface SubmissionGroupMemberBasic {
+  id: string;
+  user_id: string;
+  course_member_id: string;
+  username?: string | null;
+  full_name?: string | null;
+}
+
+/**
+ * Student's view of grading
+ */
+export interface SubmissionGroupGradingStudent {
+  id: string;
+  grading: number;
+  status?: string | null;
+  graded_by?: string | null;
+  created_at: string;
+}
+
+/**
+ * Student's view of a submission group
+ */
+export interface SubmissionGroupStudent {
+  id: string;
+  course_id: string;
+  course_content_id: string;
+  course_content_title?: string | null;
+  course_content_path?: string | null;
+  max_group_size: number;
+  current_group_size?: number;
+  members?: SubmissionGroupMemberBasic[];
+  repository?: SubmissionGroupRepository | null;
+  latest_grading?: SubmissionGroupGradingStudent | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Query parameters for student submission groups
+ */
+export interface SubmissionGroupStudentQuery {
+  course_id?: string | null;
+  course_content_id?: string | null;
+  has_repository?: boolean | null;
+  is_graded?: boolean | null;
 }
 
 /**
