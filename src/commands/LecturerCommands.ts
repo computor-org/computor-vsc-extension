@@ -57,8 +57,19 @@ export class LecturerCommands {
 
     // Tree refresh
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.refreshLecturerTree', () => {
+      vscode.commands.registerCommand('computor.refreshLecturerTree', async () => {
+        console.log('=== LECTURER TREE REFRESH COMMAND TRIGGERED ===');
+        
+        // Clear ALL API caches first - this is crucial
+        console.log('Clearing all API caches...');
+        this.apiService.clearCourseCache(''); // Clear all course caches
+        
+        // Use the standard refresh mechanism
+        console.log('Refreshing lecturer tree...');
         this.treeDataProvider.refresh();
+        
+        console.log('Tree refresh completed');
+        vscode.window.showInformationMessage('✅ Lecturer tree refreshed successfully!');
       })
     );
 
@@ -302,8 +313,19 @@ export class LecturerCommands {
   }
 
   private async deleteCourseContent(item: CourseContentTreeItem): Promise<void> {
+    console.log('Delete command called with item:', item);
+    console.log('Item type:', item.constructor.name);
+    console.log('Item courseContent:', item.courseContent);
+    
+    // Validate that we have the required data
+    if (!item.courseContent || !item.courseContent.id) {
+      vscode.window.showErrorMessage('Invalid course content item - missing required data');
+      console.error('Invalid item passed to deleteCourseContent:', item);
+      return;
+    }
+    
     const confirmation = await vscode.window.showWarningMessage(
-      `Are you sure you want to delete "${item.courseContent.title}"?`,
+      `Are you sure you want to delete "${item.courseContent.title || item.courseContent.path}"?`,
       'Yes',
       'No'
     );
@@ -331,8 +353,7 @@ export class LecturerCommands {
       await this.performExampleAssignment(item, selected.example);
       
       vscode.window.showInformationMessage(
-        `✅ Example "${selected.label}" assigned successfully!\n` +
-        `Status: pending_release - Use "Release Course Content" to deploy.`
+        `✅ Example "${selected.label}" assigned successfully!`
       );
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to assign example: ${error}`);
@@ -373,16 +394,42 @@ export class LecturerCommands {
   private async performExampleAssignment(item: CourseContentTreeItem, example: ExampleGet): Promise<void> {
     const version = 'latest';
     
-    await this.apiService.assignExampleToCourseContent(
+    // Get the updated content from the API response
+    const updatedContent = await this.apiService.assignExampleToCourseContent(
       item.course.id,
       item.courseContent.id,
       example.id,
       version
     );
+    
+    console.log('Assignment API returned updated content:', {
+      id: updatedContent.id,
+      title: updatedContent.title,
+      example_id: updatedContent.example_id,
+      deployment_status: updatedContent.deployment_status,
+      example_version: updatedContent.example_version
+    });
+    
+    // Check if the deployment_status is what we expect
+    if (updatedContent.deployment_status !== 'pending_release' && updatedContent.deployment_status !== 'pending') {
+      console.warn(`Unexpected deployment_status: ${updatedContent.deployment_status}. Expected 'pending_release' or 'pending'.`);
+    }
 
-    // Clear API cache and force refresh to show the updated assignment
+    console.log('Example assignment completed, refreshing tree...');
+    
+    // Clear cache and refresh the specific item
     this.apiService.clearCourseCache(item.course.id);
-    await this.treeDataProvider.forceRefreshCourse(item.course.id);
+    
+    // Refresh the parent of the content item to properly update the display
+    // This ensures the item's visual state (icon, description) is updated
+    const parent = await this.treeDataProvider.getParent(item);
+    if (parent) {
+      console.log(`Refreshing parent node: ${parent.id}`);
+      (this.treeDataProvider as any).refreshNode(parent);
+    } else {
+      console.log('No parent found, refreshing the item itself');
+      (this.treeDataProvider as any).refreshNode(item);
+    }
   }
 
   private async unassignExample(item: CourseContentTreeItem): Promise<void> {
@@ -394,13 +441,32 @@ export class LecturerCommands {
 
     if (confirmation === 'Yes') {
       try {
-        await this.apiService.unassignExampleFromCourseContent(
+        // Get the updated content from the API response
+        const updatedContent = await this.apiService.unassignExampleFromCourseContent(
           item.course.id,
           item.courseContent.id
         );
-        // Clear API cache and force refresh to show the updated state
+        
+        console.log('Unassign API returned updated content:', {
+          id: updatedContent.id,
+          title: updatedContent.title,
+          example_id: updatedContent.example_id,
+          deployment_status: updatedContent.deployment_status
+        });
+        
+        // Clear cache and refresh the specific item
         this.apiService.clearCourseCache(item.course.id);
-        await this.treeDataProvider.forceRefreshCourse(item.course.id);
+        
+        // Refresh the parent of the content item to properly update the display
+        const parent = await this.treeDataProvider.getParent(item);
+        if (parent) {
+          console.log(`Refreshing parent node after unassign: ${parent.id}`);
+          (this.treeDataProvider as any).refreshNode(parent);
+        } else {
+          console.log('No parent found, refreshing the item itself');
+          (this.treeDataProvider as any).refreshNode(item);
+        }
+        
         vscode.window.showInformationMessage('Example unassigned successfully');
       } catch (error) {
         vscode.window.showErrorMessage(`Failed to unassign example: ${error}`);

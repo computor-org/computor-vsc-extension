@@ -96,9 +96,11 @@ export function activate(context: vscode.ExtensionContext) {
   const lecturerTreeView = vscode.window.createTreeView('computor.lecturerView', {
     treeDataProvider: lecturerTreeDataProvider,
     showCollapseAll: true
-    // Removed dragAndDropController due to VS Code limitations with tree drag/drop
   });
   context.subscriptions.push(lecturerTreeView);
+  
+  // Store tree view reference in the provider for refresh operations
+  (lecturerTreeDataProvider as any).treeView = lecturerTreeView;
   
   // Register load more command for pagination
   context.subscriptions.push(

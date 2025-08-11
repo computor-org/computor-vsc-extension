@@ -67,37 +67,22 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     public readonly hasChildren: boolean,
     public readonly exampleInfo?: any,
     public readonly contentType?: CourseContentTypeList,
-    public readonly isSubmittable: boolean = false
+    public readonly isSubmittable: boolean = false,
+    public readonly providedCollapsibleState?: vscode.TreeItemCollapsibleState
   ) {
     super(
       courseContent.title || courseContent.path,
-      hasChildren ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None
+      providedCollapsibleState !== undefined ? providedCollapsibleState : 
+        (hasChildren ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None)
     );
+    
     this.id = `content-${courseContent.id}`;
+    
     this.contextValue = this.getContextValue();
     this.iconPath = this.getIcon();
     this.tooltip = this.getTooltip();
     
     this.description = this.getDescription();
-    
-    // Enable as drop target for examples - use consistent URI for all submittable items
-    if (this.isSubmittable) {
-      this.resourceUri = vscode.Uri.parse(`droppable:courseContent:${courseContent.id}`);
-    } else {
-      this.resourceUri = vscode.Uri.parse(`courseContent:${courseContent.id}`);
-    }
-    
-    // Make submittable items droppable by adding properties VS Code recognizes
-    if (this.isSubmittable) {
-      // Add a command to make the item interactive
-      this.command = {
-        command: 'computor.showCourseContentDetails',
-        title: 'Show Details',
-        arguments: [this]
-      };
-      
-      this.description = this.getDescription();
-    }
   }
 
   private getContextValue(): string {
@@ -234,7 +219,8 @@ export class CourseFolderTreeItem extends vscode.TreeItem {
     public readonly folderType: 'contents' | 'contentTypes' | 'groups',
     public readonly course: CourseList,
     public readonly courseFamily: CourseFamilyList,
-    public readonly organization: OrganizationList
+    public readonly organization: OrganizationList,
+    public readonly collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.Collapsed
   ) {
     const labels = {
       'contents': 'Contents',
@@ -256,7 +242,7 @@ export class CourseFolderTreeItem extends vscode.TreeItem {
     
     super(
       labels[folderType],
-      vscode.TreeItemCollapsibleState.Collapsed
+      collapsibleState
     );
     this.id = `${folderType}-${course.id}`;
     this.contextValue = `course.${folderType}`;
@@ -305,11 +291,12 @@ export class CourseGroupTreeItem extends vscode.TreeItem {
     public readonly course: CourseList,
     public readonly courseFamily: CourseFamilyList,
     public readonly organization: OrganizationList,
-    public readonly memberCount: number = 0
+    public readonly memberCount: number = 0,
+    public readonly collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.Collapsed
   ) {
     super(
       group.title || `Group ${group.id.slice(0, 8)}`,
-      vscode.TreeItemCollapsibleState.Collapsed
+      collapsibleState
     );
     this.id = `group-${group.id}`;
     this.contextValue = 'course.group';
@@ -325,11 +312,13 @@ export class NoGroupTreeItem extends vscode.TreeItem {
     public readonly course: CourseList,
     public readonly courseFamily: CourseFamilyList,
     public readonly organization: OrganizationList,
-    public readonly memberCount: number = 0
+    public readonly memberCount: number = 0,
+    public readonly providedCollapsibleState?: vscode.TreeItemCollapsibleState
   ) {
     super(
       'No Group',
-      memberCount > 0 ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None
+      providedCollapsibleState !== undefined ? providedCollapsibleState :
+        (memberCount > 0 ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None)
     );
     this.id = `no-group-${course.id}`;
     this.contextValue = 'course.noGroup';
