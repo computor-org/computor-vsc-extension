@@ -283,10 +283,9 @@ export class ComputorApiService {
       exponentialBackoff: true
     });
     
-    // Only cache if we're not skipping cache
-    if (!skipCache) {
-      multiTierCache.set(cacheKey, result, 'warm');
-    }
+    // Always update cache with fresh data, even if skipCache was true
+    // This ensures the cache is always up-to-date after a fresh fetch
+    multiTierCache.set(cacheKey, result, 'warm');
     
     return result;
   }
@@ -315,8 +314,9 @@ export class ComputorApiService {
     const client = await this.getHttpClient();
     await client.delete(`/course-contents/${contentId}`);
     
-    // Invalidate course contents cache
-    this.invalidateCachePattern(`courseContents-${courseId}`);
+    // Delete the specific cache entry for this course's contents
+    const cacheKey = `courseContents-${courseId}`;
+    multiTierCache.delete(cacheKey);
   }
 
   async getCourseContentKinds(): Promise<CourseContentKindList[]> {
