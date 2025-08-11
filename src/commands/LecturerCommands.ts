@@ -686,7 +686,9 @@ export class LecturerCommands {
 
   private async releaseCourseContent(item: CourseTreeItem): Promise<void> {
     try {
-      this.treeDataProvider.refresh();
+      // Clear both API and tree caches to get fresh data
+      this.apiService.clearCourseCache(item.course.id);
+      this.treeDataProvider.invalidateCache('course', item.course.id);
       
       const pendingContents = await this.getPendingReleaseContents(item.course.id);
       
@@ -748,14 +750,31 @@ export class LecturerCommands {
       progress.report({ increment: 0, message: "Starting release process..." });
       
       const result = await this.apiService.generateStudentTemplate(courseId);
-      if (!result?.task_id) {
-        throw new Error('Failed to start release process');
+      console.log('Release started, response:', result);
+      
+      // Handle both possible response formats
+      const taskId = result?.task_id || (result as any)?.id;
+      if (!taskId) {
+        console.error('No task ID in response:', result);
+        // If no task ID but the request succeeded (200 OK), consider it a synchronous success
+        if (result) {
+          vscode.window.showInformationMessage('✅ Course content released successfully!');
+          // Clear both API and tree caches to force refresh
+          this.apiService.clearCourseCache(courseId);
+          this.treeDataProvider.invalidateCache('course', courseId);
+          this.treeDataProvider.refresh();
+          return;
+        }
+        throw new Error('Failed to start release process - no task ID returned');
       }
       
-      const taskStatus = await this.pollTaskStatus(result.task_id, progress);
+      const taskStatus = await this.pollTaskStatus(taskId, progress);
       
       if (taskStatus?.status === 'completed') {
         vscode.window.showInformationMessage('✅ Course content released successfully!');
+        // Clear both API and tree caches to force refresh
+        this.apiService.clearCourseCache(courseId);
+        this.treeDataProvider.invalidateCache('course', courseId);
         this.treeDataProvider.refresh();
       } else if (taskStatus?.status === 'failed') {
         throw new Error(taskStatus.error || 'Release process failed');
