@@ -733,44 +733,6 @@ export class ExampleCommands {
 
       if (!slug) return;
 
-      // Ask for title
-      const title = await vscode.window.showInputBox({
-        prompt: 'Enter a title for the example',
-        placeHolder: 'e.g., Hello World Python Example',
-        validateInput: (value) => {
-          if (!value) return 'Title is required';
-          return undefined;
-        }
-      });
-
-      if (!title) return;
-
-      // Ask for description
-      const description = await vscode.window.showInputBox({
-        prompt: 'Enter a description (optional)',
-        placeHolder: 'A brief description of what this example demonstrates'
-      });
-
-      // Ask for programming language
-      const language = await vscode.window.showQuickPick(
-        ['python', 'javascript', 'typescript', 'java', 'cpp', 'c', 'csharp', 'go', 'rust', 'other'],
-        {
-          placeHolder: 'Select the primary programming language'
-        }
-      );
-
-      if (!language) return;
-
-      // Ask for keywords
-      const keywordsInput = await vscode.window.showInputBox({
-        prompt: 'Enter keywords separated by commas (optional)',
-        placeHolder: 'e.g., beginner, loops, functions'
-      });
-
-      const keywords = keywordsInput 
-        ? keywordsInput.split(',').map(k => k.trim()).filter(k => k)
-        : [];
-
       // Create directory
       const exampleDir = path.join(workspaceFolder.uri.fsPath, slug);
       
@@ -781,27 +743,17 @@ export class ExampleCommands {
 
       await fs.promises.mkdir(exampleDir, { recursive: true });
 
-      // Create meta.yaml with template
+      // Create minimal meta.yaml with just the slug
       const metaContent: any = {
-        version: '1.0',
         slug: slug,
-        title: title,
-        description: description || undefined,
+        title: '',
+        description: '',
         language: 'en',
-        license: 'Not specified',
-        keywords: keywords.length > 0 ? keywords : undefined,
+        license: '',
+        keywords: [],
         authors: [],
         maintainers: [],
-        links: [],
-        supportingMaterial: [],
-        properties: {
-          studentSubmissionFiles: [],
-          additionalFiles: [],
-          testFiles: [],
-          studentTemplates: [],
-          testDependencies: [],
-          executionBackend: null
-        }
+        properties: {}
       };
 
       // Convert to YAML
@@ -814,101 +766,13 @@ export class ExampleCommands {
       const metaPath = path.join(exampleDir, 'meta.yaml');
       await fs.promises.writeFile(metaPath, yamlContent, 'utf-8');
 
-      // Create README.md template
-      const readmeContent = `# ${title}
-
-${description || 'TODO: Add description'}
-
-## Overview
-TODO: Explain what this example demonstrates
-
-## Requirements
-- ${language}
-- TODO: List any other requirements
-
-## How to Run
-\`\`\`bash
-# TODO: Add run instructions
-\`\`\`
-
-## Expected Output
-\`\`\`
-TODO: Show expected output
-\`\`\`
-
-## Learning Objectives
-- TODO: List what students will learn
-`;
-
-      const readmePath = path.join(exampleDir, 'README.md');
-      await fs.promises.writeFile(readmePath, readmeContent, 'utf-8');
-
-      // Create main file based on language
-      let mainFileName = 'main';
-      let mainContent = '';
-      
-      switch (language) {
-        case 'python':
-          mainFileName = 'main.py';
-          mainContent = `#!/usr/bin/env python3
-"""
-${title}
-${description || ''}
-"""
-
-def main():
-    # TODO: Implement your example here
-    print("Hello from ${title}!")
-
-if __name__ == "__main__":
-    main()
-`;
-          break;
-        case 'javascript':
-        case 'typescript':
-          mainFileName = language === 'typescript' ? 'main.ts' : 'main.js';
-          mainContent = `/**
- * ${title}
- * ${description || ''}
- */
-
-function main() {
-    // TODO: Implement your example here
-    console.log("Hello from ${title}!");
-}
-
-main();
-`;
-          break;
-        case 'java':
-          mainFileName = 'Main.java';
-          mainContent = `/**
- * ${title}
- * ${description || ''}
- */
-public class Main {
-    public static void main(String[] args) {
-        // TODO: Implement your example here
-        System.out.println("Hello from ${title}!");
-    }
-}
-`;
-          break;
-        default:
-          mainFileName = `main.${language}`;
-          mainContent = `// ${title}\n// ${description || ''}\n\n// TODO: Implement your example here\n`;
-      }
-
-      const mainPath = path.join(exampleDir, mainFileName);
-      await fs.promises.writeFile(mainPath, mainContent, 'utf-8');
-
       // Open the meta.yaml file in editor
       const doc = await vscode.workspace.openTextDocument(metaPath);
       await vscode.window.showTextDocument(doc);
 
       // Show success message
       vscode.window.showInformationMessage(
-        `Created new example "${slug}" in ${exampleDir}. Edit meta.yaml to configure the example.`
+        `Example "${slug}" created successfully! Please fill in the meta.yaml details.`
       );
 
       // Refresh workspace scan to show the new example
