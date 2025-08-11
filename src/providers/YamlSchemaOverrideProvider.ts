@@ -13,38 +13,23 @@ export class YamlSchemaOverrideProvider {
   private setupSchemaOverrides(): void {
     // Override YAML extension settings when our extension activates
     const yamlConfig = vscode.workspace.getConfiguration('yaml');
-    const currentSchemas = yamlConfig.get<any>('schemas') || {};
     
-    // Remove ALL schema associations for meta.yaml files
-    // This prevents any schema from showing in the status bar
-    let modified = false;
+    // Disable schema store to prevent automatic schema associations
+    yamlConfig.update('schemaStore.enable', false, vscode.ConfigurationTarget.Workspace);
     
-    for (const schemaUrl in currentSchemas) {
-      const patterns = currentSchemas[schemaUrl];
-      if (Array.isArray(patterns)) {
-        const filtered = patterns.filter((p: string) => 
-          !p.includes('meta.yaml') && !p.includes('meta.yml')
-        );
-        if (filtered.length > 0) {
-          currentSchemas[schemaUrl] = filtered;
-        } else {
-          delete currentSchemas[schemaUrl];
-        }
-        modified = true;
-      } else if (typeof patterns === 'string') {
-        if (patterns.includes('meta.yaml') || patterns.includes('meta.yml')) {
-          delete currentSchemas[schemaUrl];
-          modified = true;
-        }
-      }
-    }
+    // Clear ALL schemas to ensure nothing shows in status bar
+    yamlConfig.update('schemas', {}, vscode.ConfigurationTarget.Workspace);
     
-    if (modified) {
-      yamlConfig.update('schemas', currentSchemas, vscode.ConfigurationTarget.Workspace);
-    }
+    // Also disable validation temporarily to ensure clean slate
+    yamlConfig.update('validate', false, vscode.ConfigurationTarget.Workspace);
     
-    // Note: We don't add our own schema here to avoid it showing in the status bar
-    // The validation still works through our CodeLens provider
+    // Re-enable validation after a short delay (without schemas)
+    setTimeout(() => {
+      yamlConfig.update('validate', true, vscode.ConfigurationTarget.Workspace);
+    }, 500);
+    
+    // Note: We don't add any schema associations to keep status bar clean
+    // IntelliSense is provided through our custom completion provider
   }
 
   private monitorYamlFiles(): void {
@@ -76,16 +61,30 @@ export class YamlSchemaOverrideProvider {
     const content = document.getText();
     
     if (content.includes('slug:') && !this.isCondaMetaYaml(content)) {
-      // Force disable YAML extension's schema for this file
+      // Ensure no schemas are associated with this file
       const yamlConfig = vscode.workspace.getConfiguration('yaml', document.uri);
       
-      // Temporarily disable schema validation for this file
-      yamlConfig.update('validate', false, vscode.ConfigurationTarget.WorkspaceFolder);
+      // Clear any file-specific schema associations
+      const currentSchemas = yamlConfig.get<any>('schemas') || {};
+      const cleanedSchemas: any = {};
       
-      // Re-enable after a short delay with our schema
-      setTimeout(() => {
-        yamlConfig.update('validate', true, vscode.ConfigurationTarget.WorkspaceFolder);
-      }, 100);
+      // Remove any entries that might match this file
+      for (const schemaUrl in currentSchemas) {
+        const patterns = currentSchemas[schemaUrl];
+        if (Array.isArray(patterns)) {
+          const filtered = patterns.filter((p: string) => 
+            !document.fileName.includes(p.replace('**/', ''))
+          );
+          if (filtered.length > 0) {
+            cleanedSchemas[schemaUrl] = filtered;
+          }
+        }
+      }
+      
+      // Update schemas if changed
+      if (JSON.stringify(currentSchemas) !== JSON.stringify(cleanedSchemas)) {
+        yamlConfig.update('schemas', cleanedSchemas, vscode.ConfigurationTarget.WorkspaceFolder);
+      }
     }
   }
 
