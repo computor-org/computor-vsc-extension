@@ -14,6 +14,7 @@ import { GitLabTokenManager } from './services/GitLabTokenManager';
 import { ExampleTreeProvider } from './ui/tree/examples/ExampleTreeProvider';
 import { ExampleCommands } from './commands/exampleCommands';
 import { ExampleCodeLensProvider } from './providers/ExampleCodeLensProvider';
+import { YamlSchemaOverrideProvider } from './providers/YamlSchemaOverrideProvider';
 import { ComputorApiService } from './services/ComputorApiService';
 import { IconGenerator } from './utils/iconGenerator';
 import { performanceMonitor } from './services/PerformanceMonitoringService';
@@ -180,6 +181,38 @@ export function activate(context: vscode.ExtensionContext) {
     )
   );
   
+  // Override YAML schemas to prevent Conda conflicts
+  const yamlSchemaOverride = new YamlSchemaOverrideProvider(context);
+  context.subscriptions.push(yamlSchemaOverride);
+  
+  // Command to manually disable Conda schema
+  context.subscriptions.push(
+    vscode.commands.registerCommand('computor.disableCondaSchema', async () => {
+      const yamlConfig = vscode.workspace.getConfiguration('yaml');
+      const schemas = yamlConfig.get<any>('schemas') || {};
+      
+      // Remove all Conda-related schemas
+      const condaSchemas = [
+        'https://raw.githubusercontent.com/conda-forge/conda-smithy/master/conda_smithy/data/conda-forge.json',
+        'https://json.schemastore.org/conda.json'
+      ];
+      
+      let removed = false;
+      for (const schemaUrl of condaSchemas) {
+        if (schemas[schemaUrl]) {
+          delete schemas[schemaUrl];
+          removed = true;
+        }
+      }
+      
+      if (removed) {
+        await yamlConfig.update('schemas', schemas, vscode.ConfigurationTarget.Global);
+        vscode.window.showInformationMessage('Conda schema disabled for meta.yaml files');
+      } else {
+        vscode.window.showInformationMessage('No Conda schema found to disable');
+      }
+    })
+  );
 
   // Check for existing authentication session
   vscode.authentication.getSession('computor', [], { createIfNone: false }).then(session => {
