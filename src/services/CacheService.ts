@@ -392,6 +392,19 @@ export class MultiTierCache {
   }
   
   /**
+   * Delete item from all tiers
+   */
+  delete(key: string): boolean {
+    let deleted = false;
+    for (const tier of this.tiers) {
+      if (tier.cache.delete(key)) {
+        deleted = true;
+      }
+    }
+    return deleted;
+  }
+  
+  /**
    * Clear all tiers
    */
   clear(): void {

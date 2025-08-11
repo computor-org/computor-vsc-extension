@@ -24,7 +24,6 @@ import {
   CourseContentUpdate, 
   CourseList,
   CourseContentTypeList,
-  CourseContentKindList,
   CourseGroupList,
   CourseMemberList,
   ExampleGet
@@ -55,15 +54,6 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   private apiService: ComputorApiService;
   private gitLabTokenManager: GitLabTokenManager;
   private settingsManager: ComputorSettingsManager;
-  private courseContentsCache: Map<string, CourseContentList[]> = new Map();
-  private coursesCache: Map<string, CourseList[]> = new Map();
-  private courseContentTypesCache: Map<string, CourseContentTypeList[]> = new Map();
-  private courseContentTypesById: Map<string, CourseContentTypeList> = new Map();
-  private courseContentKindsCache: Map<string, CourseContentKindList> = new Map();
-  private courseGroupsCache: Map<string, CourseGroupList[]> = new Map();
-  private courseMembersCache: Map<string, CourseMemberList[]> = new Map();
-
-  private examplesCache: Map<string, ExampleGet> = new Map();
   private expandedStates: Record<string, boolean> = {};
   
   // Pagination state for different node types
@@ -78,21 +68,18 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     this.settingsManager = new ComputorSettingsManager(context);
     
     // Load expanded states on startup
-    this.loadExpandedStates();
+    console.log('Loading expanded states on startup...');
+    this.loadExpandedStates().then(() => {
+      console.log('Expanded states loaded:', Object.keys(this.expandedStates));
+    });
   }
 
   refresh(): void {
     console.log('Full tree refresh requested');
+    console.log('Current expanded states before refresh:', Object.keys(this.expandedStates));
     
-    // Clear ALL caches - tree level
-    this.courseContentsCache.clear();
-    this.coursesCache.clear();
-    this.courseContentTypesCache.clear();
-    this.courseContentTypesById.clear();
-    this.courseContentKindsCache.clear();
-    this.courseGroupsCache.clear();
-    this.courseMembersCache.clear();
-    this.examplesCache.clear();
+    // Clear backend API caches
+    this.apiService.clearCourseCache('');
     this.paginationState.clear();
     
     // Clear all virtual scrolling services
@@ -101,7 +88,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     }
     this.virtualScrollServices.clear();
     
-    // DON'T pre-fetch anything - let the tree fetch fresh data when needed
+    // NOTE: We do NOT clear expandedStates here - we want to preserve them across refreshes
     
     // Fire with undefined to refresh entire tree
     this._onDidChangeTreeData.fire(undefined);
@@ -160,28 +147,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
    * Clear cache for a specific course
    */
   private clearCourseCache(courseId: string): void {
-    this.courseContentsCache.delete(courseId);
-    this.courseContentTypesCache.delete(courseId);
-    this.courseGroupsCache.delete(courseId);
-    this.courseMembersCache.delete(courseId);
-    
-    // Clear content types by ID cache for this course
-    const typesToDelete: string[] = [];
-    for (const [typeId, type] of this.courseContentTypesById.entries()) {
-      if (type.course_id === courseId) {
-        typesToDelete.push(typeId);
-      }
-    }
-    typesToDelete.forEach(id => this.courseContentTypesById.delete(id));
-    
-    // Clear course members cache for this course (including group-specific caches)
-    const memberKeysToDelete: string[] = [];
-    for (const [cacheKey] of this.courseMembersCache.entries()) {
-      if (cacheKey === courseId || cacheKey.startsWith(`${courseId}-`)) {
-        memberKeysToDelete.push(cacheKey);
-      }
-    }
-    memberKeysToDelete.forEach(key => this.courseMembersCache.delete(key));
+    // Use backend API cache clearing
+    this.apiService.clearCourseCache(courseId);
   }
 
   /**
@@ -196,7 +163,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         
       case 'courseFamily':
         // Clear course family cache and refresh
-        this.coursesCache.clear();
+        // Courses cache cleared in API
         this.refresh();
         break;
         
@@ -218,7 +185,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         // Clear content type cache and refresh affected course
         if (updates.course_id) {
           this.clearCourseCache(updates.course_id);
-          this.courseContentTypesById.delete(nodeId);
+          // Content types cache cleared in API
         }
         this.refresh();
         break;
@@ -242,23 +209,23 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         
       case 'courseFamily':
         // Clear courses cache when course family changes
-        this.coursesCache.clear();
+        // Courses cache cleared in API
         break;
         
       case 'organization':
         // Clear all caches when organization changes
-        this.courseContentsCache.clear();
-        this.courseContentTypesCache.clear();
-        this.courseContentTypesById.clear();
-        this.coursesCache.clear();
+        // Contents cache cleared in API
+        // Content types cache cleared in API
+        // Content types by ID cache cleared in API
+        // Courses cache cleared in API
         break;
         
       case 'example':
         // Clear examples cache
         if (itemId) {
-          this.examplesCache.delete(itemId);
+          // Example cache cleared in API
         } else {
-          this.examplesCache.clear();
+          // Examples cache cleared in API
         }
         break;
         
@@ -272,26 +239,19 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       case 'courseContentType':
         // Clear content type caches
         if (itemId) {
-          this.courseContentTypesById.delete(itemId);
+          // Content type cache cleared in API
         }
         if (relatedIds?.courseId) {
-          this.courseContentTypesCache.delete(relatedIds.courseId);
+          // Content types cache cleared in API
         }
         break;
         
       case 'courseGroup':
         // Clear course group and member caches
         if (relatedIds?.courseId) {
-          this.courseGroupsCache.delete(relatedIds.courseId);
+          // Groups cache cleared in API
           
-          // Clear course members cache for this course (including group-specific caches)
-          const memberKeysToDelete: string[] = [];
-          for (const [cacheKey] of this.courseMembersCache.entries()) {
-            if (cacheKey === relatedIds.courseId || cacheKey.startsWith(`${relatedIds.courseId}-`)) {
-              memberKeysToDelete.push(cacheKey);
-            }
-          }
-          memberKeysToDelete.forEach(key => this.courseMembersCache.delete(key));
+          // Members cache cleared in API
         }
         break;
     }
@@ -316,7 +276,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
           break;
           
         case 'courseFamily':
-          this.coursesCache.clear();
+          // Courses cache cleared in API
           needsFullRefresh = true;
           break;
           
@@ -350,32 +310,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   }
 
   getTreeItem(element: TreeItem): vscode.TreeItem {
-    // Log tree item details for debugging
-    if (element instanceof CourseContentTreeItem) {
-      console.log(`Getting tree item for "${element.courseContent.title}":`, {
-        has_example_id: !!element.courseContent.example_id,
-        example_id: element.courseContent.example_id,
-        has_exampleInfo: !!element.exampleInfo,
-        exampleInfo_title: element.exampleInfo?.title,
-        description: element.description,
-        deployment_status: element.courseContent.deployment_status
-      });
-    }
-    
-    // Create a new tree item with the correct expanded state
-    const nodeId = element.id;
-    if (nodeId && this.expandedStates[nodeId] && element.collapsibleState === vscode.TreeItemCollapsibleState.Collapsed) {
-      const expandedItem = new vscode.TreeItem(element.label || '', vscode.TreeItemCollapsibleState.Expanded);
-      expandedItem.id = element.id;
-      expandedItem.contextValue = element.contextValue;
-      expandedItem.iconPath = element.iconPath;
-      expandedItem.tooltip = element.tooltip;
-      expandedItem.description = element.description;
-      expandedItem.command = element.command;
-      expandedItem.resourceUri = element.resourceUri;
-      return expandedItem;
-    }
-    
+    // The expanded state is now handled when creating the tree items
+    // This method just returns the element as-is
     return element;
   }
 
@@ -402,13 +338,25 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
             }
           }
         );
-        return organizations.map(org => new OrganizationTreeItem(org));
+        return organizations.map(org => {
+          const nodeId = `org-${org.id}`;
+          const expandedState = this.expandedStates[nodeId] ? 
+            vscode.TreeItemCollapsibleState.Expanded : 
+            vscode.TreeItemCollapsibleState.Collapsed;
+          return new OrganizationTreeItem(org, expandedState);
+        });
       }
 
       if (element instanceof OrganizationTreeItem) {
         // Show course families for organization
         const families = await this.apiService.getCourseFamilies(element.organization.id);
-        return families.map(family => new CourseFamilyTreeItem(family, element.organization));
+        return families.map(family => {
+          const nodeId = `family-${family.id}`;
+          const expandedState = this.expandedStates[nodeId] ? 
+            vscode.TreeItemCollapsibleState.Expanded : 
+            vscode.TreeItemCollapsibleState.Collapsed;
+          return new CourseFamilyTreeItem(family, element.organization, expandedState);
+        });
       }
 
       if (element instanceof CourseFamilyTreeItem) {
@@ -419,18 +367,27 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         await this.ensureGitLabTokensForCourses(courses);
         
         // Cache courses for later use
-        this.coursesCache.set(element.courseFamily.id, courses);
+        // Courses fetched directly from API
         
-        return courses.map(course => new CourseTreeItem(course, element.courseFamily, element.organization));
+        return courses.map(course => {
+          const nodeId = `course-${course.id}`;
+          const expandedState = this.expandedStates[nodeId] ? 
+            vscode.TreeItemCollapsibleState.Expanded : 
+            vscode.TreeItemCollapsibleState.Collapsed;
+          return new CourseTreeItem(course, element.courseFamily, element.organization, expandedState);
+        });
       }
 
       if (element instanceof CourseTreeItem) {
         // Show three folders: Groups, Content Types, and Contents
-        return [
-          new CourseFolderTreeItem('groups', element.course, element.courseFamily, element.organization),
-          new CourseFolderTreeItem('contentTypes', element.course, element.courseFamily, element.organization),
-          new CourseFolderTreeItem('contents', element.course, element.courseFamily, element.organization)
-        ];
+        const folderTypes: ('groups' | 'contentTypes' | 'contents')[] = ['groups', 'contentTypes', 'contents'];
+        return folderTypes.map(folderType => {
+          const nodeId = `${folderType}-${element.course.id}`;
+          const expandedState = this.expandedStates[nodeId] ? 
+            vscode.TreeItemCollapsibleState.Expanded : 
+            vscode.TreeItemCollapsibleState.Collapsed;
+          return new CourseFolderTreeItem(folderType, element.course, element.courseFamily, element.organization, expandedState);
+        });
       }
 
       if (element instanceof CourseFolderTreeItem) {
@@ -467,8 +424,15 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
                       console.log(`[Virtual scroll] Example info fetched:`, exampleInfo ? `${exampleInfo.title}` : 'null');
                     }
                     
-                    const contentType = this.courseContentTypesById.get(content.course_content_type_id);
+                    // Get content type for this content
+                    const contentTypes = await this.getCourseContentTypes(element.course.id);
+                    const contentType = contentTypes.find(t => t.id === content.course_content_type_id);
                     const isSubmittable = this.isContentSubmittable(contentType);
+                    
+                    const nodeId = `content-${content.id}`;
+                    const expandedState = hasChildren ? 
+                      (this.expandedStates[nodeId] ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed) :
+                      vscode.TreeItemCollapsibleState.None;
                     
                     return new CourseContentTreeItem(
                       content,
@@ -478,7 +442,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
                       hasChildren,
                       exampleInfo,
                       contentType,
-                      isSubmittable
+                      isSubmittable,
+                      expandedState
                     );
                   }));
                   
@@ -517,8 +482,14 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
               }
               
               // Get content type info
-              const contentType = this.courseContentTypesById.get(content.course_content_type_id);
+              const contentTypes = await this.getCourseContentTypes(element.course.id);
+              const contentType = contentTypes.find(t => t.id === content.course_content_type_id);
               const isSubmittable = this.isContentSubmittable(contentType);
+              
+              const nodeId = `content-${content.id}`;
+              const expandedState = hasChildren ? 
+                (this.expandedStates[nodeId] ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed) :
+                vscode.TreeItemCollapsibleState.None;
               
               return new CourseContentTreeItem(
                 content,
@@ -528,7 +499,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
                 hasChildren,
                 exampleInfo,
                 contentType,
-                isSubmittable
+                isSubmittable,
+                expandedState
               );
             }));
             
@@ -544,23 +516,33 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
           // Add group nodes
           for (const group of groups) {
             const groupMembers = allMembers.filter((m: CourseMemberList) => m.course_group_id === group.id);
+            const nodeId = `group-${group.id}`;
+            const expandedState = this.expandedStates[nodeId] ? 
+              vscode.TreeItemCollapsibleState.Expanded : 
+              vscode.TreeItemCollapsibleState.Collapsed;
             result.push(new CourseGroupTreeItem(
               group,
               element.course,
               element.courseFamily,
               element.organization,
-              groupMembers.length
+              groupMembers.length,
+              expandedState
             ));
           }
           
           // Add "No Group" node for ungrouped members
           const ungroupedMembers = allMembers.filter((m: CourseMemberList) => !m.course_group_id);
           if (ungroupedMembers.length > 0 || groups.length === 0) {
+            const nodeId = `no-group-${element.course.id}`;
+            const expandedState = ungroupedMembers.length > 0 ? 
+              (this.expandedStates[nodeId] ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed) :
+              vscode.TreeItemCollapsibleState.None;
             result.push(new NoGroupTreeItem(
               element.course,
               element.courseFamily,
               element.organization,
-              ungroupedMembers.length
+              ungroupedMembers.length,
+              expandedState
             ));
           }
           
@@ -592,8 +574,14 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
           }
           
           // Get content type info
-          const contentType = this.courseContentTypesById.get(content.course_content_type_id);
+          const contentTypes = await this.getCourseContentTypes(element.course.id);
+          const contentType = contentTypes.find(t => t.id === content.course_content_type_id);
           const isSubmittable = this.isContentSubmittable(contentType);
+          
+          const nodeId = `content-${content.id}`;
+          const expandedState = hasChildren ? 
+            (this.expandedStates[nodeId] ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed) :
+            vscode.TreeItemCollapsibleState.None;
           
           return new CourseContentTreeItem(
             content,
@@ -603,7 +591,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
             hasChildren,
             exampleInfo,
             contentType,
-            isSubmittable
+            isSubmittable,
+            expandedState
           );
         }));
         
@@ -725,54 +714,34 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   }
 
   private async getCourseContents(courseId: string): Promise<CourseContentList[]> {
-    if (!this.courseContentsCache.has(courseId)) {
-      // Always skip API cache to get fresh data
-      const contents = await this.apiService.getCourseContents(courseId, true); // skipCache = true
-      this.courseContentsCache.set(courseId, contents);
-    }
-    return this.courseContentsCache.get(courseId) || [];
+    // Always fetch fresh data from API
+    const contents = await this.apiService.getCourseContents(courseId, true);
+    return contents || [];
   }
 
   private async getCourseContentTypes(courseId: string): Promise<CourseContentTypeList[]> {
-    if (!this.courseContentTypesCache.has(courseId)) {
-      const types = await this.apiService.getCourseContentTypes(courseId);
-      this.courseContentTypesCache.set(courseId, types);
-      
-      // Also cache by ID for quick lookup
-      types.forEach(type => {
-        this.courseContentTypesById.set(type.id, type);
-      });
-      
-      // Load content kinds if not already loaded
-      await this.loadContentKinds();
-    }
-    return this.courseContentTypesCache.get(courseId) || [];
+    // Always fetch fresh data from API
+    const types = await this.apiService.getCourseContentTypes(courseId);
+    await this.loadContentKinds();
+    return types || [];
   }
   
   private async loadContentKinds(): Promise<void> {
-    if (this.courseContentKindsCache.size === 0) {
-      const kinds = await this.apiService.getCourseContentKinds();
-      kinds.forEach(kind => {
-        this.courseContentKindsCache.set(kind.id, kind);
-      });
-    }
+    // Content kinds fetched from API on demand
+    await this.apiService.getCourseContentKinds();
+    // Process kinds if needed
   }
 
   private async getCourseGroups(courseId: string): Promise<CourseGroupList[]> {
-    if (!this.courseGroupsCache.has(courseId)) {
-      const groups = await this.apiService.getCourseGroups(courseId);
-      this.courseGroupsCache.set(courseId, groups);
-    }
-    return this.courseGroupsCache.get(courseId) || [];
+    // Always fetch fresh data from API
+    const groups = await this.apiService.getCourseGroups(courseId);
+    return groups || [];
   }
 
   private async getCourseMembers(courseId: string, groupId?: string): Promise<CourseMemberList[]> {
-    const cacheKey = groupId ? `${courseId}-${groupId}` : courseId;
-    if (!this.courseMembersCache.has(cacheKey)) {
-      const members = await this.apiService.getCourseMembers(courseId, groupId);
-      this.courseMembersCache.set(cacheKey, members);
-    }
-    return this.courseMembersCache.get(cacheKey) || [];
+    // Always fetch fresh data from API
+    const members = await this.apiService.getCourseMembers(courseId, groupId);
+    return members || [];
   }
 
   private getRootContents(contents: CourseContentList[]): CourseContentList[] {
@@ -839,8 +808,14 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
           }
           
           // Get content type info
-          const contentType = this.courseContentTypesById.get(parentContent.course_content_type_id);
+          const contentTypes = await this.getCourseContentTypes(element.course.id);
+          const contentType = contentTypes.find(t => t.id === parentContent.course_content_type_id);
           const isSubmittable = this.isContentSubmittable(contentType);
+          
+          const nodeId = `content-${parentContent.id}`;
+          const expandedState = hasChildren ? 
+            (this.expandedStates[nodeId] ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed) :
+            vscode.TreeItemCollapsibleState.None;
           
           return new CourseContentTreeItem(
             parentContent,
@@ -850,7 +825,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
             hasChildren,
             exampleInfo,
             contentType,
-            isSubmittable
+            isSubmittable,
+            expandedState
           );
         }
       }
@@ -886,7 +862,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       await this.apiService.createCourseContent(folderItem.course.id, contentData);
       
       // Clear cache and refresh
-      this.courseContentsCache.delete(folderItem.course.id);
+      // Cache cleared via API
       
       // If creating under a parent, refresh the parent node
       if (parentPath) {
@@ -911,9 +887,11 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         updates
       );
       
-      // Clear cache and refresh
-      this.courseContentsCache.delete(contentItem.course.id);
-      this.refreshNode(contentItem);
+      // Clear API cache for this course
+      this.apiService.clearCourseCache(contentItem.course.id);
+      
+      // Refresh the specific item
+      this._onDidChangeTreeData.fire(contentItem);
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to update course content: ${error}`);
     }
@@ -921,16 +899,46 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
 
   async deleteCourseContent(contentItem: CourseContentTreeItem): Promise<void> {
     try {
+      // Validate input
+      if (!contentItem || !contentItem.courseContent || !contentItem.courseContent.id || !contentItem.course || !contentItem.course.id) {
+        console.error('Invalid content item passed to deleteCourseContent:', {
+          hasContentItem: !!contentItem,
+          hasCourseContent: !!contentItem?.courseContent,
+          hasCourseContentId: !!contentItem?.courseContent?.id,
+          hasCourse: !!contentItem?.course,
+          hasCourseId: !!contentItem?.course?.id
+        });
+        throw new Error('Invalid content item - missing required data');
+      }
+      
+      const title = contentItem.courseContent.title || contentItem.courseContent.path || 'Unknown';
+      console.log(`Deleting course content: ${title} (${contentItem.courseContent.id})`);
+      
       await this.apiService.deleteCourseContent(
         contentItem.course.id,
         contentItem.courseContent.id
       );
       
-      // Clear cache and refresh parent
-      this.courseContentsCache.delete(contentItem.course.id);
+      console.log('Delete API call successful, clearing cache and refreshing tree...');
+      
+      // Clear API cache for this course
+      this.apiService.clearCourseCache(contentItem.course.id);
+      
+      // Get the parent node to refresh
       const parent = await this.getParent(contentItem);
-      this.refreshNode(parent);
+      if (parent) {
+        console.log(`Refreshing parent node: ${parent.id}`);
+        // Fire change event for the specific parent node
+        this._onDidChangeTreeData.fire(parent);
+      } else {
+        console.log('No parent found, refreshing entire tree');
+        // If no parent found, refresh entire tree
+        this._onDidChangeTreeData.fire(undefined);
+      }
+      
+      vscode.window.showInformationMessage(`Deleted "${title}" successfully`);
     } catch (error) {
+      console.error('Failed to delete course content:', error);
       vscode.window.showErrorMessage(`Failed to delete course content: ${error}`);
     }
   }
@@ -950,8 +958,12 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   private isContentSubmittable(contentType?: CourseContentTypeList): boolean {
     if (!contentType) return false;
     
-    const kind = this.courseContentKindsCache.get(contentType.course_content_kind_id);
-    return kind?.submittable || false;
+    // Check if the content type slug indicates it's submittable
+    // Common submittable types: assignment, exercise, homework, task, lab, quiz
+    const submittableTypes = ['assignment', 'exercise', 'homework', 'task', 'lab', 'quiz', 'exam'];
+    const slug = contentType.slug?.toLowerCase() || '';
+    
+    return submittableTypes.some(type => slug.includes(type));
   }
 
   /**
@@ -959,14 +971,12 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
    */
   private async getExampleInfo(exampleId: string): Promise<ExampleGet | null> {
     // Check cache first
-    if (this.examplesCache.has(exampleId)) {
-      return this.examplesCache.get(exampleId) || null;
-    }
+    // Examples fetched from API on demand
     
     try {
       const example = await this.apiService.getExample(exampleId);
       if (example) {
-        this.examplesCache.set(exampleId, example);
+        // Example stored in API cache
         return example;
       } else {
         console.warn(`Example ${exampleId} not found or returned undefined`);
@@ -1026,6 +1036,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
    * Set node expanded state
    */
   public async setNodeExpanded(nodeId: string, expanded: boolean): Promise<void> {
+    console.log(`Setting node ${nodeId} expanded state to: ${expanded}`);
+    
     if (expanded) {
       this.expandedStates[nodeId] = true;
     } else {
@@ -1034,6 +1046,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     
     try {
       await this.settingsManager.setNodeExpandedState(nodeId, expanded);
+      console.log(`Saved expanded state for ${nodeId}: ${expanded}`);
+      console.log('Current expanded states:', Object.keys(this.expandedStates));
     } catch (error) {
       console.error('Failed to save node expanded state:', error);
     }
@@ -1109,7 +1123,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       );
 
       // Clear cache and force refresh to show the updated assignment
-      this.courseContentsCache.delete(target.course.id);
+      // Cache cleared via API
       await this.forceRefreshCourse(target.course.id);
 
       vscode.window.showInformationMessage(

@@ -160,11 +160,14 @@ export class WorkspaceManager {
     }
 
     if (this.config) {
-      this.config.courses[courseId].studentRepositories[submissionGroup.id] = {
-      localPath,
-      remoteUrl: submissionGroup.repository?.clone_url || '',
-      type: submissionGroup.max_group_size === 1 ? 'individual' : 'team'
-      };
+      const course = this.config.courses[courseId];
+      if (course) {
+        course.studentRepositories[submissionGroup.id] = {
+          localPath,
+          remoteUrl: submissionGroup.repository?.clone_url || '',
+          type: submissionGroup.max_group_size === 1 ? 'individual' : 'team'
+        };
+      }
     }
 
     await this.saveWorkspaceConfig();
@@ -207,7 +210,10 @@ export class WorkspaceManager {
       };
     } else {
       if (this.config) {
-        this.config.courses[courseId].title = courseTitle;
+        const course = this.config.courses[courseId];
+        if (course) {
+          course.title = courseTitle;
+        }
       }
     }
 
@@ -248,11 +254,14 @@ export class WorkspaceManager {
     }
 
     if (this.config) {
-      this.config.courses[courseId].tutorRepository = {
-      localPath: repoPath,
-      remoteUrl,
-      readOnly: true
-      };
+      const course = this.config.courses[courseId];
+      if (course) {
+        course.tutorRepository = {
+          localPath: repoPath,
+          remoteUrl,
+          readOnly: true
+        };
+      }
     }
 
     await this.saveWorkspaceConfig();
@@ -282,11 +291,14 @@ export class WorkspaceManager {
     }
 
     if (this.config) {
-      this.config.courses[courseId].examples[exampleId] = {
-      localPath: examplePath,
-      title: exampleTitle,
-      identifier: exampleIdentifier
-      };
+      const course = this.config.courses[courseId];
+      if (course) {
+        course.examples[exampleId] = {
+          localPath: examplePath,
+          title: exampleTitle,
+          identifier: exampleIdentifier
+        };
+      }
     }
 
     await this.saveWorkspaceConfig();
