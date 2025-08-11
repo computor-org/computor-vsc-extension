@@ -79,6 +79,20 @@ export class ExampleCommands {
       })
     );
 
+    // Upload new example command (from meta.yaml file)
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.uploadNewExample', async (metaFilePath: string) => {
+        await this.uploadNewExample(metaFilePath);
+      })
+    );
+
+    // Update existing example command (from meta.yaml file)
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.updateExistingExample', async (metaFilePath: string) => {
+        await this.updateExistingExample(metaFilePath);
+      })
+    );
+
     // Scan workspace command
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.scanWorkspace', async () => {
@@ -535,21 +549,18 @@ export class ExampleCommands {
           files
         };
 
-        const response = await this.apiService.uploadExample(uploadRequest);
+        await this.apiService.uploadExample(uploadRequest);
         
-        if (response) {
-          progress.report({ increment: 100, message: 'Complete!' });
-          vscode.window.showInformationMessage(`Example "${item.label}" uploaded successfully`);
-          
-          // Refresh tree to show updated status
-          await this.treeProvider.loadData();
-        } else {
-          throw new Error('Upload failed');
-        }
+        progress.report({ increment: 100, message: 'Complete!' });
+        vscode.window.showInformationMessage(`Example "${item.label}" uploaded successfully`);
+        
+        // Refresh tree to show updated status
+        await this.treeProvider.loadData();
       });
     } catch (error) {
       console.error('Failed to upload example:', error);
-      vscode.window.showErrorMessage(`Failed to upload example: ${error}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`Failed to upload example: ${errorMessage}`);
     }
   }
 
@@ -599,6 +610,164 @@ export class ExampleCommands {
       }
     } catch {
       return '';
+    }
+  }
+
+  /**
+   * Upload new example from meta.yaml file
+   */
+  private async uploadNewExample(metaFilePath: string): Promise<void> {
+    const exampleDir = path.dirname(metaFilePath);
+    
+    try {
+      const meta = await this.parseMetaYaml(metaFilePath);
+      if (!meta.slug) {
+        vscode.window.showErrorMessage('meta.yaml must contain a "slug" field');
+        return;
+      }
+
+      const repositories = await this.apiService.getExampleRepositories();
+      if (repositories.length === 0) {
+        vscode.window.showErrorMessage('No example repositories available. Please configure one first.');
+        return;
+      }
+
+      let selectedRepository: any;
+      if (repositories.length === 1) {
+        selectedRepository = repositories[0];
+      } else {
+        const repoNames = repositories.map(r => r.name);
+        const selected = await vscode.window.showQuickPick(repoNames, {
+          placeHolder: 'Select repository to upload to'
+        });
+        if (!selected) return;
+        
+        selectedRepository = repositories.find(r => r.name === selected);
+      }
+
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: `Uploading new example: ${meta.slug}`,
+        cancellable: false
+      }, async (progress) => {
+        progress.report({ increment: 0, message: 'Reading example files...' });
+
+        const files: { [key: string]: string } = {};
+        await this.readExampleFiles(exampleDir, exampleDir, files);
+
+        if (!files['meta.yaml']) {
+          throw new Error('meta.yaml not found');
+        }
+
+        progress.report({ increment: 50, message: 'Uploading to server...' });
+
+        const uploadRequest = {
+          repository_id: selectedRepository.id,
+          directory: meta.slug,
+          files
+        };
+
+        await this.apiService.uploadExample(uploadRequest);
+        
+        progress.report({ increment: 100, message: 'Complete!' });
+        vscode.window.showInformationMessage(`New example "${meta.slug}" uploaded successfully`);
+        
+        await this.treeProvider.loadData();
+      });
+    } catch (error) {
+      console.error('Failed to upload new example:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`Failed to upload new example: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Update existing example from meta.yaml file
+   */
+  private async updateExistingExample(metaFilePath: string): Promise<void> {
+    const exampleDir = path.dirname(metaFilePath);
+    
+    try {
+      const meta = await this.parseMetaYaml(metaFilePath);
+      if (!meta.slug) {
+        vscode.window.showErrorMessage('meta.yaml must contain a "slug" field');
+        return;
+      }
+
+      const repositories = await this.apiService.getExampleRepositories();
+      let foundExample: any = null;
+      let foundRepository: any = null;
+
+      for (const repo of repositories) {
+        const examples = await this.apiService.getExamples(repo.id);
+        const example = examples?.find(ex => ex.identifier === meta.slug);
+        if (example) {
+          foundExample = example;
+          foundRepository = repo;
+          break;
+        }
+      }
+
+      if (!foundExample || !foundRepository) {
+        vscode.window.showErrorMessage(`Example with identifier "${meta.slug}" not found in any repository. Use "Upload as New Example" instead.`);
+        return;
+      }
+
+      const confirm = await vscode.window.showWarningMessage(
+        `Update existing example "${meta.slug}" in repository "${foundRepository.name}"?`,
+        'Yes, Update', 'Cancel'
+      );
+
+      if (confirm !== 'Yes, Update') {
+        return;
+      }
+
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: `Updating example: ${meta.slug}`,
+        cancellable: false
+      }, async (progress) => {
+        progress.report({ increment: 0, message: 'Reading example files...' });
+
+        const files: { [key: string]: string } = {};
+        await this.readExampleFiles(exampleDir, exampleDir, files);
+
+        if (!files['meta.yaml']) {
+          throw new Error('meta.yaml not found');
+        }
+
+        progress.report({ increment: 50, message: 'Updating on server...' });
+
+        const uploadRequest = {
+          repository_id: foundRepository.id,
+          directory: foundExample.directory,
+          files
+        };
+
+        await this.apiService.uploadExample(uploadRequest);
+        
+        progress.report({ increment: 100, message: 'Complete!' });
+        vscode.window.showInformationMessage(`Example "${meta.slug}" updated successfully`);
+        
+        await this.treeProvider.loadData();
+      });
+    } catch (error) {
+      console.error('Failed to update example:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`Failed to update example: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Parse meta.yaml file
+   */
+  private async parseMetaYaml(metaFilePath: string): Promise<any> {
+    try {
+      const content = await fs.promises.readFile(metaFilePath, 'utf-8');
+      const meta = yaml.load(content) as any;
+      return meta || {};
+    } catch (error) {
+      throw new Error(`Failed to parse meta.yaml: ${error}`);
     }
   }
 }

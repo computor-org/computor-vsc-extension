@@ -5,7 +5,31 @@ export class HttpError extends Error {
     public readonly statusText: string,
     public readonly response?: any
   ) {
-    super(message);
+    // Create a more detailed error message if response contains detail
+    let enhancedMessage = message;
+    if (response?.detail) {
+      // If detail is a string, append it
+      if (typeof response.detail === 'string') {
+        enhancedMessage = `${message} - ${response.detail}`;
+      } 
+      // If detail is an array (validation errors), format them
+      else if (Array.isArray(response.detail)) {
+        const details = response.detail.map((d: any) => 
+          typeof d === 'string' ? d : d.msg || JSON.stringify(d)
+        ).join(', ');
+        enhancedMessage = `${message} - ${details}`;
+      }
+      // If detail is an object, try to extract a message
+      else if (typeof response.detail === 'object' && response.detail.message) {
+        enhancedMessage = `${message} - ${response.detail.message}`;
+      }
+    }
+    // Also check for 'message' field in response (some APIs use this)
+    else if (response?.message && typeof response.message === 'string') {
+      enhancedMessage = `${message} - ${response.message}`;
+    }
+    
+    super(enhancedMessage);
     this.name = 'HttpError';
   }
 }

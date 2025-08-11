@@ -227,6 +227,18 @@
         "category": "Computor Examples"
       },
       {
+        "command": "computor.uploadNewExample",
+        "title": "Upload as New Example",
+        "icon": "$(cloud-upload)",
+        "category": "Computor Examples"
+      },
+      {
+        "command": "computor.updateExistingExample",
+        "title": "Update Existing Example",
+        "icon": "$(sync)",
+        "category": "Computor Examples"
+      },
+      {
         "command": "computor.refreshLecturerTree",
         "title": "Refresh",
         "icon": "$(refresh)",

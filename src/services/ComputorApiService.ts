@@ -476,7 +476,8 @@ export class ComputorApiService {
       return response.data;
     } catch (error) {
       console.error('Failed to upload example:', error);
-      return undefined;
+      // Re-throw the error so the caller can handle it with details
+      throw error;
     }
   }
 
