@@ -796,13 +796,23 @@ export class LecturerCommands {
   }
 
   private async showCourseContentDetails(item: CourseContentTreeItem): Promise<void> {
+    // Fetch example info if the content has an example_id
+    let exampleInfo = item.exampleInfo;
+    if (item.courseContent.example_id && !exampleInfo) {
+      try {
+        exampleInfo = await this.apiService.getExample(item.courseContent.example_id);
+      } catch (error) {
+        console.error(`Failed to fetch example ${item.courseContent.example_id}:`, error);
+      }
+    }
+    
     await this.courseContentWebviewProvider.show(
       `Content: ${item.courseContent.title || item.courseContent.path}`,
       {
         courseContent: item.courseContent,
         course: item.course,
         contentType: item.contentType,
-        exampleInfo: item.exampleInfo,
+        exampleInfo: exampleInfo,
         isSubmittable: item.isSubmittable
       }
     );
