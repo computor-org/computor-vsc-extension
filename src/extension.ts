@@ -13,6 +13,7 @@ import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
 import { GitLabTokenManager } from './services/GitLabTokenManager';
 import { ExampleTreeProvider } from './ui/tree/examples/ExampleTreeProvider';
 import { ExampleCommands } from './commands/exampleCommands';
+import { ExampleCodeLensProvider } from './providers/ExampleCodeLensProvider';
 import { ComputorApiService } from './services/ComputorApiService';
 import { IconGenerator } from './utils/iconGenerator';
 import { performanceMonitor } from './services/PerformanceMonitoringService';
@@ -166,6 +167,18 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Register example commands
   new ExampleCommands(context, apiService, exampleTreeProvider);
+
+  // Register CodeLens provider for meta.yaml files
+  const exampleCodeLensProvider = new ExampleCodeLensProvider();
+  context.subscriptions.push(
+    vscode.languages.registerCodeLensProvider(
+      [
+        { language: 'yaml', pattern: '**/meta.yaml' },
+        { language: 'yaml', pattern: '**/meta.yml' }
+      ],
+      exampleCodeLensProvider
+    )
+  );
   
 
   // Check for existing authentication session
