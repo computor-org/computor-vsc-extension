@@ -57,37 +57,34 @@ export class ExampleCodeLensProvider implements vscode.CodeLensProvider {
 
   private isMetaYamlFile(document: vscode.TextDocument): boolean {
     const fileName = path.basename(document.fileName);
-    const filePath = document.fileName.toLowerCase();
     
-    // Only activate for meta.yaml files that are likely to be Computor examples
-    // Exclude conda environments and other common meta.yaml uses
     if (fileName === 'meta.yaml' || fileName === 'meta.yml') {
-      // Exclude conda meta.yaml files
-      if (filePath.includes('conda') || filePath.includes('recipe')) {
-        return false;
-      }
-      
-      // Include if path contains example-related keywords
-      if (filePath.includes('example') || 
-          filePath.includes('assignment') || 
-          filePath.includes('exercise') ||
-          filePath.includes('computor') ||
-          filePath.includes('test-example')) {
-        return true;
-      }
-      
-      // Check if the meta.yaml has our expected structure
       try {
         const content = document.getText();
-        // Look for our specific fields
-        if (content.includes('slug:') || 
-            content.includes('studentSubmissionFiles:') ||
+        
+        // Check for Conda-specific fields to exclude those files
+        if (content.includes('package:') && content.includes('name:') && 
+            (content.includes('source:') || content.includes('build:'))) {
+          // This looks like a Conda meta.yaml
+          return false;
+        }
+        
+        // Check for Computor-specific fields
+        // The 'slug' field is required for our examples
+        if (content.includes('slug:')) {
+          return true;
+        }
+        
+        // Also check for other Computor-specific fields
+        if (content.includes('studentSubmissionFiles:') ||
             content.includes('testDependencies:') ||
-            content.includes('executionBackend:')) {
+            content.includes('executionBackend:') ||
+            content.includes('studentTemplates:')) {
           return true;
         }
       } catch {
-        // Ignore errors
+        // If we can't read the content, default to false
+        return false;
       }
     }
     

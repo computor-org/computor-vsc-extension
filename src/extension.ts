@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { UIShowcaseView } from './ui/views/UIShowcaseView';
 import { SettingsView } from './ui/views/SettingsView';
 import { ComputorAuthenticationProvider } from './authentication/ComputorAuthenticationProvider';
@@ -169,39 +168,17 @@ export function activate(context: vscode.ExtensionContext) {
   // Register example commands
   new ExampleCommands(context, apiService, exampleTreeProvider);
 
-  // Register CodeLens provider for meta.yaml files in example directories
+  // Register CodeLens provider for meta.yaml files
   const exampleCodeLensProvider = new ExampleCodeLensProvider();
   context.subscriptions.push(
     vscode.languages.registerCodeLensProvider(
       [
-        { language: 'yaml', pattern: '**/example*/meta.yaml' },
-        { language: 'yaml', pattern: '**/example*/meta.yml' },
-        { language: 'yaml', pattern: '**/test-example*/meta.yaml' },
-        { language: 'yaml', pattern: '**/test-example*/meta.yml' }
+        { language: 'yaml', pattern: '**/meta.yaml' },
+        { language: 'yaml', pattern: '**/meta.yml' }
       ],
       exampleCodeLensProvider
     )
   );
-  
-  // Override YAML schema for our meta.yaml files to prevent conflicts
-  const yamlConfig = vscode.workspace.getConfiguration('yaml');
-  const currentSchemas = yamlConfig.get<any>('schemas') || {};
-  
-  // Remove conda schema if present for meta.yaml
-  if (currentSchemas['https://raw.githubusercontent.com/conda-forge/conda-smithy/master/conda_smithy/data/conda-forge.json']) {
-    delete currentSchemas['https://raw.githubusercontent.com/conda-forge/conda-smithy/master/conda_smithy/data/conda-forge.json'];
-  }
-  
-  // Add our schema for example directories
-  currentSchemas[vscode.Uri.file(path.join(context.extensionPath, 'schemas', 'meta-yaml-schema.json')).toString()] = [
-    '**/example*/meta.yaml',
-    '**/example*/meta.yml',
-    '**/test-example*/meta.yaml',
-    '**/test-example*/meta.yml'
-  ];
-  
-  // Update configuration
-  yamlConfig.update('schemas', currentSchemas, vscode.ConfigurationTarget.Workspace);
   
 
   // Check for existing authentication session
