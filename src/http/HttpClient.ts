@@ -96,8 +96,8 @@ export abstract class HttpClient {
       try {
         const response = await this.executeRequest<T>(config);
         
-        // Cache successful GET responses
-        if (this.cacheEnabled && method === 'GET' && response.status === 200) {
+        // Cache successful GET responses (200-299 range, but typically 200 for GET)
+        if (this.cacheEnabled && method === 'GET' && response.status >= 200 && response.status < 300) {
           const cacheKey = this.createCacheKey(config);
           const ttl = this.getCacheTTL(response.headers);
           
@@ -221,10 +221,26 @@ export abstract class HttpClient {
   }
 
   private async parseResponse<T>(response: Response): Promise<T> {
+    // Handle 204 No Content responses - they have no body
+    if (response.status === 204) {
+      return null as unknown as T;
+    }
+    
+    // Handle empty responses
+    const contentLength = response.headers.get('content-length');
+    if (contentLength === '0') {
+      return null as unknown as T;
+    }
+    
     const contentType = response.headers.get('content-type');
     
     if (contentType?.includes('application/json')) {
-      return await response.json() as T;
+      const text = await response.text();
+      // Handle empty response body
+      if (!text || text.trim() === '') {
+        return null as unknown as T;
+      }
+      return JSON.parse(text) as T;
     }
     
     if (contentType?.includes('text/')) {
