@@ -83,6 +83,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
 
   refresh(): void {
     this.courseContentsCache.clear();
+    this.coursesCache.clear();
     this.courseContentTypesCache.clear();
     this.courseContentTypesById.clear();
     this.courseContentKindsCache.clear();
