@@ -136,6 +136,13 @@ export class ExampleCommands {
       })
     );
 
+    // Upload examples from ZIP file command
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.uploadExamplesFromZip', async (item: ExampleTreeItem) => {
+        await this.uploadExamplesFromZip(item);
+      })
+    );
+
     // Debug command to show detailed status
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.debugExamples', async () => {
@@ -707,6 +714,256 @@ export class ExampleCommands {
   }
 
   /**
+   * Upload examples from a ZIP file to a repository
+   */
+  private async uploadExamplesFromZip(item: ExampleTreeItem): Promise<void> {
+    // Check if this is a repository node
+    if (item.type !== 'repository' || !item.data?.repositoryId) {
+      vscode.window.showErrorMessage('Please select a repository to upload examples to');
+      return;
+    }
+
+    // Check if repository supports upload (not git)
+    const repository = await this.apiService.getExampleRepository(item.data.repositoryId);
+    if (!repository) {
+      vscode.window.showErrorMessage('Repository not found');
+      return;
+    }
+
+    if (repository.source_type === 'git') {
+      vscode.window.showErrorMessage('Git repositories do not support direct upload. Use git push instead.');
+      return;
+    }
+
+    try {
+      // Show file picker for ZIP file
+      const zipFileUri = await vscode.window.showOpenDialog({
+        canSelectFiles: true,
+        canSelectFolders: false,
+        canSelectMany: false,
+        filters: {
+          'ZIP Archives': ['zip']
+        },
+        title: 'Select ZIP file containing examples'
+      });
+
+      if (!zipFileUri || zipFileUri.length === 0) {
+        return;
+      }
+
+      const firstFile = zipFileUri[0];
+      if (!firstFile) {
+        return;
+      }
+      const zipFilePath = firstFile.fsPath;
+      const zipFileName = path.basename(zipFilePath);
+
+      // Read the ZIP file
+      const zipContent = await fs.promises.readFile(zipFilePath);
+      
+      // Import JSZip dynamically
+      const JSZip = require('jszip');
+      const zip = new JSZip();
+
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: `Processing ${zipFileName}`,
+        cancellable: false
+      }, async (progress) => {
+        progress.report({ increment: 0, message: 'Loading ZIP file...' });
+
+        // Load the ZIP content
+        const loadedZip = await zip.loadAsync(zipContent);
+
+        // Find all directories that contain meta.yaml files
+        const allPaths = Object.keys(loadedZip.files).filter(path => 
+          !path.startsWith('__MACOSX/') && !path.includes('/.')
+        );
+        
+        const metaYamlPaths = allPaths.filter(path => path.endsWith('meta.yaml'));
+        
+        if (metaYamlPaths.length === 0) {
+          throw new Error('No meta.yaml files found in the ZIP archive');
+        }
+
+        progress.report({ increment: 20, message: `Found ${metaYamlPaths.length} example(s)...` });
+
+        // Process each example
+        const examples: Array<{
+          directory: string;
+          title: string;
+          identifier: string;
+          dependencies: string[];
+          files: { [key: string]: string };
+        }> = [];
+
+        for (const metaPath of metaYamlPaths) {
+          const directoryPath = metaPath.replace('/meta.yaml', '');
+          const directoryName = directoryPath.includes('/') ? 
+            directoryPath.split('/').pop()! : directoryPath;
+
+          // Read meta.yaml content
+          const metaEntry = loadedZip.files[metaPath] as any;
+          const metaContent = await metaEntry.async('string');
+          const metaData = yaml.load(metaContent) as any;
+
+          if (!metaData) {
+            console.warn(`Skipping ${directoryPath}: Failed to parse meta.yaml`);
+            continue;
+          }
+
+          // Extract dependencies from meta.yaml
+          let dependencies: string[] = [];
+          if (metaData.testDependencies) {
+            dependencies = Array.isArray(metaData.testDependencies) 
+              ? metaData.testDependencies 
+              : [metaData.testDependencies];
+          } else if (metaData.properties?.testDependencies) {
+            dependencies = Array.isArray(metaData.properties.testDependencies)
+              ? metaData.properties.testDependencies
+              : [metaData.properties.testDependencies];
+          }
+
+          // Collect all files in this directory
+          const files: { [key: string]: string } = {};
+          const directoryPrefix = directoryPath === directoryName ? directoryName + '/' : directoryPath + '/';
+
+          for (const [filePath, zipEntry] of Object.entries(loadedZip.files)) {
+            const entry = zipEntry as any;
+            if (!entry.dir && filePath.startsWith(directoryPrefix) && 
+                !filePath.startsWith('__MACOSX/') && !filePath.includes('/.')) {
+              
+              const relativePath = filePath.substring(directoryPrefix.length);
+              
+              try {
+                const content = await entry.async('string');
+                files[relativePath] = content;
+              } catch (err) {
+                console.warn(`Failed to extract ${filePath}:`, err);
+              }
+            }
+          }
+
+          examples.push({
+            directory: directoryName,
+            title: metaData.title || directoryName,
+            identifier: metaData.slug || directoryName,
+            dependencies,
+            files
+          });
+        }
+
+        if (examples.length === 0) {
+          throw new Error('No valid examples found in ZIP file');
+        }
+
+        // Show selection dialog with all items preselected
+        const quickPickItems = examples.map(ex => ({
+          label: ex.title,
+          description: ex.identifier,
+          detail: `${Object.keys(ex.files).length} files${ex.dependencies.length > 0 ? ` • Deps: ${ex.dependencies.join(', ')}` : ''}`,
+          example: ex,
+          picked: true  // Preselect all items
+        }));
+
+        const selectedExamples = await vscode.window.showQuickPick(
+          quickPickItems,
+          {
+            canPickMany: true,
+            placeHolder: `Select examples to upload to ${repository.name}`,
+            title: 'Select Examples to Upload'
+          }
+        );
+
+        if (!selectedExamples || selectedExamples.length === 0) {
+          return;
+        }
+
+        // Validate dependencies
+        const selectedExamplesList = selectedExamples.map(item => item.example);
+        const dependencyValidation = this.validateDependencies(selectedExamplesList);
+        
+        if (!dependencyValidation.valid && dependencyValidation.issues.length > 0) {
+          const proceed = await vscode.window.showWarningMessage(
+            `Dependency issues found:\n${dependencyValidation.issues.join('\n')}\n\nProceed anyway?`,
+            'Yes', 'No'
+          );
+          if (proceed !== 'Yes') {
+            return;
+          }
+        }
+
+        // Sort examples by dependency order
+        const sortedExamples = this.sortExamplesByDependencies(selectedExamplesList);
+        
+        progress.report({ increment: 40, message: `Uploading ${sortedExamples.length} example(s) in dependency order...` });
+
+        // Upload selected examples in dependency order
+        let successCount = 0;
+        const errors: string[] = [];
+
+        for (let i = 0; i < sortedExamples.length; i++) {
+          const example = sortedExamples[i];
+          if (!example) continue;
+          
+          progress.report({ 
+            increment: 40 + (40 * i / sortedExamples.length), 
+            message: `Uploading ${example.title}...` 
+          });
+
+          try {
+            const uploadRequest = {
+              repository_id: repository.id,
+              directory: example.directory,
+              files: example.files
+            };
+
+            await this.apiService.uploadExample(uploadRequest);
+            successCount++;
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            errors.push(`${example.title}: ${errorMsg}`);
+            console.error(`Failed to upload ${example.title}:`, error);
+          }
+        }
+
+        progress.report({ increment: 100, message: 'Complete!' });
+
+        // Show results
+        if (successCount === selectedExamples.length) {
+          vscode.window.showInformationMessage(
+            `Successfully uploaded ${successCount} example(s) to ${repository.name}`
+          );
+        } else if (successCount > 0) {
+          vscode.window.showWarningMessage(
+            `Uploaded ${successCount} of ${selectedExamples.length} examples. Errors: ${errors.join('; ')}`
+          );
+        } else {
+          vscode.window.showErrorMessage(
+            `Failed to upload examples. Errors: ${errors.join('; ')}`
+          );
+        }
+
+        // Refresh the tree to show new examples
+        if (successCount > 0) {
+          // Add a small delay to ensure the backend has processed the uploads
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // Force reload of data with cache clearing
+          await this.treeProvider.loadData(true);  // true = clear cache
+          
+          console.log(`Refreshed tree after uploading ${successCount} examples`);
+        }
+      });
+
+    } catch (error) {
+      console.error('Failed to upload examples from ZIP:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`Failed to upload examples: ${errorMessage}`);
+    }
+  }
+
+  /**
    * Create a new example with meta.yaml template
    */
   private async createNewExample(): Promise<void> {
@@ -782,5 +1039,72 @@ export class ExampleCommands {
       console.error('Failed to create new example:', error);
       vscode.window.showErrorMessage(`Failed to create new example: ${error}`);
     }
+  }
+
+  /**
+   * Validate dependencies for a set of examples
+   */
+  private validateDependencies(examples: Array<{
+    identifier: string;
+    title: string;
+    dependencies: string[];
+    [key: string]: any;
+  }>): { valid: boolean; issues: string[] } {
+    const issues: string[] = [];
+    const availableSlugs = new Set(examples.map(ex => ex.identifier));
+    
+    for (const example of examples) {
+      const missingDeps = example.dependencies.filter(dep => !availableSlugs.has(dep));
+      if (missingDeps.length > 0) {
+        issues.push(`${example.title}: missing [${missingDeps.join(', ')}]`);
+      }
+    }
+    
+    return { valid: issues.length === 0, issues };
+  }
+
+  /**
+   * Sort examples by their dependencies (topological sort)
+   */
+  private sortExamplesByDependencies<T extends {
+    identifier: string;
+    dependencies: string[];
+    [key: string]: any;
+  }>(examples: T[]): T[] {
+    const sorted: T[] = [];
+    const remaining = [...examples];
+    const processing = new Set<string>();
+
+    while (remaining.length > 0) {
+      const initialLength = remaining.length;
+      
+      for (let i = remaining.length - 1; i >= 0; i--) {
+        const example = remaining[i];
+        if (!example) continue;
+        
+        // Check if all dependencies are already sorted or being processed
+        const unmetDeps = example.dependencies.filter(dep => 
+          !sorted.some(s => s.identifier === dep) && !processing.has(dep)
+        );
+        
+        // If no unmet dependencies, add to sorted list
+        if (unmetDeps.length === 0) {
+          processing.add(example.identifier);
+          sorted.push(example);
+          remaining.splice(i, 1);
+        }
+      }
+      
+      // If we couldn't resolve any dependencies in this iteration, we have circular deps or missing deps
+      if (remaining.length === initialLength) {
+        console.warn('Circular or unresolvable dependencies detected. Adding remaining examples in original order.');
+        // Add remaining examples anyway (they have unresolvable dependencies)
+        sorted.push(...remaining);
+        break;
+      }
+    }
+    
+    console.log(`Sorted ${examples.length} examples by dependencies:`, sorted.map(e => e.identifier));
+    return sorted;
   }
 }
