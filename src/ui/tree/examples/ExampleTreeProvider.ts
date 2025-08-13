@@ -32,20 +32,35 @@ export class ExampleTreeProvider implements vscode.TreeDataProvider<ExampleTreeI
     this.loadData();
   }
 
-  async loadData(): Promise<void> {
+  async loadData(clearCache: boolean = false): Promise<void> {
     try {
+      console.log('[ExampleTreeProvider] Loading data...');
+      
+      // Clear cache if requested (e.g., after upload)
+      if (clearCache) {
+        console.log('[ExampleTreeProvider] Clearing cache before reload...');
+        this.apiService.clearExamplesCache();
+      }
+      
       // Load repositories
       this.repositories = await this.apiService.getExampleRepositories();
+      console.log(`[ExampleTreeProvider] Loaded ${this.repositories.length} repositories`);
+      
+      // Clear existing examples
+      this.examples.clear();
       
       // Load examples for each repository
       for (const repo of this.repositories) {
+        console.log(`[ExampleTreeProvider] Loading examples for repository: ${repo.name} (${repo.id})`);
         const examples = await this.apiService.getExamples(repo.id);
         this.examples.set(repo.id, examples || []);
+        console.log(`[ExampleTreeProvider] Loaded ${examples?.length || 0} examples for ${repo.name}`);
       }
       
       // Scan workspace for existing examples
       await this.scanWorkspace();
       
+      console.log('[ExampleTreeProvider] Refreshing tree view...');
       this.refresh();
     } catch (error) {
       console.error('Failed to load example data:', error);

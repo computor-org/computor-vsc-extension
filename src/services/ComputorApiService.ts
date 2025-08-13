@@ -481,6 +481,14 @@ export class ComputorApiService {
     }
   }
 
+  clearExamplesCache(): void {
+    // Clear all cache entries related to examples
+    // Since we don't have access to individual keys, we clear all cache
+    // This ensures fresh data is loaded after uploads
+    multiTierCache.clear();
+    console.log('[ComputorApiService] Cleared examples cache');
+  }
+
   async assignExampleToCourseContent(
     courseId: string, 
     contentId: string, 
