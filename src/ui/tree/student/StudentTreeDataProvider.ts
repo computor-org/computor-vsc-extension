@@ -83,12 +83,12 @@ export class StudentSubmissionGroupTreeItem extends vscode.TreeItem {
       this.description = 'No Repository';
     }
     
-    // Add command to clone repository
+    // Add command to select assignment
     if (submissionGroup.repository) {
       this.command = {
-        command: 'computor.student.cloneSubmissionGroupRepository',
-        title: 'Clone Repository',
-        arguments: [submissionGroup, course.id]
+        command: 'computor.student.selectAssignment',
+        title: 'Select Assignment',
+        arguments: [submissionGroup, course]
       };
     }
   }
