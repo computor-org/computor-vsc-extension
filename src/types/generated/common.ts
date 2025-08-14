@@ -2,7 +2,7 @@
 
  * Auto-generated TypeScript interfaces from Pydantic models
 
- * Generated on: 2025-08-11T18:45:40.504618
+ * Generated on: 2025-08-13T17:59:27.574075
 
  * Category: Common
 
@@ -927,6 +927,98 @@ export interface BaseDeployment {
 }
 
 /**
+ * User deployment configuration for creating users in the system.
+ */
+export interface UserDeployment {
+  /** User's given name */
+  given_name?: string | null;
+  /** User's family name */
+  family_name?: string | null;
+  /** User's email address */
+  email?: string | null;
+  /** User number/identifier (student ID) */
+  number?: string | null;
+  /** Unique username */
+  username?: string | null;
+  /** Type of user account (user or token) */
+  user_type?: string;
+  /** Additional user properties */
+  properties?: Record<string, any> | null;
+  /** Initial password for the user */
+  password?: string | null;
+  /** GitLab username (if different from username) */
+  gitlab_username?: string | null;
+  /** GitLab email (if different from email) */
+  gitlab_email?: string | null;
+}
+
+/**
+ * Account deployment configuration for external service accounts (e.g., GitLab).
+ */
+export interface AccountDeployment {
+  /** Account provider (e.g., 'gitlab', 'github') */
+  provider: string;
+  /** Account type (e.g., 'oauth', 'api_token') */
+  type: string;
+  /** Account ID in the provider system */
+  provider_account_id: string;
+  /** Provider-specific account properties */
+  properties?: Record<string, any> | null;
+  /** Access token for API access */
+  access_token?: string | null;
+  /** Refresh token for token renewal */
+  refresh_token?: string | null;
+  /** GitLab username */
+  gitlab_username?: string | null;
+  /** GitLab email */
+  gitlab_email?: string | null;
+  /** GitLab user ID */
+  gitlab_user_id?: number | null;
+  /** Whether the GitLab user has admin privileges */
+  is_admin?: boolean | null;
+  /** Whether the user can create GitLab groups */
+  can_create_group?: boolean | null;
+}
+
+/**
+ * Course member deployment configuration for assigning users to courses.
+ */
+export interface CourseMemberDeployment {
+  /** Direct course ID */
+  id?: string | null;
+  /** Organization path (e.g., 'kit') */
+  organization?: string | null;
+  /** Course family path (e.g., 'prog') */
+  course_family?: string | null;
+  /** Course path (e.g., 'prog1') */
+  course?: string | null;
+  /** Course role ID (e.g., '_student', '_tutor', '_lecturer') */
+  role?: string;
+  /** Course group name or ID (required for students) */
+  group?: string | null;
+}
+
+/**
+ * Combined user and account deployment configuration.
+ */
+export interface UserAccountDeployment {
+  /** User configuration */
+  user: UserDeployment;
+  /** Associated external accounts */
+  accounts?: AccountDeployment[];
+  /** Course memberships for this user */
+  course_members?: CourseMemberDeployment[];
+}
+
+/**
+ * Configuration for deploying multiple users and their accounts.
+ */
+export interface UsersDeploymentConfig {
+  /** List of users to deploy */
+  users: UserAccountDeployment[];
+}
+
+/**
  * GitLab repository configuration.
  */
 export interface GitLabConfig {
@@ -1130,6 +1222,8 @@ export interface HierarchicalOrganizationConfig {
 export interface ComputorDeploymentConfig {
   /** List of organizations with nested course families and courses */
   organizations: HierarchicalOrganizationConfig[];
+  /** List of users with their accounts and course memberships */
+  users?: UserAccountDeployment[];
   /** Global deployment settings */
   settings?: Record<string, any> | null;
 }

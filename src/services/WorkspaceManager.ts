@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
+import { GitLabTokenManager } from './GitLabTokenManager';
+import { SubmissionGroupStudent } from '../types/generated';
 
 interface WorkspaceConfig {
   workspaceRoot: string;
@@ -38,10 +40,10 @@ export class WorkspaceManager {
   private workspaceRoot: string;
   private configPath: string;
   private config: WorkspaceConfig | null = null;
+  private gitLabTokenManager: GitLabTokenManager;
 
   private constructor(context: vscode.ExtensionContext) {
-    // Store context for potential future use
-    void context;
+    this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
     // Initialize workspace in user's home directory under .computor
     this.workspaceRoot = path.join(os.homedir(), '.computor', 'workspace');
     this.configPath = path.join(this.workspaceRoot, '.computor', 'workspace.json');
@@ -107,10 +109,14 @@ export class WorkspaceManager {
   // Student workspace methods
   async cloneStudentRepository(
     courseId: string,
-    submissionGroup: any
+    submissionGroup: SubmissionGroupStudent
   ): Promise<string> {
     if (!this.config) {
       await this.initializeWorkspace();
+    }
+
+    if (!submissionGroup.repository?.clone_url) {
+      throw new Error('No repository URL available for this submission group');
     }
 
     // Generate repository folder name based on type and content
@@ -123,30 +129,105 @@ export class WorkspaceManager {
       repoName
     );
     
-    // Create directory
+    // Check if repository already exists
+    if (await this.directoryExists(repoPath)) {
+      // Repository already exists, perform git pull instead
+      await this.pullRepository(repoPath);
+      return repoPath;
+    }
+    
+    // Create parent directory
     await fs.promises.mkdir(path.dirname(repoPath), { recursive: true });
     
-    // Clone repository (simplified - would need actual git implementation)
-    // For now, create directory structure
-    await fs.promises.mkdir(repoPath, { recursive: true });
+    // Get GitLab token for authentication
+    const gitlabUrl = submissionGroup.repository.url;
+    const token = await this.gitLabTokenManager.ensureTokenForUrl(gitlabUrl);
+    
+    if (!token) {
+      throw new Error('GitLab authentication required for cloning repository');
+    }
+    
+    // Clone repository with authentication
+    const cloneUrl = submissionGroup.repository.clone_url;
+    const authenticatedUrl = cloneUrl.replace('https://', `https://oauth2:${token}@`);
+    
+    await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: `Cloning repository: ${repoName}`,
+      cancellable: false
+    }, async (progress) => {
+      try {
+        // Use VS Code's built-in git extension or terminal command
+        const terminal = vscode.window.createTerminal({
+          name: `Clone: ${repoName}`,
+          cwd: path.dirname(repoPath),
+          hideFromUser: true
+        });
+        
+        // Clone the repository
+        terminal.sendText(`git clone "${authenticatedUrl}" "${repoName}"`);
+        
+        // Wait for clone to complete (simplified - in production would need better handling)
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        terminal.dispose();
+        
+        progress.report({ increment: 100, message: 'Repository cloned successfully' });
+      } catch (error) {
+        throw new Error(`Failed to clone repository: ${error}`);
+      }
+    });
     
     // Update workspace configuration
     await this.updateStudentRepositoryConfig(courseId, submissionGroup, repoPath);
     
     return repoPath;
   }
+  
+  private async directoryExists(dirPath: string): Promise<boolean> {
+    try {
+      const stats = await fs.promises.stat(dirPath);
+      return stats.isDirectory();
+    } catch {
+      return false;
+    }
+  }
+  
+  private async pullRepository(repoPath: string): Promise<void> {
+    await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: `Updating repository: ${path.basename(repoPath)}`,
+      cancellable: false
+    }, async (progress) => {
+      const terminal = vscode.window.createTerminal({
+        name: `Pull: ${path.basename(repoPath)}`,
+        cwd: repoPath,
+        hideFromUser: true
+      });
+      
+      terminal.sendText('git pull');
+      
+      // Wait for pull to complete
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      terminal.dispose();
+      
+      progress.report({ increment: 100, message: 'Repository updated successfully' });
+    });
+  }
 
-  private generateRepositoryName(submissionGroup: any): string {
+  private generateRepositoryName(submissionGroup: SubmissionGroupStudent): string {
+    const pathSlug = submissionGroup.course_content_path?.replace(/\./g, '-') || submissionGroup.id;
     if (submissionGroup.max_group_size === 1) {
-      return `student-${submissionGroup.course_content_path.replace(/\./g, '-')}`;
+      return `student-${pathSlug}`;
     } else {
-      return `team-${submissionGroup.course_content_path.replace(/\./g, '-')}`;
+      return `team-${pathSlug}`;
     }
   }
 
   private async updateStudentRepositoryConfig(
     courseId: string,
-    submissionGroup: any,
+    submissionGroup: SubmissionGroupStudent,
     localPath: string
   ): Promise<void> {
     if (!this.config) return;

@@ -2,7 +2,7 @@
 
  * Auto-generated TypeScript interfaces from Pydantic models
 
- * Generated on: 2025-08-11T18:45:40.501496
+ * Generated on: 2025-08-13T17:59:27.570687
 
  * Category: Sso
 
