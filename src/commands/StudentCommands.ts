@@ -1,8 +1,10 @@
 import * as vscode from 'vscode';
-import { StudentTreeDataProvider, StudentCourseTreeItem, StudentCourseContentTreeItem } from '../ui/tree/student/StudentTreeDataProvider';
+import * as path from 'path';
+import { StudentTreeDataProvider, StudentCourseTreeItem, StudentCourseContentTreeItem, StudentSubmissionGroupTreeItem } from '../ui/tree/student/StudentTreeDataProvider';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
 import { WorkspaceManager } from '../services/WorkspaceManager';
+import { GitBranchManager } from '../services/GitBranchManager';
 import { SubmissionGroupStudent } from '../types/generated';
 
 export class StudentCommands {
@@ -11,6 +13,7 @@ export class StudentCommands {
   private apiService: ComputorApiService;
   private gitLabTokenManager: GitLabTokenManager;
   private workspaceManager: WorkspaceManager;
+  private gitBranchManager: GitBranchManager;
 
   constructor(context: vscode.ExtensionContext, treeDataProvider: StudentTreeDataProvider) {
     this.context = context;
@@ -18,6 +21,7 @@ export class StudentCommands {
     this.apiService = new ComputorApiService(context);
     this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
     this.workspaceManager = WorkspaceManager.getInstance(context);
+    this.gitBranchManager = GitBranchManager.getInstance();
   }
 
   registerCommands(): void {
@@ -268,6 +272,123 @@ export class StudentCommands {
       })
     );
 
+    // Select assignment - main handler for tree item click
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.student.selectAssignment', async (submissionGroup: SubmissionGroupStudent, course: any) => {
+        if (!submissionGroup || !submissionGroup.repository) {
+          vscode.window.showErrorMessage('No repository available for this assignment');
+          return;
+        }
+
+        try {
+          // First ensure repository is cloned
+          let repoPath = await this.workspaceManager.getStudentRepositoryPath(course.id, submissionGroup.id);
+          
+          if (!repoPath || !await this.directoryExists(repoPath)) {
+            // Clone the repository if not exists
+            repoPath = await this.workspaceManager.cloneStudentRepository(course.id, submissionGroup);
+          }
+          
+          // Switch to assignment branch
+          const assignmentPath = submissionGroup.course_content_path;
+          await this.gitBranchManager.switchToAssignmentBranch(repoPath, assignmentPath);
+          
+          // Ensure assignment directory exists
+          const assignmentDir = await this.gitBranchManager.ensureAssignmentDirectory(repoPath, assignmentPath);
+          
+          // Open assignment directory in workspace
+          const workspaceFolder = vscode.workspace.workspaceFolders?.find(
+            folder => folder.uri.fsPath === repoPath
+          );
+          
+          if (!workspaceFolder) {
+            vscode.workspace.updateWorkspaceFolders(
+              vscode.workspace.workspaceFolders?.length || 0,
+              0,
+              { uri: vscode.Uri.file(repoPath), name: `${submissionGroup.course_content_title}` }
+            );
+          }
+          
+          // Open the assignment directory
+          const assignmentDirUri = vscode.Uri.file(assignmentDir);
+          await vscode.commands.executeCommand('revealInExplorer', assignmentDirUri);
+          
+          // Open README if exists
+          const readmePath = path.join(assignmentDir, 'README.md');
+          if (await this.fileExists(readmePath)) {
+            const doc = await vscode.workspace.openTextDocument(readmePath);
+            await vscode.window.showTextDocument(doc);
+          }
+          
+          vscode.window.showInformationMessage(
+            `Switched to assignment: ${submissionGroup.course_content_title} (branch: assignment/${assignmentPath.replace(/\./g, '-')})`
+          );
+        } catch (error) {
+          vscode.window.showErrorMessage(`Failed to select assignment: ${error}`);
+        }
+      })
+    );
+
+    // Submit assignment
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.student.submitAssignment', async (submissionGroup: SubmissionGroupStudent, course: any) => {
+        if (!submissionGroup || !submissionGroup.repository) {
+          vscode.window.showErrorMessage('No repository available for this assignment');
+          return;
+        }
+
+        try {
+          const repoPath = await this.workspaceManager.getStudentRepositoryPath(course.id, submissionGroup.id);
+          
+          if (!repoPath || !await this.directoryExists(repoPath)) {
+            vscode.window.showErrorMessage('Repository not found. Please select the assignment first.');
+            return;
+          }
+          
+          const assignmentPath = submissionGroup.course_content_path;
+          
+          // Ensure we're on the assignment branch
+          const branchInfo = await this.gitBranchManager.checkAssignmentBranch(repoPath, assignmentPath);
+          if (!branchInfo.isCurrent) {
+            await this.gitBranchManager.switchToAssignmentBranch(repoPath, assignmentPath);
+          }
+          
+          // Commit changes
+          const commitMessage = await vscode.window.showInputBox({
+            prompt: 'Enter commit message for submission',
+            value: `Submit assignment ${assignmentPath}: ${submissionGroup.course_content_title}`
+          });
+          
+          if (!commitMessage) {
+            return;
+          }
+          
+          await this.gitBranchManager.commitChanges(repoPath, commitMessage);
+          
+          // Push to remote
+          await this.gitBranchManager.pushAssignmentBranch(repoPath, assignmentPath);
+          
+          // Create merge request
+          const createMR = await vscode.window.showInformationMessage(
+            'Assignment pushed successfully. Create merge request?',
+            'Yes',
+            'No'
+          );
+          
+          if (createMR === 'Yes') {
+            await this.gitBranchManager.createMergeRequest(repoPath, assignmentPath);
+          }
+          
+          // TODO: Call API to notify submission
+          // await this.apiService.submitAssignment(submissionGroup.id, branchName, commitHash);
+          
+          vscode.window.showInformationMessage('Assignment submitted successfully!');
+        } catch (error) {
+          vscode.window.showErrorMessage(`Failed to submit assignment: ${error}`);
+        }
+      })
+    );
+
     // View submission group details
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.student.viewSubmissionGroup', async (submissionGroup: SubmissionGroupStudent) => {
@@ -293,5 +414,23 @@ export class StudentCommands {
         vscode.window.showInformationMessage(info, { modal: true });
       })
     );
+  }
+
+  private async directoryExists(dirPath: string): Promise<boolean> {
+    try {
+      const stat = await vscode.workspace.fs.stat(vscode.Uri.file(dirPath));
+      return (stat.type & vscode.FileType.Directory) !== 0;
+    } catch {
+      return false;
+    }
+  }
+
+  private async fileExists(filePath: string): Promise<boolean> {
+    try {
+      const stat = await vscode.workspace.fs.stat(vscode.Uri.file(filePath));
+      return (stat.type & vscode.FileType.File) !== 0;
+    } catch {
+      return false;
+    }
   }
 }
