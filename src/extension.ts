@@ -12,12 +12,12 @@ import { TutorCommands } from './commands/TutorCommands';
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
 import { GitLabTokenManager } from './services/GitLabTokenManager';
 import { ExampleTreeProvider } from './ui/tree/examples/ExampleTreeProvider';
-import { ExampleCommands } from './commands/exampleCommands';
+import { ExampleCommands } from './commands/ExampleCommands';
 import { ExampleCodeLensProvider } from './providers/ExampleCodeLensProvider';
 import { MetaYamlCompletionProvider } from './providers/MetaYamlCompletionProvider';
 import { MetaYamlStatusBarProvider } from './providers/MetaYamlStatusBarProvider';
 import { ComputorApiService } from './services/ComputorApiService';
-import { IconGenerator } from './utils/iconGenerator';
+import { IconGenerator } from './utils/IconGenerator';
 import { performanceMonitor } from './services/PerformanceMonitoringService';
 import { BackendConnectionService } from './services/BackendConnectionService';
 

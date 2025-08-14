@@ -9,7 +9,7 @@ import {
   CourseGroupList,
   CourseMemberList
 } from '../../../types/generated';
-import { IconGenerator } from '../../../utils/iconGenerator';
+import { IconGenerator } from '../../../utils/IconGenerator';
 
 export class OrganizationTreeItem extends vscode.TreeItem {
   constructor(
