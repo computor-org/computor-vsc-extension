@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { BackendConnectionService } from './BackendConnectionService';
 
 export interface RetryOptions {
   maxRetries?: number;
@@ -13,22 +14,54 @@ export interface ErrorRecoveryStrategy {
 }
 
 export class NetworkErrorStrategy implements ErrorRecoveryStrategy {
+  private backendConnectionService = BackendConnectionService.getInstance();
+  private lastDetailedCheckTime = 0;
+  private detailedCheckInterval = 10000; // 10 seconds between detailed checks
+  
   canRecover(error: Error): boolean {
     return error.message.includes('ECONNREFUSED') ||
            error.message.includes('ETIMEDOUT') ||
            error.message.includes('ENOTFOUND') ||
-           error.message.includes('NetworkError');
+           error.message.includes('ENETUNREACH') ||
+           error.message.includes('NetworkError') ||
+           error.message.includes('fetch');
   }
   
   async recover(error: Error): Promise<void> {
-    const retry = await vscode.window.showWarningMessage(
-      'Network connection failed. Check your internet connection.',
-      'Retry',
-      'Cancel'
-    );
+    const now = Date.now();
     
-    if (retry !== 'Retry') {
-      throw error;
+    // If enough time has passed, do a detailed backend check
+    if (now - this.lastDetailedCheckTime > this.detailedCheckInterval) {
+      this.lastDetailedCheckTime = now;
+      
+      // Get backend URL from the backend connection service
+      const baseUrl = this.backendConnectionService.getBaseUrl();
+      
+      // Check backend connection with detailed diagnostics
+      const status = await this.backendConnectionService.checkBackendConnection(baseUrl);
+      
+      if (!status.isReachable) {
+        // Show detailed error based on the specific problem
+        await this.backendConnectionService.showConnectionError(status);
+        throw error; // Still throw the error after showing detailed message
+      }
+    } else {
+      // Show simple retry message for quick retries
+      const retry = await vscode.window.showWarningMessage(
+        'Network connection failed. The backend might not be running or there may be network issues.',
+        'Retry',
+        'Check Backend',
+        'Cancel'
+      );
+      
+      if (retry === 'Check Backend') {
+        const baseUrl = this.backendConnectionService.getBaseUrl();
+        const status = await this.backendConnectionService.checkBackendConnection(baseUrl);
+        await this.backendConnectionService.showConnectionError(status);
+        throw error;
+      } else if (retry !== 'Retry') {
+        throw error;
+      }
     }
   }
 }

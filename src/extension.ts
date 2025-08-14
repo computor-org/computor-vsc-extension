@@ -19,6 +19,7 @@ import { MetaYamlStatusBarProvider } from './providers/MetaYamlStatusBarProvider
 import { ComputorApiService } from './services/ComputorApiService';
 import { IconGenerator } from './utils/iconGenerator';
 import { performanceMonitor } from './services/PerformanceMonitoringService';
+import { BackendConnectionService } from './services/BackendConnectionService';
 
 export function activate(context: vscode.ExtensionContext) {
   console.log('Computor VS Code Extension is now active!');
@@ -28,6 +29,18 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Initialize GitLab token manager (singleton - shared by all views)
   GitLabTokenManager.getInstance(context);
+  
+  // Initialize backend connection monitoring
+  const backendConnectionService = BackendConnectionService.getInstance();
+  context.subscriptions.push(backendConnectionService);
+  
+  // Start backend health checks after a short delay to allow settings to load
+  setTimeout(async () => {
+    const settingsManager = new ComputorSettingsManager(context);
+    const settings = await settingsManager.getSettings();
+    const baseUrl = settings.authentication.baseUrl;
+    backendConnectionService.startHealthCheck(baseUrl, 30000); // Check every 30 seconds
+  }, 2000);
 
   // Initialize authentication provider
   const authProvider = new ComputorAuthenticationProvider(context);
@@ -40,6 +53,21 @@ export function activate(context: vscode.ExtensionContext) {
   // Original activation command
   const activateCommand = vscode.commands.registerCommand('computor.activate', () => {
     vscode.window.showInformationMessage('Computor VS Code Extension activated!');
+  });
+  
+  // Backend connection check command
+  const checkBackendCommand = vscode.commands.registerCommand('computor.checkBackendConnection', async () => {
+    const settingsManager = new ComputorSettingsManager(context);
+    const settings = await settingsManager.getSettings();
+    const baseUrl = settings.authentication.baseUrl;
+    
+    const status = await backendConnectionService.checkBackendConnection(baseUrl);
+    
+    if (status.isReachable) {
+      vscode.window.showInformationMessage('Backend is connected and responding normally');
+    } else {
+      await backendConnectionService.showConnectionError(status);
+    }
   });
 
   // UI Showcase command
@@ -222,7 +250,8 @@ export function activate(context: vscode.ExtensionContext) {
   });
 
   context.subscriptions.push(
-    activateCommand, 
+    activateCommand,
+    checkBackendCommand,
     uiShowcaseCommand, 
     settingsCommand,
     signInCommand,
