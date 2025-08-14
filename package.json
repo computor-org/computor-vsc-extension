@@ -31,9 +31,19 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "computor",
-          "title": "Computor",
+          "id": "computor-lecturer",
+          "title": "Lecturer",
           "icon": "$(mortar-board)"
+        },
+        {
+          "id": "computor-student",
+          "title": "Student",
+          "icon": "$(book)"
+        },
+        {
+          "id": "computor-tutor",
+          "title": "Tutor",
+          "icon": "$(person)"
         }
       ]
     },
@@ -453,6 +463,42 @@
         "title": "Release Course Content",
         "icon": "$(rocket)",
         "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.fileExplorer.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "File Explorer"
+      },
+      {
+        "command": "computor.fileExplorer.goUp",
+        "title": "Go Up",
+        "icon": "$(arrow-up)",
+        "category": "File Explorer"
+      },
+      {
+        "command": "computor.fileExplorer.goHome",
+        "title": "Go Home",
+        "icon": "$(home)",
+        "category": "File Explorer"
+      },
+      {
+        "command": "computor.fileExplorer.goToWorkspace",
+        "title": "Go to Workspace",
+        "icon": "$(root-folder)",
+        "category": "File Explorer"
+      },
+      {
+        "command": "computor.fileExplorer.toggleHidden",
+        "title": "Toggle Hidden Files",
+        "icon": "$(eye)",
+        "category": "File Explorer"
+      },
+      {
+        "command": "computor.fileExplorer.openFolder",
+        "title": "Open Folder",
+        "icon": "$(folder-opened)",
+        "category": "File Explorer"
       }
     ],
     "viewsWelcome": [
@@ -462,26 +508,12 @@
       }
     ],
     "views": {
-      "computor": [
+      "computor-lecturer": [
         {
           "id": "computor.lecturerView",
-          "name": "Lecturer View",
+          "name": "Course Management",
           "icon": "$(mortar-board)",
-          "contextualTitle": "Computor Lecturer View",
-          "when": "computor.authenticated"
-        },
-        {
-          "id": "computor.studentView",
-          "name": "Student View",
-          "icon": "$(book)",
-          "contextualTitle": "Computor Student View",
-          "when": "computor.authenticated"
-        },
-        {
-          "id": "computor.tutorView",
-          "name": "Tutor View",
-          "icon": "$(person-add)",
-          "contextualTitle": "Computor Tutor View",
+          "contextualTitle": "Lecturer Course Management",
           "when": "computor.authenticated"
         },
         {
@@ -492,9 +524,43 @@
           "when": "computor.authenticated"
         },
         {
-          "id": "computor.welcome",
-          "name": "Welcome",
-          "when": "!computor.authenticated"
+          "id": "computor.fileExplorerLecturer",
+          "name": "File Explorer",
+          "icon": "$(files)",
+          "contextualTitle": "File Explorer",
+          "when": "computor.authenticated"
+        }
+      ],
+      "computor-student": [
+        {
+          "id": "computor.studentView",
+          "name": "My Courses",
+          "icon": "$(book)",
+          "contextualTitle": "Student Courses",
+          "when": "computor.authenticated"
+        },
+        {
+          "id": "computor.fileExplorerStudent",
+          "name": "Assignment Files",
+          "icon": "$(files)",
+          "contextualTitle": "Assignment Files",
+          "when": "computor.authenticated"
+        }
+      ],
+      "computor-tutor": [
+        {
+          "id": "computor.tutorView",
+          "name": "Student Submissions",
+          "icon": "$(checklist)",
+          "contextualTitle": "Tutor Review",
+          "when": "computor.authenticated"
+        },
+        {
+          "id": "computor.fileExplorerTutor",
+          "name": "Submission Files",
+          "icon": "$(files)",
+          "contextualTitle": "Submission Files",
+          "when": "computor.authenticated"
         }
       ],
       "explorer": [

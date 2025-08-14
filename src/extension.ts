@@ -20,6 +20,7 @@ import { ComputorApiService } from './services/ComputorApiService';
 import { IconGenerator } from './utils/IconGenerator';
 import { performanceMonitor } from './services/PerformanceMonitoringService';
 import { BackendConnectionService } from './services/BackendConnectionService';
+import { FileExplorerProvider } from './ui/tree/FileExplorerProvider';
 
 export function activate(context: vscode.ExtensionContext) {
   console.log('Computor VS Code Extension is now active!');
@@ -197,6 +198,71 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Register example commands
   new ExampleCommands(context, apiService, exampleTreeProvider);
+
+  // Initialize File Explorers for each role
+  const fileExplorerLecturer = new FileExplorerProvider(context);
+  const fileExplorerStudent = new FileExplorerProvider(context);
+  const fileExplorerTutor = new FileExplorerProvider(context);
+  
+  // Create tree views for file explorers
+  const lecturerFileExplorer = vscode.window.createTreeView('computor.fileExplorerLecturer', {
+    treeDataProvider: fileExplorerLecturer,
+    showCollapseAll: true
+  });
+  const studentFileExplorer = vscode.window.createTreeView('computor.fileExplorerStudent', {
+    treeDataProvider: fileExplorerStudent,
+    showCollapseAll: true
+  });
+  const tutorFileExplorer = vscode.window.createTreeView('computor.fileExplorerTutor', {
+    treeDataProvider: fileExplorerTutor,
+    showCollapseAll: true
+  });
+  
+  context.subscriptions.push(lecturerFileExplorer, studentFileExplorer, tutorFileExplorer);
+  
+  // Register file explorer commands
+  context.subscriptions.push(
+    vscode.commands.registerCommand('computor.fileExplorer.refresh', () => {
+      fileExplorerLecturer.refresh();
+      fileExplorerStudent.refresh();
+      fileExplorerTutor.refresh();
+    }),
+    vscode.commands.registerCommand('computor.fileExplorer.goUp', () => {
+      // Navigate up in all file explorers
+      fileExplorerLecturer.goUp();
+      fileExplorerStudent.goUp();
+      fileExplorerTutor.goUp();
+    }),
+    vscode.commands.registerCommand('computor.fileExplorer.goHome', () => {
+      fileExplorerLecturer.goHome();
+      fileExplorerStudent.goHome();
+      fileExplorerTutor.goHome();
+    }),
+    vscode.commands.registerCommand('computor.fileExplorer.goToWorkspace', () => {
+      fileExplorerLecturer.goToWorkspace();
+      fileExplorerStudent.goToWorkspace();
+      fileExplorerTutor.goToWorkspace();
+    }),
+    vscode.commands.registerCommand('computor.fileExplorer.toggleHidden', () => {
+      fileExplorerLecturer.toggleHiddenFiles();
+      fileExplorerStudent.toggleHiddenFiles();
+      fileExplorerTutor.toggleHiddenFiles();
+    }),
+    vscode.commands.registerCommand('computor.fileExplorer.openFolder', async () => {
+      const folderUri = await vscode.window.showOpenDialog({
+        canSelectFolders: true,
+        canSelectFiles: false,
+        canSelectMany: false,
+        openLabel: 'Select Folder'
+      });
+      
+      if (folderUri && folderUri[0]) {
+        fileExplorerLecturer.setRootPath(folderUri[0].fsPath);
+        fileExplorerStudent.setRootPath(folderUri[0].fsPath);
+        fileExplorerTutor.setRootPath(folderUri[0].fsPath);
+      }
+    })
+  );
 
   // Register CodeLens provider for meta.yaml files
   const exampleCodeLensProvider = new ExampleCodeLensProvider();
