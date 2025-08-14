@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { performanceMonitor } from '../../../services/PerformanceMonitoringService';
 import { errorRecoveryService } from '../../../services/ErrorRecoveryService';
+import { SubmissionGroupStudent } from '../../../types/generated';
 
 // Student-specific interfaces (until we generate proper types)
 interface StudentCourse {
@@ -45,6 +46,54 @@ export class StudentCourseTreeItem extends vscode.TreeItem {
   }
 }
 
+export class StudentSubmissionGroupTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly submissionGroup: SubmissionGroupStudent,
+    public readonly course: StudentCourse
+  ) {
+    super(
+      submissionGroup.course_content_title || 'Unnamed Assignment',
+      vscode.TreeItemCollapsibleState.None
+    );
+    this.id = `student-submission-group-${submissionGroup.id}`;
+    this.contextValue = submissionGroup.repository ? 'studentSubmissionGroupWithRepo' : 'studentSubmissionGroup';
+    
+    // Build tooltip
+    const tooltipParts = [
+      `Assignment: ${submissionGroup.course_content_title}`,
+      `Path: ${submissionGroup.course_content_path}`
+    ];
+    
+    if (submissionGroup.max_group_size > 1) {
+      tooltipParts.push(`Team Size: ${submissionGroup.current_group_size}/${submissionGroup.max_group_size}`);
+    }
+    
+    if (submissionGroup.latest_grading) {
+      tooltipParts.push(`Grade: ${(submissionGroup.latest_grading.grading * 100).toFixed(0)}%`);
+    }
+    
+    this.tooltip = tooltipParts.join('\n');
+    
+    // Set icon based on type and status
+    if (submissionGroup.repository) {
+      this.iconPath = new vscode.ThemeIcon('git-branch');
+      this.description = submissionGroup.max_group_size > 1 ? 'Team Repository' : 'Repository';
+    } else {
+      this.iconPath = new vscode.ThemeIcon('file-code');
+      this.description = 'No Repository';
+    }
+    
+    // Add command to clone repository
+    if (submissionGroup.repository) {
+      this.command = {
+        command: 'computor.student.cloneSubmissionGroupRepository',
+        title: 'Clone Repository',
+        arguments: [submissionGroup, course.id]
+      };
+    }
+  }
+}
+
 export class StudentCourseContentTreeItem extends vscode.TreeItem {
   constructor(
     public readonly content: StudentCourseContent,
@@ -78,6 +127,7 @@ export class StudentTreeDataProvider implements vscode.TreeDataProvider<vscode.T
   // Caches
   private coursesCache: StudentCourse[] | null = null;
   private courseContentsCache: Map<string, StudentCourseContent[]> = new Map();
+  private submissionGroupsCache: Map<string, SubmissionGroupStudent[]> = new Map();
 
   constructor(context: vscode.ExtensionContext) {
     this.apiService = new ComputorApiService(context);
@@ -87,6 +137,7 @@ export class StudentTreeDataProvider implements vscode.TreeDataProvider<vscode.T
     // Clear caches
     this.coursesCache = null;
     this.courseContentsCache.clear();
+    this.submissionGroupsCache.clear();
     this._onDidChangeTreeData.fire();
   }
 
@@ -116,7 +167,15 @@ export class StudentTreeDataProvider implements vscode.TreeDataProvider<vscode.T
       }
 
       if (element instanceof StudentCourseTreeItem) {
-        // Show course contents for this course
+        // Get submission groups for this course
+        const submissionGroups = await this.getStudentSubmissionGroups(element.course.id);
+        
+        // If there are submission groups, show them
+        if (submissionGroups.length > 0) {
+          return submissionGroups.map(sg => new StudentSubmissionGroupTreeItem(sg, element.course));
+        }
+        
+        // Fallback to showing course contents if no submission groups
         const contents = await this.getStudentCourseContents(element.course.id);
         
         // Build tree structure from paths
@@ -182,6 +241,21 @@ export class StudentTreeDataProvider implements vscode.TreeDataProvider<vscode.T
       return contents || [];
     } catch (error) {
       console.error('Failed to get course contents:', error);
+      return [];
+    }
+  }
+  
+  private async getStudentSubmissionGroups(courseId: string): Promise<SubmissionGroupStudent[]> {
+    if (this.submissionGroupsCache.has(courseId)) {
+      return this.submissionGroupsCache.get(courseId) || [];
+    }
+
+    try {
+      const submissionGroups = await this.apiService.getStudentSubmissionGroups({ course_id: courseId });
+      this.submissionGroupsCache.set(courseId, submissionGroups || []);
+      return submissionGroups || [];
+    } catch (error) {
+      console.error('Failed to get submission groups:', error);
       return [];
     }
   }

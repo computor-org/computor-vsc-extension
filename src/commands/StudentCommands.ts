@@ -2,18 +2,22 @@ import * as vscode from 'vscode';
 import { StudentTreeDataProvider, StudentCourseTreeItem, StudentCourseContentTreeItem } from '../ui/tree/student/StudentTreeDataProvider';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
+import { WorkspaceManager } from '../services/WorkspaceManager';
+import { SubmissionGroupStudent } from '../types/generated';
 
 export class StudentCommands {
   private context: vscode.ExtensionContext;
   private treeDataProvider: StudentTreeDataProvider;
   private apiService: ComputorApiService;
   private gitLabTokenManager: GitLabTokenManager;
+  private workspaceManager: WorkspaceManager;
 
   constructor(context: vscode.ExtensionContext, treeDataProvider: StudentTreeDataProvider) {
     this.context = context;
     this.treeDataProvider = treeDataProvider;
     this.apiService = new ComputorApiService(context);
     this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
+    this.workspaceManager = WorkspaceManager.getInstance(context);
   }
 
   registerCommands(): void {
@@ -186,6 +190,107 @@ export class StudentCommands {
 
         const url = `${item.course.repository.provider_url}/${item.course.repository.full_path}`;
         vscode.env.openExternal(vscode.Uri.parse(url));
+      })
+    );
+
+    // Clone submission group repository
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.student.cloneSubmissionGroupRepository', async (submissionGroup: SubmissionGroupStudent, courseId: string) => {
+        if (!submissionGroup || !submissionGroup.repository) {
+          vscode.window.showErrorMessage('No repository available for this submission group');
+          return;
+        }
+
+        try {
+          const repoPath = await this.workspaceManager.cloneStudentRepository(courseId, submissionGroup);
+          
+          // Add to workspace
+          const workspaceFolder = vscode.workspace.workspaceFolders?.find(
+            folder => folder.uri.fsPath === repoPath
+          );
+          
+          if (!workspaceFolder) {
+            vscode.workspace.updateWorkspaceFolders(
+              vscode.workspace.workspaceFolders?.length || 0,
+              0,
+              { uri: vscode.Uri.file(repoPath), name: `${submissionGroup.course_content_title}` }
+            );
+          }
+          
+          vscode.window.showInformationMessage(`Repository cloned successfully to ${repoPath}`);
+        } catch (error) {
+          vscode.window.showErrorMessage(`Failed to clone repository: ${error}`);
+        }
+      })
+    );
+
+    // Sync all repositories for a course
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.student.syncAllRepositories', async (courseId?: string) => {
+        try {
+          // Get all submission groups
+          const submissionGroups = await this.apiService.getStudentSubmissionGroups(
+            courseId ? { course_id: courseId } : undefined
+          );
+          
+          if (submissionGroups.length === 0) {
+            vscode.window.showInformationMessage('No repositories to sync');
+            return;
+          }
+          
+          await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: 'Syncing repositories...',
+            cancellable: false
+          }, async (progress) => {
+            let synced = 0;
+            for (const group of submissionGroups) {
+              if (group.repository) {
+                try {
+                  await this.workspaceManager.cloneStudentRepository(group.course_id, group);
+                  synced++;
+                  progress.report({ 
+                    increment: (100 / submissionGroups.length),
+                    message: `Synced ${synced}/${submissionGroups.length} repositories`
+                  });
+                } catch (error) {
+                  console.error(`Failed to sync repository for ${group.course_content_title}:`, error);
+                }
+              }
+            }
+          });
+          
+          vscode.window.showInformationMessage('Repository sync completed');
+          this.treeDataProvider.refresh();
+        } catch (error) {
+          vscode.window.showErrorMessage(`Failed to sync repositories: ${error}`);
+        }
+      })
+    );
+
+    // View submission group details
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.student.viewSubmissionGroup', async (submissionGroup: SubmissionGroupStudent) => {
+        if (!submissionGroup) {
+          return;
+        }
+
+        const info = [
+          `**${submissionGroup.course_content_title}**`,
+          '',
+          `Path: ${submissionGroup.course_content_path}`,
+          `Group Size: ${submissionGroup.current_group_size}/${submissionGroup.max_group_size}`,
+          submissionGroup.repository ? `Repository: ${submissionGroup.repository.web_url}` : 'No repository',
+          '',
+          '**Members:**',
+          ...submissionGroup.members?.map(m => `- ${m.full_name || m.username}`) || [],
+          '',
+          submissionGroup.latest_grading ? 
+            `**Latest Grade:** ${submissionGroup.latest_grading.grading}` : 
+            'Not graded yet'
+        ].join('\n');
+
+        vscode.window.showInformationMessage(info, { modal: true });
       })
     );
   }

@@ -36,7 +36,8 @@ import {
   CourseGroupGet,
   CourseMemberList,
   CourseMemberGet,
-  TaskResponse
+  TaskResponse,
+  SubmissionGroupStudent
 } from '../types/generated';
 
 // Query interface for examples (not generated yet)
@@ -902,7 +903,7 @@ export class ComputorApiService {
     course_content_id?: string;
     has_repository?: boolean;
     is_graded?: boolean;
-  }): Promise<any[]> {
+  }): Promise<SubmissionGroupStudent[]> {
     // Build query params
     const queryParams = new URLSearchParams();
     if (params?.course_id) queryParams.append('course_id', params.course_id);
@@ -913,7 +914,7 @@ export class ComputorApiService {
     const cacheKey = `studentSubmissionGroups-${queryParams.toString()}`;
     
     // Check cache first
-    const cached = multiTierCache.get<any[]>(cacheKey);
+    const cached = multiTierCache.get<SubmissionGroupStudent[]>(cacheKey);
     if (cached) {
       return cached;
     }
@@ -922,7 +923,7 @@ export class ComputorApiService {
       const result = await errorRecoveryService.executeWithRecovery(async () => {
         const client = await this.getHttpClient();
         const url = `/students/submission-groups${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-        const response = await client.get<any[]>(url);
+        const response = await client.get<SubmissionGroupStudent[]>(url);
         return response.data;
       }, {
         maxRetries: 2,

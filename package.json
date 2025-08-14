@@ -291,6 +291,23 @@
         "category": "Computor Student"
       },
       {
+        "command": "computor.student.cloneSubmissionGroupRepository",
+        "title": "Clone Repository",
+        "icon": "$(cloud-download)",
+        "category": "Computor Student"
+      },
+      {
+        "command": "computor.student.syncAllRepositories",
+        "title": "Sync All Repositories",
+        "icon": "$(sync)",
+        "category": "Computor Student"
+      },
+      {
+        "command": "computor.student.viewSubmissionGroup",
+        "title": "View Submission Group Details",
+        "category": "Computor Student"
+      },
+      {
         "command": "computor.tutor.refresh",
         "title": "Refresh",
         "icon": "$(refresh)",
@@ -760,6 +777,21 @@
           "command": "computor.student.submitAssignment",
           "when": "view == computor.studentView && viewItem == studentContentWithExample",
           "group": "2_actions@2"
+        },
+        {
+          "command": "computor.student.cloneSubmissionGroupRepository",
+          "when": "view == computor.studentView && viewItem == studentSubmissionGroupWithRepo",
+          "group": "2_actions@1"
+        },
+        {
+          "command": "computor.student.viewSubmissionGroup",
+          "when": "view == computor.studentView && viewItem =~ /studentSubmissionGroup/",
+          "group": "1_details@1"
+        },
+        {
+          "command": "computor.student.syncAllRepositories",
+          "when": "view == computor.studentView && viewItem == studentCourse",
+          "group": "3_sync@1"
         },
         {
           "command": "computor.tutor.viewCourse",
