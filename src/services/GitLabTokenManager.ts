@@ -115,9 +115,10 @@ export class GitLabTokenManager {
         if (!value) {
           return 'Token is required';
         }
-        // Basic validation for GitLab token format
-        if (!value.startsWith('glpat-') && !value.match(/^[a-zA-Z0-9_-]+$/)) {
-          return 'Invalid token format';
+        // Basic validation - GitLab tokens can have various formats
+        // glpat-xxxx (new format), or just alphanumeric with dashes/underscores
+        if (value.length < 10) {
+          return 'Token seems too short';
         }
         return undefined;
       }
