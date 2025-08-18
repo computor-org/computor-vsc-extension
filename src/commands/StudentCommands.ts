@@ -164,6 +164,45 @@ export class StudentCommands {
       })
     );
 
+    // Clone repository from course content tree
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.student.cloneRepository', async (item: any) => {
+        // The item is a CourseContentItem from StudentCourseContentTreeProvider
+        if (!item || !item.submissionGroup || !item.submissionGroup.repository) {
+          vscode.window.showErrorMessage('No repository available for this assignment');
+          return;
+        }
+
+        const submissionGroup = item.submissionGroup as SubmissionGroupStudent;
+        const courseId = submissionGroup.course_id;
+
+        try {
+          const repoPath = await this.workspaceManager.cloneStudentRepository(courseId, submissionGroup);
+          
+          // Open the cloned repository in a new window or add to workspace
+          const openInNewWindow = await vscode.window.showQuickPick(['Open in New Window', 'Add to Workspace'], {
+            placeHolder: 'How would you like to open the repository?'
+          });
+
+          if (openInNewWindow === 'Open in New Window') {
+            vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(repoPath), true);
+          } else if (openInNewWindow === 'Add to Workspace') {
+            const workspaceFolders = vscode.workspace.workspaceFolders || [];
+            const name = path.basename(repoPath);
+            vscode.workspace.updateWorkspaceFolders(
+              workspaceFolders.length,
+              0,
+              { uri: vscode.Uri.file(repoPath), name }
+            );
+          }
+
+          vscode.window.showInformationMessage(`Repository cloned successfully to ${repoPath}`);
+        } catch (error: any) {
+          vscode.window.showErrorMessage(`Failed to clone repository: ${error.message}`);
+        }
+      })
+    );
+
     // Submit assignment
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.student.submitAssignment', async (item: StudentCourseContentTreeItem) => {

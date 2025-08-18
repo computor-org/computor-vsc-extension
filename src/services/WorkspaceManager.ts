@@ -140,16 +140,25 @@ export class WorkspaceManager {
     await fs.promises.mkdir(path.dirname(repoPath), { recursive: true });
     
     // Get GitLab token for authentication
-    const gitlabUrl = submissionGroup.repository.url;
-    const token = await this.gitLabTokenManager.ensureTokenForUrl(gitlabUrl);
+    // Extract the GitLab instance URL from the clone URL
+    const cloneUrl = submissionGroup.repository.clone_url;
+    let gitlabInstanceUrl: string;
+    try {
+      const url = new URL(cloneUrl);
+      gitlabInstanceUrl = url.origin; // e.g., "http://172.17.0.1:8084"
+    } catch {
+      // Fallback to the base URL if provided
+      gitlabInstanceUrl = submissionGroup.repository.url || '';
+    }
+    
+    const token = await this.gitLabTokenManager.ensureTokenForUrl(gitlabInstanceUrl);
     
     if (!token) {
-      throw new Error('GitLab authentication required for cloning repository');
+      throw new Error(`GitLab authentication required for ${gitlabInstanceUrl}`);
     }
     
     // Clone repository with authentication
-    const cloneUrl = submissionGroup.repository.clone_url;
-    const authenticatedUrl = cloneUrl.replace('https://', `https://oauth2:${token}@`);
+    const authenticatedUrl = this.gitLabTokenManager.buildAuthenticatedCloneUrl(cloneUrl, token);
     
     await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
