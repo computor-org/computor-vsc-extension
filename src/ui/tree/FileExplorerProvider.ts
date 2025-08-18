@@ -173,7 +173,7 @@ export class FileItem extends vscode.TreeItem {
 
   private getDescription(): string | undefined {
     if (!this.isDirectory) {
-      const ext = path.extname(this.label);
+      // const ext = path.extname(this.label); // Reserved for future use
       const stats = fs.statSync(this.resourceUri.fsPath);
       const size = this.formatFileSize(stats.size);
       return `${size}`;

@@ -186,7 +186,7 @@ export class WorkspaceManager {
         progress.report({ increment: 30, message: 'Cloning repository...' });
         
         try {
-          const { stdout, stderr } = await execAsync(cloneCommand, options);
+          const { stderr } = await execAsync(cloneCommand, options);
           if (stderr && !stderr.includes('Cloning into')) {
             console.warn('Git clone warning:', stderr);
           }
