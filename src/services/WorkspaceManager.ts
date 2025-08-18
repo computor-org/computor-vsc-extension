@@ -144,14 +144,20 @@ export class WorkspaceManager {
     // Get GitLab token for authentication
     // Extract the GitLab instance URL from the clone URL
     const cloneUrl = submissionGroup.repository.clone_url;
+    console.log('Clone URL:', cloneUrl);
+    console.log('Repository info:', submissionGroup.repository);
+    
     let gitlabInstanceUrl: string;
     try {
       const url = new URL(cloneUrl);
       gitlabInstanceUrl = url.origin; // e.g., "http://172.17.0.1:8084"
-    } catch {
+    } catch (error) {
+      console.error('Failed to parse clone URL:', error);
       // Fallback to the base URL if provided
       gitlabInstanceUrl = submissionGroup.repository.url || '';
     }
+    
+    console.log('GitLab instance URL:', gitlabInstanceUrl);
     
     const token = await this.gitLabTokenManager.ensureTokenForUrl(gitlabInstanceUrl);
     
@@ -159,8 +165,13 @@ export class WorkspaceManager {
       throw new Error(`GitLab authentication required for ${gitlabInstanceUrl}`);
     }
     
+    console.log('Token obtained:', token ? 'Yes' : 'No');
+    
     // Clone repository with authentication
     const authenticatedUrl = this.gitLabTokenManager.buildAuthenticatedCloneUrl(cloneUrl, token);
+    
+    // Store gitlabInstanceUrl for error handling
+    const gitlabUrlForError = gitlabInstanceUrl;
     
     await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
@@ -191,9 +202,18 @@ export class WorkspaceManager {
             console.warn('Git clone warning:', stderr);
           }
         } catch (error: any) {
+          console.error('Git clone error:', error);
+          console.error('Error message:', error.message);
+          console.error('Error stderr:', error.stderr);
+          
           // Check if it's an authentication error
-          if (error.message.includes('Authentication failed') || 
-              error.message.includes('could not read Username')) {
+          const errorStr = error.message + (error.stderr || '');
+          if (errorStr.includes('Authentication failed') || 
+              errorStr.includes('could not read Username') ||
+              errorStr.includes('fatal: Authentication') ||
+              errorStr.includes('remote: HTTP Basic: Access denied')) {
+            // Clear the cached token so user will be prompted again
+            await this.gitLabTokenManager.removeToken(gitlabUrlForError);
             throw new Error('Authentication failed. Please check your GitLab Personal Access Token.');
           }
           throw error;
