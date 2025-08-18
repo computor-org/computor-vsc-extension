@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { StudentTreeDataProvider, StudentCourseTreeItem, StudentCourseContentTreeItem, StudentSubmissionGroupTreeItem } from '../ui/tree/student/StudentTreeDataProvider';
+import { StudentTreeDataProvider, StudentCourseTreeItem, StudentCourseContentTreeItem } from '../ui/tree/student/StudentTreeDataProvider';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
 import { WorkspaceManager } from '../services/WorkspaceManager';
@@ -330,10 +330,12 @@ export class StudentCommands {
           
           // Switch to assignment branch
           const assignmentPath = submissionGroup.course_content_path;
-          await this.gitBranchManager.switchToAssignmentBranch(repoPath, assignmentPath);
+          if (assignmentPath) {
+            await this.gitBranchManager.switchToAssignmentBranch(repoPath, assignmentPath);
+          }
           
           // Ensure assignment directory exists
-          const assignmentDir = await this.gitBranchManager.ensureAssignmentDirectory(repoPath, assignmentPath);
+          const assignmentDir = assignmentPath ? await this.gitBranchManager.ensureAssignmentDirectory(repoPath, assignmentPath) : repoPath;
           
           // Open assignment directory in workspace
           const workspaceFolder = vscode.workspace.workspaceFolders?.find(
@@ -360,7 +362,7 @@ export class StudentCommands {
           }
           
           vscode.window.showInformationMessage(
-            `Switched to assignment: ${submissionGroup.course_content_title} (branch: assignment/${assignmentPath.replace(/\./g, '-')})`
+            `Switched to assignment: ${submissionGroup.course_content_title}${assignmentPath ? ` (branch: assignment/${assignmentPath.replace(/\./g, '-')})` : ''}`
           );
         } catch (error) {
           vscode.window.showErrorMessage(`Failed to select assignment: ${error}`);
@@ -387,8 +389,8 @@ export class StudentCommands {
           const assignmentPath = submissionGroup.course_content_path;
           
           // Ensure we're on the assignment branch
-          const branchInfo = await this.gitBranchManager.checkAssignmentBranch(repoPath, assignmentPath);
-          if (!branchInfo.isCurrent) {
+          const branchInfo = assignmentPath ? await this.gitBranchManager.checkAssignmentBranch(repoPath, assignmentPath) : null;
+          if (assignmentPath && branchInfo && !branchInfo.isCurrent) {
             await this.gitBranchManager.switchToAssignmentBranch(repoPath, assignmentPath);
           }
           
@@ -405,7 +407,11 @@ export class StudentCommands {
           await this.gitBranchManager.commitChanges(repoPath, commitMessage);
           
           // Push to remote
-          await this.gitBranchManager.pushAssignmentBranch(repoPath, assignmentPath);
+          if (assignmentPath) {
+            await this.gitBranchManager.pushAssignmentBranch(repoPath, assignmentPath);
+          } else {
+            throw new Error('Assignment path is required for submission');
+          }
           
           // Create merge request
           const createMR = await vscode.window.showInformationMessage(
@@ -415,7 +421,9 @@ export class StudentCommands {
           );
           
           if (createMR === 'Yes') {
-            await this.gitBranchManager.createMergeRequest(repoPath, assignmentPath);
+            if (assignmentPath) {
+              await this.gitBranchManager.createMergeRequest(repoPath, assignmentPath);
+            }
           }
           
           // TODO: Call API to notify submission
