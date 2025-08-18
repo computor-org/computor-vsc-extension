@@ -309,16 +309,16 @@ class CourseContentItem extends TreeItem {
     getRepositoryPath(): string {
         const courseId = this.submissionGroup.course_id;
         const contentPath = this.submissionGroup.course_content_path || 'unknown';
-        const repoName = this.submissionGroup.max_group_size === 1 
-            ? `student-${contentPath.replace(/\./g, '-')}`
-            : `team-${contentPath.replace(/\./g, '-')}`;
+        // Using worktree structure: assignment-{path}
+        const folderName = `assignment-${contentPath.replace(/\./g, '-')}`;
         
         return path.join(
             os.homedir(),
-            'computor',
+            '.computor',
+            'workspace',
             'courses',
             courseId,
-            repoName
+            folderName
         );
     }
 }

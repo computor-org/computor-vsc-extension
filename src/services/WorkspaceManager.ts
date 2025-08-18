@@ -2,9 +2,10 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { exec } from 'child_process';
-import { promisify } from 'util';
+// import { exec } from 'child_process'; // Now used in GitWorktreeManager
+// import { promisify } from 'util'; // Now used in GitWorktreeManager
 import { GitLabTokenManager } from './GitLabTokenManager';
+import { GitWorktreeManager } from './GitWorktreeManager';
 import { SubmissionGroupStudent } from '../types/generated';
 
 interface WorkspaceConfig {
@@ -43,9 +44,11 @@ export class WorkspaceManager {
   private configPath: string;
   private config: WorkspaceConfig | null = null;
   private gitLabTokenManager: GitLabTokenManager;
+  private gitWorktreeManager: GitWorktreeManager;
 
   private constructor(context: vscode.ExtensionContext) {
     this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
+    this.gitWorktreeManager = GitWorktreeManager.getInstance();
     // Initialize workspace in user's home directory under .computor
     this.workspaceRoot = path.join(os.homedir(), '.computor', 'workspace');
     this.configPath = path.join(this.workspaceRoot, '.computor', 'workspace.json');
@@ -108,7 +111,7 @@ export class WorkspaceManager {
     return this.workspaceRoot;
   }
 
-  // Student workspace methods
+  // Student workspace methods using Git worktrees
   async cloneStudentRepository(
     courseId: string,
     submissionGroup: SubmissionGroupStudent
@@ -121,43 +124,23 @@ export class WorkspaceManager {
       throw new Error('No repository URL available for this submission group');
     }
 
-    // Generate repository folder name based on type and content
-    const repoName = this.generateRepositoryName(submissionGroup);
-    
-    const repoPath = path.join(
-      this.workspaceRoot,
-      'courses',
-      courseId,
-      repoName
-    );
-    
-    // Check if repository already exists
-    if (await this.directoryExists(repoPath)) {
-      // Repository already exists, perform git pull instead
-      await this.pullRepository(repoPath);
-      return repoPath;
+    const assignmentPath = submissionGroup.course_content_path;
+    if (!assignmentPath) {
+      throw new Error('No assignment path available for this submission group');
     }
-    
-    // Create parent directory
-    await fs.promises.mkdir(path.dirname(repoPath), { recursive: true });
-    
     // Get GitLab token for authentication
-    // Extract the GitLab instance URL from the clone URL
     const cloneUrl = submissionGroup.repository.clone_url;
     console.log('Clone URL:', cloneUrl);
-    console.log('Repository info:', submissionGroup.repository);
+    console.log('Assignment path:', assignmentPath);
     
     let gitlabInstanceUrl: string;
     try {
       const url = new URL(cloneUrl);
-      gitlabInstanceUrl = url.origin; // e.g., "http://172.17.0.1:8084"
+      gitlabInstanceUrl = url.origin;
     } catch (error) {
       console.error('Failed to parse clone URL:', error);
-      // Fallback to the base URL if provided
       gitlabInstanceUrl = submissionGroup.repository.url || '';
     }
-    
-    console.log('GitLab instance URL:', gitlabInstanceUrl);
     
     const token = await this.gitLabTokenManager.ensureTokenForUrl(gitlabInstanceUrl);
     
@@ -165,72 +148,55 @@ export class WorkspaceManager {
       throw new Error(`GitLab authentication required for ${gitlabInstanceUrl}`);
     }
     
-    console.log('Token obtained:', token ? 'Yes' : 'No');
-    
-    // Clone repository with authentication
+    // Build authenticated URL
     const authenticatedUrl = this.gitLabTokenManager.buildAuthenticatedCloneUrl(cloneUrl, token);
     
-    // Store gitlabInstanceUrl for error handling
-    const gitlabUrlForError = gitlabInstanceUrl;
-    
-    await vscode.window.withProgress({
+    // Use worktree approach for efficient repository management
+    const worktreePath = await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
-      title: `Cloning repository: ${repoName}`,
+      title: `Setting up assignment: ${submissionGroup.course_content_title || assignmentPath}`,
       cancellable: false
     }, async (progress) => {
       try {
-        const execAsync = promisify(exec);
+        progress.report({ increment: 30, message: 'Preparing workspace...' });
         
-        progress.report({ increment: 30, message: 'Authenticating...' });
+        // Ensure assignment worktree exists
+        const resultPath = await this.gitWorktreeManager.ensureAssignmentWorktree(
+          this.workspaceRoot,
+          courseId,
+          assignmentPath,
+          cloneUrl,
+          authenticatedUrl
+        );
         
-        // Execute git clone command
-        const cloneCommand = `git clone "${authenticatedUrl}" "${repoName}"`;
-        const options = {
-          cwd: path.dirname(repoPath),
-          env: {
-            ...process.env,
-            GIT_TERMINAL_PROMPT: '0', // Disable Git password prompts
-            GIT_ASKPASS: '/bin/echo', // Provide empty password if asked
-          }
-        };
+        progress.report({ increment: 70, message: 'Workspace ready!' });
         
-        progress.report({ increment: 30, message: 'Cloning repository...' });
-        
-        try {
-          const { stderr } = await execAsync(cloneCommand, options);
-          if (stderr && !stderr.includes('Cloning into')) {
-            console.warn('Git clone warning:', stderr);
-          }
-        } catch (error: any) {
-          console.error('Git clone error:', error);
-          console.error('Error message:', error.message);
-          console.error('Error stderr:', error.stderr);
-          
-          // Check if it's an authentication error
-          const errorStr = error.message + (error.stderr || '');
-          if (errorStr.includes('Authentication failed') || 
-              errorStr.includes('could not read Username') ||
-              errorStr.includes('fatal: Authentication') ||
-              errorStr.includes('remote: HTTP Basic: Access denied')) {
-            // Clear the cached token so user will be prompted again
-            await this.gitLabTokenManager.removeToken(gitlabUrlForError);
-            throw new Error('Authentication failed. Please check your GitLab Personal Access Token.');
-          }
-          throw error;
-        }
-        
-        progress.report({ increment: 40, message: 'Repository cloned successfully' });
+        return resultPath;
       } catch (error: any) {
-        throw new Error(`Failed to clone repository: ${error.message}`);
+        console.error('Worktree setup error:', error);
+        
+        // Check if it's an authentication error
+        const errorStr = error.message || '';
+        if (errorStr.includes('Authentication failed') || 
+            errorStr.includes('could not read Username') ||
+            errorStr.includes('fatal: Authentication') ||
+            errorStr.includes('remote: HTTP Basic: Access denied')) {
+          // Clear the cached token so user will be prompted again
+          await this.gitLabTokenManager.removeToken(gitlabInstanceUrl);
+          throw new Error('Authentication failed. Please check your GitLab Personal Access Token.');
+        }
+        throw error;
       }
     });
     
     // Update workspace configuration
-    await this.updateStudentRepositoryConfig(courseId, submissionGroup, repoPath);
+    await this.updateStudentRepositoryConfig(courseId, submissionGroup, worktreePath);
     
-    return repoPath;
+    return worktreePath;
   }
   
+  // No longer needed with worktree approach
+  /*
   private async directoryExists(dirPath: string): Promise<boolean> {
     try {
       const stats = await fs.promises.stat(dirPath);
@@ -271,6 +237,7 @@ export class WorkspaceManager {
       return `team-${pathSlug}`;
     }
   }
+  */
 
   private async updateStudentRepositoryConfig(
     courseId: string,
