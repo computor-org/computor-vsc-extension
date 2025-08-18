@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import { GitLabTokenManager } from './GitLabTokenManager';
 import { SubmissionGroupStudent } from '../types/generated';
 
@@ -166,24 +168,40 @@ export class WorkspaceManager {
       cancellable: false
     }, async (progress) => {
       try {
-        // Use VS Code's built-in git extension or terminal command
-        const terminal = vscode.window.createTerminal({
-          name: `Clone: ${repoName}`,
+        const execAsync = promisify(exec);
+        
+        progress.report({ increment: 30, message: 'Authenticating...' });
+        
+        // Execute git clone command
+        const cloneCommand = `git clone "${authenticatedUrl}" "${repoName}"`;
+        const options = {
           cwd: path.dirname(repoPath),
-          hideFromUser: true
-        });
+          env: {
+            ...process.env,
+            GIT_TERMINAL_PROMPT: '0', // Disable Git password prompts
+            GIT_ASKPASS: '/bin/echo', // Provide empty password if asked
+          }
+        };
         
-        // Clone the repository
-        terminal.sendText(`git clone "${authenticatedUrl}" "${repoName}"`);
+        progress.report({ increment: 30, message: 'Cloning repository...' });
         
-        // Wait for clone to complete (simplified - in production would need better handling)
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        try {
+          const { stdout, stderr } = await execAsync(cloneCommand, options);
+          if (stderr && !stderr.includes('Cloning into')) {
+            console.warn('Git clone warning:', stderr);
+          }
+        } catch (error: any) {
+          // Check if it's an authentication error
+          if (error.message.includes('Authentication failed') || 
+              error.message.includes('could not read Username')) {
+            throw new Error('Authentication failed. Please check your GitLab Personal Access Token.');
+          }
+          throw error;
+        }
         
-        terminal.dispose();
-        
-        progress.report({ increment: 100, message: 'Repository cloned successfully' });
-      } catch (error) {
-        throw new Error(`Failed to clone repository: ${error}`);
+        progress.report({ increment: 40, message: 'Repository cloned successfully' });
+      } catch (error: any) {
+        throw new Error(`Failed to clone repository: ${error.message}`);
       }
     });
     
