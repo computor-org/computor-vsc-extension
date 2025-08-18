@@ -139,15 +139,10 @@ export class GitWorktreeManager {
       return worktreePath;
     }
 
-    // Create the worktree
-    await this.createWorktree(sharedRepoPath, worktreePath, branchName);
+    // Create the worktree with sparse-checkout for this assignment
+    await this.createWorktree(sharedRepoPath, worktreePath, branchName, assignmentPath);
     
-    // Navigate to assignment directory within the worktree if it exists
-    const assignmentDir = path.join(worktreePath, assignmentPath.replace(/\./g, '/'));
-    if (await this.directoryExists(assignmentDir)) {
-      return assignmentDir;
-    }
-
+    // Return the worktree path - it will only contain assignment files
     return worktreePath;
   }
 
@@ -164,12 +159,13 @@ export class GitWorktreeManager {
   }
 
   /**
-   * Create a new worktree for an assignment
+   * Create a new worktree for an assignment with sparse-checkout
    */
   private async createWorktree(
     sharedRepoPath: string,
     worktreePath: string,
-    branchName: string
+    branchName: string,
+    assignmentPath?: string
   ): Promise<void> {
     try {
       // Check if branch exists remotely
@@ -199,9 +195,71 @@ export class GitWorktreeManager {
       }
       
       console.log(`Worktree created at ${worktreePath}`);
+      
+      // Configure sparse-checkout to only include assignment directory
+      if (assignmentPath) {
+        await this.configureSparseCheckout(worktreePath, assignmentPath);
+      }
     } catch (error: any) {
       console.error('Failed to create worktree:', error);
       throw new Error(`Failed to create worktree: ${error.message}`);
+    }
+  }
+
+  /**
+   * Configure sparse-checkout for a worktree to only include specific assignment files
+   */
+  private async configureSparseCheckout(
+    worktreePath: string,
+    assignmentPath: string
+  ): Promise<void> {
+    try {
+      console.log(`Configuring sparse-checkout for ${assignmentPath} in ${worktreePath}`);
+      
+      // Enable sparse-checkout
+      await execAsync('git sparse-checkout init --cone', { cwd: worktreePath });
+      
+      // Convert assignment path (e.g., "1.basics") to directory path
+      // The assignment path from course content is like "1.variables.types"
+      // We need to find where this content exists in the repository
+      const patterns: string[] = [];
+      
+      // Always include essential root files
+      patterns.push('README.md');
+      patterns.push('.gitignore');
+      patterns.push('requirements.txt');
+      patterns.push('package.json');
+      
+      // Convert path segments: "1.variables.types" -> "1/variables/types"
+      const pathSegments = assignmentPath.split('.');
+      const assignmentDirPath = pathSegments.join('/');
+      
+      // Include the specific assignment directory and common parent directories
+      patterns.push(`${assignmentDirPath}/*`);
+      patterns.push(`assignments/${assignmentDirPath}/*`);
+      patterns.push(`exercises/${assignmentDirPath}/*`);
+      patterns.push(`content/${assignmentDirPath}/*`);
+      
+      // Also try with dashes instead of slashes for flat structure
+      const assignmentDirFlat = assignmentPath.replace(/\./g, '-');
+      patterns.push(`${assignmentDirFlat}/*`);
+      patterns.push(`assignments/${assignmentDirFlat}/*`);
+      patterns.push(`exercises/${assignmentDirFlat}/*`);
+      
+      // Set sparse-checkout patterns
+      const sparseCheckoutCommand = `git sparse-checkout set ${patterns.map(p => `"${p}"`).join(' ')}`;
+      console.log(`Setting sparse-checkout patterns: ${sparseCheckoutCommand}`);
+      
+      await execAsync(sparseCheckoutCommand, { cwd: worktreePath });
+      
+      // Reapply checkout to update working directory
+      await execAsync('git checkout', { cwd: worktreePath });
+      
+      console.log(`Sparse-checkout configured for ${assignmentPath}`);
+    } catch (error: any) {
+      console.error('Failed to configure sparse-checkout:', error);
+      // If sparse-checkout fails, continue with full checkout
+      console.warn('Continuing with full repository checkout');
     }
   }
 
@@ -301,12 +359,13 @@ export class GitWorktreeManager {
     }
   }
 
-  private async directoryExists(dirPath: string): Promise<boolean> {
+  // Helper method - may be used in future
+  /* private async directoryExists(dirPath: string): Promise<boolean> {
     try {
       const stats = await fs.promises.stat(dirPath);
       return stats.isDirectory();
     } catch {
       return false;
     }
-  }
+  } */
 }
