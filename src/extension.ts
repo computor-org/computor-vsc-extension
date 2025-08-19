@@ -189,8 +189,18 @@ export function activate(context: vscode.ExtensionContext) {
   });
   context.subscriptions.push(studentCourseContentView);
   
+  // Register tree view event handlers to preserve expansion state
+  studentCourseContentView.onDidExpandElement(async (event) => {
+    await studentCourseContentProvider.onTreeItemExpanded(event.element);
+  });
+  
+  studentCourseContentView.onDidCollapseElement(async (event) => {
+    await studentCourseContentProvider.onTreeItemCollapsed(event.element);
+  });
+  
   // Register student commands
   const studentCommands = new StudentCommands(context, studentTreeDataProvider);
+  studentCommands.setCourseContentTreeProvider(studentCourseContentProvider);
   studentCommands.registerCommands();
   
   // Register course content refresh command
@@ -202,7 +212,8 @@ export function activate(context: vscode.ExtensionContext) {
   
   // Listen for course changes
   context.subscriptions.push(
-    vscode.commands.registerCommand('computor.courseChanged', (course) => {
+    vscode.commands.registerCommand('computor.courseChanged', (courseInfo) => {
+      void courseInfo; // Parameter not used but required for API compatibility
       // Update context to show course content view
       vscode.commands.executeCommand('setContext', 'computor.courseSelected', true);
       // Refresh course content

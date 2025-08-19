@@ -3,6 +3,7 @@ import { ComputorApiService } from '../../../services/ComputorApiService';
 import { performanceMonitor } from '../../../services/PerformanceMonitoringService';
 import { errorRecoveryService } from '../../../services/ErrorRecoveryService';
 import { SubmissionGroupStudent } from '../../../types/generated';
+import { IconGenerator } from '../../../utils/IconGenerator';
 
 // Student-specific interfaces (until we generate proper types)
 interface StudentCourse {
@@ -94,6 +95,76 @@ export class StudentSubmissionGroupTreeItem extends vscode.TreeItem {
   }
 }
 
+export class StudentUnitTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly content: StudentCourseContent,
+    public readonly course: StudentCourse,
+    public readonly submissionGroups: SubmissionGroupStudent[] = [],
+    public readonly collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.Collapsed
+  ) {
+    super(content.title, collapsibleState);
+    this.id = `student-unit-${content.id}`;
+    this.contextValue = 'studentUnit';
+    this.tooltip = `Unit: ${content.title}\nPath: ${content.path}\nAssignments: ${submissionGroups.length}`;
+    
+    // Use colored folder icon for units
+    this.iconPath = IconGenerator.getColoredIcon('#4CAF50', 'square'); // Green folder icon
+    this.description = `${submissionGroups.length} assignment${submissionGroups.length !== 1 ? 's' : ''}`;
+  }
+}
+
+export class StudentAssignmentTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly content: StudentCourseContent,
+    public readonly course: StudentCourse,
+    public readonly submissionGroup?: SubmissionGroupStudent
+  ) {
+    super(
+      content.title,
+      vscode.TreeItemCollapsibleState.None
+    );
+    this.id = `student-assignment-${content.id}`;
+    this.contextValue = submissionGroup?.repository ? 'studentAssignmentWithRepo' : 'studentAssignment';
+    
+    // Build tooltip
+    const tooltipParts = [
+      `Assignment: ${content.title}`,
+      `Path: ${content.path}`
+    ];
+    
+    if (submissionGroup) {
+      if (submissionGroup.max_group_size > 1) {
+        tooltipParts.push(`Team Size: ${submissionGroup.current_group_size}/${submissionGroup.max_group_size}`);
+      }
+      
+      if (submissionGroup.latest_grading) {
+        tooltipParts.push(`Grade: ${(submissionGroup.latest_grading.grading * 100).toFixed(0)}%`);
+      }
+    }
+    
+    this.tooltip = tooltipParts.join('\n');
+    
+    // Set icon and description based on submission group status
+    if (submissionGroup?.repository) {
+      this.iconPath = IconGenerator.getColoredIcon('#2196F3'); // Blue for active assignments
+      this.description = submissionGroup.max_group_size > 1 ? 'Team Repository' : 'Repository';
+      
+      // Add command to select assignment
+      this.command = {
+        command: 'computor.student.selectAssignment',
+        title: 'Select Assignment',
+        arguments: [submissionGroup, course]
+      };
+    } else if (submissionGroup) {
+      this.iconPath = IconGenerator.getColoredIcon('#FF9800'); // Orange for assignments without repos
+      this.description = 'No Repository';
+    } else {
+      this.iconPath = IconGenerator.getColoredIcon('#9E9E9E'); // Gray for content without submission groups
+      this.description = 'No Submission';
+    }
+  }
+}
+
 export class StudentCourseContentTreeItem extends vscode.TreeItem {
   constructor(
     public readonly content: StudentCourseContent,
@@ -131,6 +202,7 @@ export class StudentTreeDataProvider implements vscode.TreeDataProvider<vscode.T
 
   constructor(context: vscode.ExtensionContext) {
     this.apiService = new ComputorApiService(context);
+    IconGenerator.initialize(context);
   }
 
   refresh(): void {
@@ -167,28 +239,56 @@ export class StudentTreeDataProvider implements vscode.TreeDataProvider<vscode.T
       }
 
       if (element instanceof StudentCourseTreeItem) {
-        // Get submission groups for this course
-        const submissionGroups = await this.getStudentSubmissionGroups(element.course.id);
+        // Fetch both course contents and submission groups
+        const [contents, submissionGroups] = await Promise.all([
+          this.getStudentCourseContents(element.course.id),
+          this.getStudentSubmissionGroups(element.course.id)
+        ]);
         
-        // If there are submission groups, show them
-        if (submissionGroups.length > 0) {
-          return submissionGroups.map(sg => new StudentSubmissionGroupTreeItem(sg, element.course));
-        }
-        
-        // Fallback to showing course contents if no submission groups
-        const contents = await this.getStudentCourseContents(element.course.id);
-        
-        // Build tree structure from paths
+        // Build tree structure from course contents with proper hierarchy
         const rootContents = this.getRootContents(contents);
         
         return rootContents.map(content => {
           const hasChildren = this.hasChildContents(content, contents);
-          return new StudentCourseContentTreeItem(content, element.course, hasChildren);
+          
+          if (hasChildren) {
+            // This is a unit (has children) - find its submission groups
+            const unitSubmissionGroups = this.findSubmissionGroupsForUnit(content, contents, submissionGroups);
+            return new StudentUnitTreeItem(content, element.course, unitSubmissionGroups);
+          } else {
+            // This is a standalone assignment - find its submission group
+            const submissionGroup = this.findSubmissionGroupForContent(content, submissionGroups);
+            return new StudentAssignmentTreeItem(content, element.course, submissionGroup);
+          }
+        });
+      }
+
+      if (element instanceof StudentUnitTreeItem) {
+        // Show assignments within this unit
+        const [allContents, submissionGroups] = await Promise.all([
+          this.getStudentCourseContents(element.course.id),
+          this.getStudentSubmissionGroups(element.course.id)
+        ]);
+        
+        const childContents = this.getChildContents(element.content, allContents);
+        
+        return childContents.map(content => {
+          const hasChildren = this.hasChildContents(content, allContents);
+          
+          if (hasChildren) {
+            // This is a sub-unit
+            const unitSubmissionGroups = this.findSubmissionGroupsForUnit(content, allContents, submissionGroups);
+            return new StudentUnitTreeItem(content, element.course, unitSubmissionGroups);
+          } else {
+            // This is an assignment within the unit
+            const submissionGroup = this.findSubmissionGroupForContent(content, submissionGroups);
+            return new StudentAssignmentTreeItem(content, element.course, submissionGroup);
+          }
         });
       }
 
       if (element instanceof StudentCourseContentTreeItem) {
-        // Show child contents
+        // Show child contents (fallback for legacy structure)
         const allContents = await this.getStudentCourseContents(element.course.id);
         const childContents = this.getChildContents(element.content, allContents);
         
@@ -297,6 +397,54 @@ export class StudentTreeDataProvider implements vscode.TreeDataProvider<vscode.T
   }
 
   async getParent(element: vscode.TreeItem): Promise<vscode.TreeItem | undefined> {
+    if (element instanceof StudentAssignmentTreeItem) {
+      const pathParts = element.content.path.split('.');
+      if (pathParts.length === 1) {
+        // Root assignment - parent is course
+        return new StudentCourseTreeItem(element.course);
+      } else {
+        // Find parent unit
+        const parentPath = pathParts.slice(0, -1).join('.');
+        const [allContents, submissionGroups] = await Promise.all([
+          this.getStudentCourseContents(element.course.id),
+          this.getStudentSubmissionGroups(element.course.id)
+        ]);
+        const parentContent = allContents.find(c => c.path === parentPath);
+        
+        if (parentContent) {
+          const hasChildren = this.hasChildContents(parentContent, allContents);
+          if (hasChildren) {
+            const unitSubmissionGroups = this.findSubmissionGroupsForUnit(parentContent, allContents, submissionGroups);
+            return new StudentUnitTreeItem(parentContent, element.course, unitSubmissionGroups);
+          }
+        }
+      }
+    }
+    
+    if (element instanceof StudentUnitTreeItem) {
+      const pathParts = element.content.path.split('.');
+      if (pathParts.length === 1) {
+        // Root unit - parent is course
+        return new StudentCourseTreeItem(element.course);
+      } else {
+        // Find parent unit
+        const parentPath = pathParts.slice(0, -1).join('.');
+        const [allContents, submissionGroups] = await Promise.all([
+          this.getStudentCourseContents(element.course.id),
+          this.getStudentSubmissionGroups(element.course.id)
+        ]);
+        const parentContent = allContents.find(c => c.path === parentPath);
+        
+        if (parentContent) {
+          const hasChildren = this.hasChildContents(parentContent, allContents);
+          if (hasChildren) {
+            const unitSubmissionGroups = this.findSubmissionGroupsForUnit(parentContent, allContents, submissionGroups);
+            return new StudentUnitTreeItem(parentContent, element.course, unitSubmissionGroups);
+          }
+        }
+      }
+    }
+    
     if (element instanceof StudentCourseContentTreeItem) {
       const pathParts = element.content.path.split('.');
       if (pathParts.length === 1) {
@@ -316,5 +464,43 @@ export class StudentTreeDataProvider implements vscode.TreeDataProvider<vscode.T
     }
     
     return undefined;
+  }
+
+  /**
+   * Find submission groups for all assignments within a unit (including nested units)
+   */
+  private findSubmissionGroupsForUnit(
+    unitContent: StudentCourseContent,
+    allContents: StudentCourseContent[],
+    submissionGroups: SubmissionGroupStudent[]
+  ): SubmissionGroupStudent[] {
+    const unitPath = unitContent.path;
+    
+    // Find all assignments within this unit (including nested)
+    const assignmentsInUnit = allContents.filter(content => 
+      content.path.startsWith(unitPath + '.') && content.example_id
+    );
+    
+    // Find submission groups for these assignments
+    const unitSubmissionGroups: SubmissionGroupStudent[] = [];
+    for (const assignment of assignmentsInUnit) {
+      const sg = this.findSubmissionGroupForContent(assignment, submissionGroups);
+      if (sg) {
+        unitSubmissionGroups.push(sg);
+      }
+    }
+    
+    return unitSubmissionGroups;
+  }
+
+  /**
+   * Find the submission group for a specific course content item
+   */
+  private findSubmissionGroupForContent(
+    content: StudentCourseContent,
+    submissionGroups: SubmissionGroupStudent[]
+  ): SubmissionGroupStudent | undefined {
+    // Match by course content path
+    return submissionGroups.find(sg => sg.course_content_path === content.path);
   }
 }
