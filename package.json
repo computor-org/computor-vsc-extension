@@ -23,6 +23,7 @@
     "onView:computor.testResultsView",
     "onView:computor.lecturerView",
     "onView:computor.studentView",
+    "onView:computor.studentCourseContentView",
     "onView:computor.tutorView",
     "onView:computor.examplesView"
   ],
@@ -264,6 +265,18 @@
         "command": "computor.student.refresh",
         "title": "Refresh",
         "icon": "$(refresh)",
+        "category": "Computor Student"
+      },
+      {
+        "command": "computor.student.refreshCourseContent",
+        "title": "Refresh Course Content",
+        "icon": "$(refresh)",
+        "category": "Computor Student"
+      },
+      {
+        "command": "computor.student.selectCourse",
+        "title": "Select Course",
+        "icon": "$(list-selection)",
         "category": "Computor Student"
       },
       {
@@ -540,6 +553,13 @@
           "when": "computor.authenticated"
         },
         {
+          "id": "computor.studentCourseContentView",
+          "name": "Course Content",
+          "icon": "$(list-tree)",
+          "contextualTitle": "Course Content",
+          "when": "computor.authenticated && computor.courseSelected"
+        },
+        {
           "id": "computor.fileExplorerStudent",
           "name": "Assignment Files",
           "icon": "$(files)",
@@ -651,6 +671,21 @@
           "command": "computor.student.refresh",
           "when": "view == computor.studentView",
           "group": "navigation@1"
+        },
+        {
+          "command": "computor.student.selectCourse",
+          "when": "view == computor.studentView",
+          "group": "navigation@2"
+        },
+        {
+          "command": "computor.student.refreshCourseContent",
+          "when": "view == computor.studentCourseContentView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "computor.student.selectCourse",
+          "when": "view == computor.studentCourseContentView",
+          "group": "navigation@2"
         },
         {
           "command": "computor.tutor.refresh",

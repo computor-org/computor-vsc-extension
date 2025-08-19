@@ -128,10 +128,15 @@ export class WorkspaceManager {
     if (!assignmentPath) {
       throw new Error('No assignment path available for this submission group');
     }
+    
+    // Get the example identifier for sparse-checkout
+    const exampleIdentifier = submissionGroup.example_identifier;
+    
     // Get GitLab token for authentication
     const cloneUrl = submissionGroup.repository.clone_url;
     console.log('Clone URL:', cloneUrl);
     console.log('Assignment path:', assignmentPath);
+    console.log('Example identifier:', exampleIdentifier || 'not provided');
     
     let gitlabInstanceUrl: string;
     try {
@@ -166,7 +171,8 @@ export class WorkspaceManager {
           courseId,
           assignmentPath,
           cloneUrl,
-          authenticatedUrl
+          authenticatedUrl,
+          exampleIdentifier || undefined
         );
         
         progress.report({ increment: 70, message: 'Workspace ready!' });

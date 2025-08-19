@@ -328,14 +328,11 @@ export class StudentCommands {
             repoPath = await this.workspaceManager.cloneStudentRepository(course.id, submissionGroup);
           }
           
-          // Switch to assignment branch
-          const assignmentPath = submissionGroup.course_content_path;
-          if (assignmentPath) {
-            await this.gitBranchManager.switchToAssignmentBranch(repoPath, assignmentPath);
-          }
+          // Note: Worktree is already created with the correct assignment branch
+          // No need to switch branches manually
           
-          // Ensure assignment directory exists
-          const assignmentDir = assignmentPath ? await this.gitBranchManager.ensureAssignmentDirectory(repoPath, assignmentPath) : repoPath;
+          // Use the actual repository path since sparse-checkout handles directory filtering
+          const assignmentDir = repoPath;
           
           // Open assignment directory in workspace
           const workspaceFolder = vscode.workspace.workspaceFolders?.find(
@@ -361,9 +358,20 @@ export class StudentCommands {
             await vscode.window.showTextDocument(doc);
           }
           
-          vscode.window.showInformationMessage(
-            `Switched to assignment: ${submissionGroup.course_content_title}${assignmentPath ? ` (branch: assignment/${assignmentPath.replace(/\./g, '-')})` : ''}`
-          );
+          const assignmentPath = submissionGroup.course_content_path;
+          const exampleIdentifier = submissionGroup.example_identifier;
+          
+          let message = `Opened assignment: ${submissionGroup.course_content_title}`;
+          
+          if (exampleIdentifier) {
+            message += ` (${exampleIdentifier})`;
+          }
+          
+          if (assignmentPath) {
+            message += ` [branch: assignment/${assignmentPath.replace(/\./g, '-')}]`;
+          }
+          
+          vscode.window.showInformationMessage(message);
         } catch (error) {
           vscode.window.showErrorMessage(`Failed to select assignment: ${error}`);
         }
