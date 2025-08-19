@@ -1,11 +1,12 @@
 import * as vscode from 'vscode';
 
-export class StatusBarService {
+export class StatusBarService implements vscode.Disposable {
     private static instance: StatusBarService;
     private courseItem: vscode.StatusBarItem;
     private syncItem: vscode.StatusBarItem;
     
-    private constructor() {
+    private constructor(context: vscode.ExtensionContext) {
+        void context; // Mark as intentionally unused
         // Course selection item
         this.courseItem = vscode.window.createStatusBarItem(
             vscode.StatusBarAlignment.Left,
@@ -24,9 +25,16 @@ export class StatusBarService {
         this.syncItem.tooltip = 'Click to sync all repositories';
     }
     
+    static initialize(context: vscode.ExtensionContext): StatusBarService {
+        if (!StatusBarService.instance) {
+            StatusBarService.instance = new StatusBarService(context);
+        }
+        return StatusBarService.instance;
+    }
+    
     static getInstance(): StatusBarService {
         if (!StatusBarService.instance) {
-            StatusBarService.instance = new StatusBarService();
+            throw new Error('StatusBarService not initialized');
         }
         return StatusBarService.instance;
     }

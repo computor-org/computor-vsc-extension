@@ -48,7 +48,8 @@ export class GitWorktreeManager {
   }
 
   /**
-   * Clone repository as bare for sharing between worktrees
+   * Clone repository for sharing between worktrees
+   * Using regular clone for the main repository since worktrees need a working tree
    */
   async cloneSharedRepository(
     workspaceRoot: string,
@@ -62,8 +63,9 @@ export class GitWorktreeManager {
     // Create parent directory
     await fs.promises.mkdir(parentDir, { recursive: true });
 
-    // Clone as bare repository
-    const cloneCommand = `git clone --bare "${authenticatedUrl}" "${path.basename(repoPath)}"`;
+    // Clone normally - we need a working tree for the main repository
+    // The worktrees will handle sparse-checkout individually
+    const cloneCommand = `git clone "${authenticatedUrl}" "${path.basename(repoPath)}"`;
     const options = {
       cwd: parentDir,
       env: {
@@ -86,14 +88,14 @@ export class GitWorktreeManager {
       throw new Error(`Failed to clone shared repository: ${error.message}`);
     }
 
-    // Configure the bare repository to fetch all branches
-    await this.configureBareRepository(repoPath);
+    // Configure the repository to fetch all branches
+    await this.configureSharedRepository(repoPath);
   }
 
   /**
-   * Configure bare repository for worktree usage
+   * Configure shared repository for worktree usage
    */
-  private async configureBareRepository(repoPath: string): Promise<void> {
+  private async configureSharedRepository(repoPath: string): Promise<void> {
     try {
       // Set fetch to get all branches
       await execAsync(
@@ -122,7 +124,8 @@ export class GitWorktreeManager {
     courseId: string,
     assignmentPath: string,
     cloneUrl: string,
-    authenticatedUrl: string
+    authenticatedUrl: string,
+    exampleIdentifier?: string
   ): Promise<string> {
     // Ensure shared repository exists
     if (!await this.sharedRepoExists(workspaceRoot, courseId)) {
@@ -139,10 +142,10 @@ export class GitWorktreeManager {
       return worktreePath;
     }
 
-    // Create the worktree with sparse-checkout for this assignment
-    await this.createWorktree(sharedRepoPath, worktreePath, branchName, assignmentPath);
+    // Create the worktree with sparse-checkout if we have the example identifier
+    await this.createWorktree(sharedRepoPath, worktreePath, branchName, exampleIdentifier);
     
-    // Return the worktree path - it will only contain assignment files
+    // Return the worktree path
     return worktreePath;
   }
 
@@ -196,9 +199,11 @@ export class GitWorktreeManager {
       
       console.log(`Worktree created at ${worktreePath}`);
       
-      // Configure sparse-checkout to only include assignment directory
+      // Configure sparse-checkout to only include assignment directory if we have the identifier
       if (assignmentPath) {
         await this.configureSparseCheckout(worktreePath, assignmentPath);
+      } else {
+        console.log('No example identifier provided - full repository checked out');
       }
     } catch (error: any) {
       console.error('Failed to create worktree:', error);
@@ -211,17 +216,23 @@ export class GitWorktreeManager {
    */
   private async configureSparseCheckout(
     worktreePath: string,
-    assignmentPath: string
+    exampleIdentifier: string
   ): Promise<void> {
     try {
-      console.log(`Configuring sparse-checkout for ${assignmentPath} in ${worktreePath}`);
+      console.log(`Configuring sparse-checkout for ${exampleIdentifier} in ${worktreePath}`);
+      
+      // Check if the worktree has a proper working tree
+      try {
+        await execAsync('git status', { cwd: worktreePath });
+      } catch (statusError) {
+        console.error('Worktree does not have a valid working tree, skipping sparse-checkout');
+        return;
+      }
       
       // Enable sparse-checkout
       await execAsync('git sparse-checkout init --cone', { cwd: worktreePath });
       
-      // Convert assignment path (e.g., "1.basics") to directory path
-      // The assignment path from course content is like "1.variables.types"
-      // We need to find where this content exists in the repository
+      // The example identifier is the actual directory name in the repository
       const patterns: string[] = [];
       
       // Always include essential root files
@@ -229,22 +240,10 @@ export class GitWorktreeManager {
       patterns.push('.gitignore');
       patterns.push('requirements.txt');
       patterns.push('package.json');
+      patterns.push('pyproject.toml');
       
-      // Convert path segments: "1.variables.types" -> "1/variables/types"
-      const pathSegments = assignmentPath.split('.');
-      const assignmentDirPath = pathSegments.join('/');
-      
-      // Include the specific assignment directory and common parent directories
-      patterns.push(`${assignmentDirPath}/*`);
-      patterns.push(`assignments/${assignmentDirPath}/*`);
-      patterns.push(`exercises/${assignmentDirPath}/*`);
-      patterns.push(`content/${assignmentDirPath}/*`);
-      
-      // Also try with dashes instead of slashes for flat structure
-      const assignmentDirFlat = assignmentPath.replace(/\./g, '-');
-      patterns.push(`${assignmentDirFlat}/*`);
-      patterns.push(`assignments/${assignmentDirFlat}/*`);
-      patterns.push(`exercises/${assignmentDirFlat}/*`);
+      // Include the specific assignment directory (using example.identifier)
+      patterns.push(exampleIdentifier);
       
       // Set sparse-checkout patterns
       const sparseCheckoutCommand = `git sparse-checkout set ${patterns.map(p => `"${p}"`).join(' ')}`;
@@ -255,7 +254,7 @@ export class GitWorktreeManager {
       // Reapply checkout to update working directory
       await execAsync('git checkout', { cwd: worktreePath });
       
-      console.log(`Sparse-checkout configured for ${assignmentPath}`);
+      console.log(`Sparse-checkout configured for ${exampleIdentifier}`);
     } catch (error: any) {
       console.error('Failed to configure sparse-checkout:', error);
       // If sparse-checkout fails, continue with full checkout

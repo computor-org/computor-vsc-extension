@@ -6,7 +6,10 @@ import { GitManager } from './git/GitManager';
 import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataProvider';
 import { LecturerCommands } from './commands/LecturerCommands';
 import { StudentTreeDataProvider } from './ui/tree/student/StudentTreeDataProvider';
+import { StudentCourseContentTreeProvider } from './ui/tree/student/StudentCourseContentTreeProvider';
 import { StudentCommands } from './commands/StudentCommands';
+import { CourseSelectionService } from './services/CourseSelectionService';
+import { StatusBarService } from './ui/StatusBarService';
 import { TutorTreeDataProvider } from './ui/tree/tutor/TutorTreeDataProvider';
 import { TutorCommands } from './commands/TutorCommands';
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
@@ -160,6 +163,16 @@ export function activate(context: vscode.ExtensionContext) {
   const lecturerCommands = new LecturerCommands(context, lecturerTreeDataProvider);
   lecturerCommands.registerCommands();
   
+  // Initialize API service
+  const apiService = new ComputorApiService(context);
+
+  // Initialize Status Bar Service
+  const statusBarService = StatusBarService.initialize(context);
+  context.subscriptions.push(statusBarService);
+
+  // Initialize Course Selection Service
+  const courseSelectionService = CourseSelectionService.initialize(context, apiService, statusBarService);
+  
   // Initialize Student View
   const studentTreeDataProvider = new StudentTreeDataProvider(context);
   const studentTreeView = vscode.window.createTreeView('computor.studentView', {
@@ -168,9 +181,46 @@ export function activate(context: vscode.ExtensionContext) {
   });
   context.subscriptions.push(studentTreeView);
   
+  // Initialize Student Course Content View
+  const studentCourseContentProvider = new StudentCourseContentTreeProvider(apiService, courseSelectionService);
+  const studentCourseContentView = vscode.window.createTreeView('computor.studentCourseContentView', {
+    treeDataProvider: studentCourseContentProvider,
+    showCollapseAll: true
+  });
+  context.subscriptions.push(studentCourseContentView);
+  
   // Register student commands
   const studentCommands = new StudentCommands(context, studentTreeDataProvider);
   studentCommands.registerCommands();
+  
+  // Register course content refresh command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('computor.student.refreshCourseContent', () => {
+      studentCourseContentProvider.refresh();
+    })
+  );
+  
+  // Listen for course changes
+  context.subscriptions.push(
+    vscode.commands.registerCommand('computor.courseChanged', (course) => {
+      // Update context to show course content view
+      vscode.commands.executeCommand('setContext', 'computor.courseSelected', true);
+      // Refresh course content
+      studentCourseContentProvider.refresh();
+    })
+  );
+  
+  // Register course selection command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('computor.student.selectCourse', async () => {
+      const course = await courseSelectionService.selectCourse();
+      if (course) {
+        // Refresh both views
+        studentTreeDataProvider.refresh();
+        studentCourseContentProvider.refresh();
+      }
+    })
+  );
 
   // Initialize Tutor View
   const tutorTreeDataProvider = new TutorTreeDataProvider(context);
@@ -183,9 +233,6 @@ export function activate(context: vscode.ExtensionContext) {
   // Register tutor commands
   const tutorCommands = new TutorCommands(context, tutorTreeDataProvider);
   tutorCommands.registerCommands();
-
-  // Initialize API service
-  const apiService = new ComputorApiService(context);
 
   // Initialize Example Tree Provider and View
   const exampleTreeProvider = new ExampleTreeProvider(context, apiService);
