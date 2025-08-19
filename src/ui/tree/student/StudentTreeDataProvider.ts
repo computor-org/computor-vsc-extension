@@ -199,9 +199,17 @@ export class StudentTreeDataProvider implements vscode.TreeDataProvider<vscode.T
       }
 
       return [];
-    } catch (error) {
-      vscode.window.showErrorMessage(`Failed to load student data: ${error}`);
-      return [];
+    } catch (error: any) {
+      console.error('Failed to load student tree data:', error);
+      const message = error?.response?.data?.message || error?.message || 'Unknown error';
+      vscode.window.showErrorMessage(`Failed to load student data: ${message}`);
+      return [new StudentCourseTreeItem({
+        id: 'error',
+        title: `Error loading student data: ${message}`,
+        course_family_id: '',
+        organization_id: '',
+        path: ''
+      } as any)];
     }
   }
 
@@ -239,8 +247,10 @@ export class StudentTreeDataProvider implements vscode.TreeDataProvider<vscode.T
       const contents = await this.apiService.getStudentCourseContents(courseId);
       this.courseContentsCache.set(courseId, contents || []);
       return contents || [];
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to get course contents:', error);
+      const message = error?.response?.data?.message || error?.message || 'Unknown error';
+      vscode.window.showErrorMessage(`Failed to load course contents: ${message}`);
       return [];
     }
   }
@@ -254,8 +264,10 @@ export class StudentTreeDataProvider implements vscode.TreeDataProvider<vscode.T
       const submissionGroups = await this.apiService.getStudentSubmissionGroups({ course_id: courseId });
       this.submissionGroupsCache.set(courseId, submissionGroups || []);
       return submissionGroups || [];
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to get submission groups:', error);
+      const message = error?.response?.data?.message || error?.message || 'Unknown error';
+      vscode.window.showErrorMessage(`Failed to load submission groups: ${message}`);
       return [];
     }
   }

@@ -66,8 +66,11 @@ export class CourseSelectionService {
             this.currentCourseId = savedCourseId;
             this.currentCourseInfo = savedCourseInfo;
             this.statusBarService.updateCourse(savedCourseInfo.title);
+            // Set context to make course content view visible
+            vscode.commands.executeCommand('setContext', 'computor.courseSelected', true);
         } else {
             this.statusBarService.clearCourse();
+            vscode.commands.executeCommand('setContext', 'computor.courseSelected', false);
         }
     }
 
@@ -152,6 +155,9 @@ export class CourseSelectionService {
         // Update status bar
         this.statusBarService.updateCourse(course.title);
 
+        // Set context to make course content view visible
+        vscode.commands.executeCommand('setContext', 'computor.courseSelected', true);
+
         // Fire event for other components
         vscode.commands.executeCommand('computor.courseChanged', course);
 
@@ -199,5 +205,6 @@ export class CourseSelectionService {
         await this.context.globalState.update('selectedCourseInfo', undefined);
         
         this.statusBarService.clearCourse();
+        vscode.commands.executeCommand('setContext', 'computor.courseSelected', false);
     }
 }

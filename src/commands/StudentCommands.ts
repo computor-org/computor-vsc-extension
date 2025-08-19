@@ -7,6 +7,18 @@ import { WorkspaceManager } from '../services/WorkspaceManager';
 import { GitBranchManager } from '../services/GitBranchManager';
 import { SubmissionGroupStudent } from '../types/generated';
 
+// Interface for course data used in commands
+interface CourseCommandData {
+  id: string;
+  title?: string;
+  path?: string;
+}
+
+// Interface for repository cloning items
+interface CloneRepositoryItem {
+  submissionGroup: SubmissionGroupStudent;
+}
+
 export class StudentCommands {
   private context: vscode.ExtensionContext;
   private treeDataProvider: StudentTreeDataProvider;
@@ -39,18 +51,26 @@ export class StudentCommands {
           return;
         }
 
-        const course = await this.apiService.getStudentCourse(item.course.id);
-        if (course) {
-          // Show course information
-          const info = [
-            `**Course: ${course.title}**`,
-            '',
-            `ID: ${course.id}`,
-            `Path: ${course.path}`,
-            course.repository ? `Repository: ${course.repository.provider_url}/${course.repository.full_path}` : 'No repository assigned'
-          ].join('\n');
+        try {
+          const course = await this.apiService.getStudentCourse(item.course.id);
+          if (course) {
+            // Show course information
+            const info = [
+              `**Course: ${course.title}**`,
+              '',
+              `ID: ${course.id}`,
+              `Path: ${course.path}`,
+              course.repository ? `Repository: ${course.repository.provider_url}/${course.repository.full_path}` : 'No repository assigned'
+            ].join('\n');
 
-          vscode.window.showInformationMessage(info, { modal: true });
+            vscode.window.showInformationMessage(info, { modal: true });
+          } else {
+            vscode.window.showErrorMessage('Course details not found');
+          }
+        } catch (error: any) {
+          console.error('Failed to load course details:', error);
+          const message = error?.response?.data?.message || error?.message || 'Unknown error';
+          vscode.window.showErrorMessage(`Failed to load course details: ${message}`);
         }
       })
     );
@@ -122,17 +142,25 @@ export class StudentCommands {
           return;
         }
 
-        const content = await this.apiService.getStudentCourseContent(item.content.id);
-        if (content) {
-          const info = [
-            `**${content.title}**`,
-            '',
-            `Path: ${content.path}`,
-            `Position: ${content.position}`,
-            content.example_id ? `Has Assignment: Yes` : `Type: Reading Material`
-          ].join('\n');
+        try {
+          const content = await this.apiService.getStudentCourseContent(item.content.id);
+          if (content) {
+            const info = [
+              `**${content.title}**`,
+              '',
+              `Path: ${content.path}`,
+              `Position: ${content.position}`,
+              content.example_id ? `Has Assignment: Yes` : `Type: Reading Material`
+            ].join('\n');
 
-          vscode.window.showInformationMessage(info, { modal: true });
+            vscode.window.showInformationMessage(info, { modal: true });
+          } else {
+            vscode.window.showErrorMessage('Content details not found');
+          }
+        } catch (error: any) {
+          console.error('Failed to load content details:', error);
+          const message = error?.response?.data?.message || error?.message || 'Unknown error';
+          vscode.window.showErrorMessage(`Failed to load content details: ${message}`);
         }
       })
     );
@@ -145,35 +173,41 @@ export class StudentCommands {
           return;
         }
 
-        // Get the full content details
-        const content = await this.apiService.getStudentCourseContent(item.content.id);
-        if (!content) {
-          vscode.window.showErrorMessage('Failed to load assignment details');
-          return;
-        }
+        try {
+          // Get the full content details
+          const content = await this.apiService.getStudentCourseContent(item.content.id);
+          if (!content) {
+            vscode.window.showErrorMessage('Failed to load assignment details');
+            return;
+          }
 
-        // Here we would typically:
-        // 1. Clone/setup the student's submission repository
-        // 2. Download the example template
-        // 3. Set up the working environment
-        
-        vscode.window.showInformationMessage(
-          `Assignment "${item.content.title}" setup functionality coming soon!`,
-          'OK'
-        );
+          // Here we would typically:
+          // 1. Clone/setup the student's submission repository
+          // 2. Download the example template
+          // 3. Set up the working environment
+          
+          vscode.window.showInformationMessage(
+            `Assignment "${item.content.title}" setup functionality coming soon!`,
+            'OK'
+          );
+        } catch (error: any) {
+          console.error('Failed to start assignment:', error);
+          const message = error?.response?.data?.message || error?.message || 'Unknown error';
+          vscode.window.showErrorMessage(`Failed to start assignment: ${message}`);
+        }
       })
     );
 
     // Clone repository from course content tree
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.student.cloneRepository', async (item: any) => {
+      vscode.commands.registerCommand('computor.student.cloneRepository', async (item: CloneRepositoryItem) => {
         // The item is a CourseContentItem from StudentCourseContentTreeProvider
         if (!item || !item.submissionGroup || !item.submissionGroup.repository) {
           vscode.window.showErrorMessage('No repository available for this assignment');
           return;
         }
 
-        const submissionGroup = item.submissionGroup as SubmissionGroupStudent;
+        const submissionGroup = item.submissionGroup;
         const courseId = submissionGroup.course_id;
 
         try {
@@ -313,7 +347,7 @@ export class StudentCommands {
 
     // Select assignment - main handler for tree item click
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.student.selectAssignment', async (submissionGroup: SubmissionGroupStudent, course: any) => {
+      vscode.commands.registerCommand('computor.student.selectAssignment', async (submissionGroup: SubmissionGroupStudent, course: CourseCommandData) => {
         if (!submissionGroup || !submissionGroup.repository) {
           vscode.window.showErrorMessage('No repository available for this assignment');
           return;
@@ -380,7 +414,7 @@ export class StudentCommands {
 
     // Submit assignment
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.student.submitAssignment', async (submissionGroup: SubmissionGroupStudent, course: any) => {
+      vscode.commands.registerCommand('computor.student.submitAssignment', async (submissionGroup: SubmissionGroupStudent, course: CourseCommandData) => {
         if (!submissionGroup || !submissionGroup.repository) {
           vscode.window.showErrorMessage('No repository available for this assignment');
           return;
