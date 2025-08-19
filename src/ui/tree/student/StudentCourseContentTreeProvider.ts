@@ -4,11 +4,18 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { CourseSelectionService } from '../../../services/CourseSelectionService';
+import { GitWorktreeManager } from '../../../services/GitWorktreeManager';
+import { SubmissionGroupStudent } from '../../../types/generated';
 
 interface PathNode {
     name?: string;
     children: Map<string, PathNode>;
-    submissionGroup?: any; // SubmissionGroupStudent type
+    submissionGroup?: SubmissionGroupStudent;
+}
+
+// Interface for repository cloning items  
+interface CloneRepositoryItem {
+    submissionGroup: SubmissionGroupStudent;
 }
 
 export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider<TreeItem> {
@@ -17,7 +24,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     
     private apiService: ComputorApiService;
     private courseSelection: CourseSelectionService;
-    private submissionGroups: any[] = [];
+    private submissionGroups: SubmissionGroupStudent[] = [];
     
     constructor(apiService: ComputorApiService, courseSelection: CourseSelectionService) {
         this.apiService = apiService;
@@ -54,8 +61,11 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                 // Build tree structure from paths
                 const tree = this.buildPathTree(this.submissionGroups);
                 return this.createTreeItems(tree);
-            } catch (error) {
-                return [new MessageItem(`Error loading content: ${error}`, 'error')];
+            } catch (error: any) {
+                console.error('Failed to load student submission groups:', error);
+                const message = error?.response?.data?.message || error?.message || 'Unknown error';
+                vscode.window.showErrorMessage(`Failed to load course content: ${message}`);
+                return [new MessageItem(`Error loading content: ${message}`, 'error')];
             }
         }
         
@@ -67,17 +77,20 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         return [];
     }
     
-    private buildPathTree(submissionGroups: any[]): PathNode {
+    private buildPathTree(submissionGroups: SubmissionGroupStudent[]): PathNode {
         const root: PathNode = { children: new Map() };
         
         for (const sg of submissionGroups) {
-            if (!sg.course_content_path) continue;
+            const contentPath = sg.course_content_path;
+            if (!contentPath) continue;
             
-            const pathParts = sg.course_content_path.split('.');
+            const pathParts = contentPath.split('.');
             let current = root;
             
             for (let i = 0; i < pathParts.length; i++) {
                 const part = pathParts[i];
+                if (!part) continue; // Skip empty parts
+                
                 const isLeaf = i === pathParts.length - 1;
                 
                 if (!current.children.has(part)) {
@@ -108,7 +121,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
             a[0].localeCompare(b[0])
         );
         
-        for (const [name, child] of sortedChildren) {
+        sortedChildren.forEach(([name, child]) => {
             if (child.submissionGroup) {
                 // Leaf node - actual course content
                 items.push(new CourseContentItem(child.submissionGroup, this.courseSelection));
@@ -116,7 +129,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                 // Branch node - path folder
                 items.push(new CourseContentPathItem(name, child));
             }
-        }
+        });
         
         return items;
     }
@@ -165,20 +178,20 @@ class CourseContentPathItem extends TreeItem {
     
     private countItems(node: PathNode): number {
         let count = 0;
-        for (const child of node.children.values()) {
+        Array.from(node.children.values()).forEach(child => {
             if (child.submissionGroup) {
                 count++;
             } else {
                 count += this.countItems(child);
             }
-        }
+        });
         return count;
     }
 }
 
-class CourseContentItem extends TreeItem {
+class CourseContentItem extends TreeItem implements CloneRepositoryItem {
     constructor(
-        public readonly submissionGroup: any,
+        public readonly submissionGroup: SubmissionGroupStudent,
         courseSelection: CourseSelectionService
     ) {
         void courseSelection; // Not used but required for type consistency
@@ -309,16 +322,10 @@ class CourseContentItem extends TreeItem {
     getRepositoryPath(): string {
         const courseId = this.submissionGroup.course_id;
         const contentPath = this.submissionGroup.course_content_path || 'unknown';
-        // Using worktree structure: assignment-{path}
-        const folderName = `assignment-${contentPath.replace(/\./g, '-')}`;
         
-        return path.join(
-            os.homedir(),
-            '.computor',
-            'workspace',
-            'courses',
-            courseId,
-            folderName
-        );
+        // Use GitWorktreeManager to get the correct worktree path
+        const gitWorktreeManager = GitWorktreeManager.getInstance();
+        const workspaceRoot = path.join(os.homedir(), '.computor', 'workspace');
+        return gitWorktreeManager.getWorktreePath(workspaceRoot, courseId, contentPath);
     }
 }
