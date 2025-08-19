@@ -22,6 +22,7 @@ interface CloneRepositoryItem {
 export class StudentCommands {
   private context: vscode.ExtensionContext;
   private treeDataProvider: StudentTreeDataProvider;
+  private courseContentTreeProvider?: any; // Will be set after registration
   private apiService: ComputorApiService;
   private gitLabTokenManager: GitLabTokenManager;
   private workspaceManager: WorkspaceManager;
@@ -34,6 +35,10 @@ export class StudentCommands {
     this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
     this.workspaceManager = WorkspaceManager.getInstance(context);
     this.gitBranchManager = GitBranchManager.getInstance();
+  }
+  
+  setCourseContentTreeProvider(provider: any): void {
+    this.courseContentTreeProvider = provider;
   }
 
   registerCommands(): void {
@@ -228,6 +233,11 @@ export class StudentCommands {
               0,
               { uri: vscode.Uri.file(repoPath), name }
             );
+          }
+
+          // Only refresh the specific content item, not the entire tree
+          if (this.courseContentTreeProvider && 'refreshContentItem' in this.courseContentTreeProvider) {
+            this.courseContentTreeProvider.refreshContentItem((item as any).courseContent?.id);
           }
 
           vscode.window.showInformationMessage(`Repository cloned successfully to ${repoPath}`);
