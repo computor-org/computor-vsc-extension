@@ -279,6 +279,12 @@
         "category": "Computor Student"
       },
       {
+        "command": "computor.student.startWorkSession",
+        "title": "Start Work Session",
+        "icon": "$(rocket)",
+        "category": "Computor Student"
+      },
+      {
         "command": "computor.student.viewCourse",
         "title": "View Course Details",
         "category": "Computor Student"
@@ -665,6 +671,11 @@
           "group": "navigation@1"
         },
         {
+          "command": "computor.student.startWorkSession",
+          "when": "view == computor.studentView",
+          "group": "navigation@1"
+        },
+        {
           "command": "computor.student.selectCourse",
           "when": "view == computor.studentView",
           "group": "navigation@2"
@@ -672,7 +683,7 @@
         {
           "command": "computor.student.refreshCourseContent",
           "when": "view == computor.studentView",
-          "group": "navigation@1"
+          "group": "navigation@3"
         },
         {
           "command": "computor.student.selectCourse",

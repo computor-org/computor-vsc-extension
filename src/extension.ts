@@ -212,7 +212,7 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
   
-  // Register course selection command
+  // Register course selection command (legacy)
   context.subscriptions.push(
     vscode.commands.registerCommand('computor.student.selectCourse', async () => {
       const course = await courseSelectionService.selectCourse();

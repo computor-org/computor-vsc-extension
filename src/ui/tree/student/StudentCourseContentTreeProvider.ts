@@ -81,28 +81,61 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     
     async getChildren(element?: TreeItem): Promise<TreeItem[]> {
         if (!element) {
-            // Root level - fetch all courses where the student is a member
-            try {
-                // Fetch courses and content kinds in parallel
-                const [courses, contentKinds] = await Promise.all([
-                    this.apiService.getStudentCourses(),
-                    this.apiService.getCourseContentKinds()
-                ]);
-                
-                this.courses = courses || [];
-                this.contentKinds = contentKinds || [];
-                
-                if (this.courses.length === 0) {
-                    return [new MessageItem('No courses available', 'info')];
+            // Root level - check if we have a selected course (when running in course workspace)
+            const selectedCourseId = this.courseSelection.getCurrentCourseId();
+            
+            if (selectedCourseId) {
+                // We're in a course workspace - show course contents directly
+                try {
+                    // Fetch content kinds if not already loaded
+                    if (this.contentKinds.length === 0) {
+                        this.contentKinds = await this.apiService.getCourseContentKinds() || [];
+                    }
+                    
+                    // Fetch course contents for the selected course
+                    let courseContents = this.courseContentsCache.get(selectedCourseId);
+                    
+                    if (!courseContents) {
+                        courseContents = await this.apiService.getStudentCourseContents(selectedCourseId) || [];
+                        this.courseContentsCache.set(selectedCourseId, courseContents);
+                    }
+                    
+                    if (courseContents.length === 0) {
+                        return [new MessageItem('No course content available', 'info')];
+                    }
+                    
+                    // Build tree structure from course content
+                    const tree = this.buildContentTree(courseContents, [], [], this.contentKinds);
+                    return this.createTreeItems(tree);
+                } catch (error: any) {
+                    console.error('Failed to load course content:', error);
+                    const message = error?.response?.data?.message || error?.message || 'Unknown error';
+                    return [new MessageItem(`Error loading content: ${message}`, 'error')];
                 }
-                
-                // Return course items
-                return this.courses.map(course => new CourseTreeItem(course));
-            } catch (error: any) {
-                console.error('Failed to load student courses:', error);
-                const message = error?.response?.data?.message || error?.message || 'Unknown error';
-                vscode.window.showErrorMessage(`Failed to load courses: ${message}`);
-                return [new MessageItem(`Error loading courses: ${message}`, 'error')];
+            } else {
+                // No course selected - show all courses
+                try {
+                    // Fetch courses and content kinds in parallel
+                    const [courses, contentKinds] = await Promise.all([
+                        this.apiService.getStudentCourses(),
+                        this.apiService.getCourseContentKinds()
+                    ]);
+                    
+                    this.courses = courses || [];
+                    this.contentKinds = contentKinds || [];
+                    
+                    if (this.courses.length === 0) {
+                        return [new MessageItem('No courses available', 'info')];
+                    }
+                    
+                    // Return course items
+                    return this.courses.map(course => new CourseTreeItem(course));
+                } catch (error: any) {
+                    console.error('Failed to load student courses:', error);
+                    const message = error?.response?.data?.message || error?.message || 'Unknown error';
+                    vscode.window.showErrorMessage(`Failed to load courses: ${message}`);
+                    return [new MessageItem(`Error loading courses: ${message}`, 'error')];
+                }
             }
         }
         
@@ -142,10 +175,12 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     
     private buildContentTree(
         courseContents: any[], // Student endpoint returns enriched content
-        submissionGroups: SubmissionGroupStudent[], 
-        contentTypes: CourseContentTypeList[],
+        submissionGroups: SubmissionGroupStudent[], // Unused but kept for API compatibility
+        contentTypes: CourseContentTypeList[], // Unused but kept for API compatibility  
         contentKinds: CourseContentKindList[]
     ): ContentNode {
+        void submissionGroups; // Suppress unused parameter warning
+        void contentTypes; // Suppress unused parameter warning
         const root: ContentNode = { children: new Map(), isUnit: false };
         
         // Create a map of content kinds by ID for quick lookup
@@ -377,6 +412,7 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         expanded: boolean = false
     ) {
         void courseSelection; // Not used but required for type consistency
+        void expanded; // Not used but required for type consistency
         const label = courseContent.title || courseContent.path;
         super(label, vscode.TreeItemCollapsibleState.None);
         
