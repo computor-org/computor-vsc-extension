@@ -291,6 +291,7 @@ export class ComputorApiService {
     return result;
   }
 
+
   async createCourseContent(courseId: string, content: CourseContentCreate): Promise<CourseContentGet> {
     const client = await this.getHttpClient();
     const response = await client.post<CourseContentGet>('/course-contents', content);
