@@ -290,7 +290,12 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     }
     
     private getExpandedState(nodeId: string): boolean {
-        return this.expandedStates.get(nodeId) || false;
+        // Check if we have a saved state for this node
+        if (this.expandedStates.has(nodeId)) {
+            return this.expandedStates.get(nodeId) || false;
+        }
+        // Default to expanded for units (better UX)
+        return true;
     }
     
     setNodeExpanded(nodeId: string, expanded: boolean): void {
@@ -371,14 +376,22 @@ class CourseContentPathItem extends TreeItem {
         // Use colored icon if content type is available, otherwise use folder
         if (node.contentType?.color) {
             try {
-                // Units typically use circle shape
-                this.iconPath = IconGenerator.getColoredIcon(node.contentType.color, 'circle');
+                // Units typically use square shape for folder-like appearance
+                const coloredIcon = IconGenerator.getColoredIcon(node.contentType.color, 'square');
+                // Check if we got a valid icon (not a fallback ThemeIcon)
+                if (coloredIcon instanceof vscode.Uri) {
+                    this.iconPath = coloredIcon;
+                } else {
+                    // Fallback to themed folder icon with color
+                    this.iconPath = new vscode.ThemeIcon('folder-opened', new vscode.ThemeColor('charts.green'));
+                }
             } catch {
                 // Fallback to default folder icon
-                this.iconPath = new vscode.ThemeIcon('folder');
+                this.iconPath = new vscode.ThemeIcon('folder-opened');
             }
         } else {
-            this.iconPath = new vscode.ThemeIcon('folder');
+            // Units without content type get a standard folder icon
+            this.iconPath = new vscode.ThemeIcon('folder-opened');
         }
         
         this.contextValue = 'studentCourseUnit';
@@ -458,7 +471,19 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
     }
     
     private setupIcon(): void {
-        // Use colored icon based on content type (exact same as lecturer tree)
+        // Priority 1: Check if repository is cloned (for assignments with repos)
+        if (this.submissionGroup?.repository) {
+            const isCloned = this.checkIfCloned();
+            if (isCloned) {
+                this.iconPath = new vscode.ThemeIcon('check', new vscode.ThemeColor('terminal.ansiGreen'));
+                return;
+            } else {
+                this.iconPath = new vscode.ThemeIcon('cloud-download', new vscode.ThemeColor('terminal.ansiBlue'));
+                return;
+            }
+        }
+        
+        // Priority 2: Use colored icon based on content type
         if (this.contentType?.color) {
             try {
                 // Map content type slug to appropriate icon shape
