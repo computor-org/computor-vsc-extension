@@ -5,7 +5,6 @@ import { ComputorAuthenticationProvider } from './authentication/ComputorAuthent
 import { GitManager } from './git/GitManager';
 import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataProvider';
 import { LecturerCommands } from './commands/LecturerCommands';
-import { StudentTreeDataProvider } from './ui/tree/student/StudentTreeDataProvider';
 import { StudentCourseContentTreeProvider } from './ui/tree/student/StudentCourseContentTreeProvider';
 import { StudentCommands } from './commands/StudentCommands';
 import { CourseSelectionService } from './services/CourseSelectionService';
@@ -173,33 +172,25 @@ export function activate(context: vscode.ExtensionContext) {
   // Initialize Course Selection Service
   const courseSelectionService = CourseSelectionService.initialize(context, apiService, statusBarService);
   
-  // Initialize Student View
-  const studentTreeDataProvider = new StudentTreeDataProvider(context);
+  // Initialize Student View (single tree for all student content)
+  const studentCourseContentProvider = new StudentCourseContentTreeProvider(apiService, courseSelectionService);
   const studentTreeView = vscode.window.createTreeView('computor.studentView', {
-    treeDataProvider: studentTreeDataProvider,
+    treeDataProvider: studentCourseContentProvider,
     showCollapseAll: true
   });
   context.subscriptions.push(studentTreeView);
   
-  // Initialize Student Course Content View
-  const studentCourseContentProvider = new StudentCourseContentTreeProvider(apiService, courseSelectionService);
-  const studentCourseContentView = vscode.window.createTreeView('computor.studentCourseContentView', {
-    treeDataProvider: studentCourseContentProvider,
-    showCollapseAll: true
-  });
-  context.subscriptions.push(studentCourseContentView);
-  
   // Register tree view event handlers to preserve expansion state
-  studentCourseContentView.onDidExpandElement(async (event) => {
+  studentTreeView.onDidExpandElement(async (event) => {
     await studentCourseContentProvider.onTreeItemExpanded(event.element);
   });
   
-  studentCourseContentView.onDidCollapseElement(async (event) => {
+  studentTreeView.onDidCollapseElement(async (event) => {
     await studentCourseContentProvider.onTreeItemCollapsed(event.element);
   });
   
   // Register student commands
-  const studentCommands = new StudentCommands(context, studentTreeDataProvider);
+  const studentCommands = new StudentCommands(context, studentCourseContentProvider);
   studentCommands.setCourseContentTreeProvider(studentCourseContentProvider);
   studentCommands.registerCommands();
   
@@ -226,8 +217,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('computor.student.selectCourse', async () => {
       const course = await courseSelectionService.selectCourse();
       if (course) {
-        // Refresh both views
-        studentTreeDataProvider.refresh();
+        // Refresh the student view
         studentCourseContentProvider.refresh();
       }
     })

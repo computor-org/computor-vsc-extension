@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { StudentTreeDataProvider, StudentCourseTreeItem, StudentCourseContentTreeItem } from '../ui/tree/student/StudentTreeDataProvider';
+import { StudentCourseContentTreeProvider } from '../ui/tree/student/StudentCourseContentTreeProvider';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
 import { WorkspaceManager } from '../services/WorkspaceManager';
@@ -21,14 +21,14 @@ interface CloneRepositoryItem {
 
 export class StudentCommands {
   private context: vscode.ExtensionContext;
-  private treeDataProvider: StudentTreeDataProvider;
+  private treeDataProvider: StudentCourseContentTreeProvider;
   private courseContentTreeProvider?: any; // Will be set after registration
   private apiService: ComputorApiService;
   private gitLabTokenManager: GitLabTokenManager;
   private workspaceManager: WorkspaceManager;
   private gitBranchManager: GitBranchManager;
 
-  constructor(context: vscode.ExtensionContext, treeDataProvider: StudentTreeDataProvider) {
+  constructor(context: vscode.ExtensionContext, treeDataProvider: StudentCourseContentTreeProvider) {
     this.context = context;
     this.treeDataProvider = treeDataProvider;
     this.apiService = new ComputorApiService(context);
@@ -51,7 +51,7 @@ export class StudentCommands {
 
     // View course details
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.student.viewCourse', async (item: StudentCourseTreeItem) => {
+      vscode.commands.registerCommand('computor.student.viewCourse', async (item: any) => {
         if (!item) {
           return;
         }
@@ -82,7 +82,7 @@ export class StudentCommands {
 
     // Clone course repository
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.student.cloneCourseRepository', async (item: StudentCourseTreeItem) => {
+      vscode.commands.registerCommand('computor.student.cloneCourseRepository', async (item: any) => {
         if (!item || !item.course.repository) {
           vscode.window.showErrorMessage('No repository available for this course');
           return;
@@ -142,7 +142,7 @@ export class StudentCommands {
 
     // View content details
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.student.viewContent', async (item: StudentCourseContentTreeItem) => {
+      vscode.commands.registerCommand('computor.student.viewContent', async (item: any) => {
         if (!item) {
           return;
         }
@@ -172,7 +172,7 @@ export class StudentCommands {
 
     // Start working on assignment (content with example)
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.student.startAssignment', async (item: StudentCourseContentTreeItem) => {
+      vscode.commands.registerCommand('computor.student.startAssignment', async (item: any) => {
         if (!item || !item.content.example_id) {
           vscode.window.showErrorMessage('This content does not have an assignment');
           return;
@@ -249,7 +249,7 @@ export class StudentCommands {
 
     // Submit assignment
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.student.submitAssignment', async (item: StudentCourseContentTreeItem) => {
+      vscode.commands.registerCommand('computor.student.submitAssignment', async (item: any) => {
         if (!item || !item.content.example_id) {
           vscode.window.showErrorMessage('This content does not have an assignment');
           return;
@@ -269,7 +269,7 @@ export class StudentCommands {
 
     // Open course in browser (if GitLab URL exists)
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.student.openInBrowser', async (item: StudentCourseTreeItem) => {
+      vscode.commands.registerCommand('computor.student.openInBrowser', async (item: any) => {
         if (!item || !item.course.repository) {
           vscode.window.showErrorMessage('No repository URL available');
           return;

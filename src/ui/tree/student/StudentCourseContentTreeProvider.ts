@@ -5,7 +5,7 @@ import * as os from 'os';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { CourseSelectionService } from '../../../services/CourseSelectionService';
 import { GitWorktreeManager } from '../../../services/GitWorktreeManager';
-import { SubmissionGroupStudent, CourseContentList, CourseContentTypeList, CourseContentKindList } from '../../../types/generated';
+import { SubmissionGroupStudent, CourseContentList, CourseContentTypeList, CourseContentKindList, CourseList } from '../../../types/generated';
 import { IconGenerator } from '../../../utils/IconGenerator';
 
 interface ContentNode {
@@ -30,9 +30,8 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     
     private apiService: ComputorApiService;
     private courseSelection: CourseSelectionService;
-    private submissionGroups: SubmissionGroupStudent[] = [];
-    private courseContents: CourseContentList[] = [];
-    private contentTypes: CourseContentTypeList[] = [];
+    private courses: CourseList[] = [];
+    private courseContentsCache: Map<string, any[]> = new Map(); // Cache course contents per course
     private contentKinds: CourseContentKindList[] = [];
     private expandedStates: Map<string, boolean> = new Map();
     
@@ -42,9 +41,8 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     }
     
     refresh(): void {
-        this.submissionGroups = [];
-        this.courseContents = [];
-        this.contentTypes = [];
+        this.courses = [];
+        this.courseContentsCache.clear();
         this.contentKinds = [];
         this._onDidChangeTreeData.fire(undefined);
     }
@@ -82,39 +80,54 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     }
     
     async getChildren(element?: TreeItem): Promise<TreeItem[]> {
-        const courseId = this.courseSelection.getCurrentCourseId();
-        
-        if (!courseId) {
-            return [new MessageItem('Please select a course first', 'warning')];
-        }
-        
         if (!element) {
-            // Root level - fetch all course content and build comprehensive tree
+            // Root level - fetch all courses where the student is a member
             try {
-                // Fetch all course content, submission groups, content types, and content kinds in parallel
-                const [courseContents, submissionGroups, contentTypes, contentKinds] = await Promise.all([
-                    this.apiService.getCourseContents(courseId, true),
-                    this.apiService.getStudentSubmissionGroups({ course_id: courseId }),
-                    this.apiService.getCourseContentTypes(courseId),
+                // Fetch courses and content kinds in parallel
+                const [courses, contentKinds] = await Promise.all([
+                    this.apiService.getStudentCourses(),
                     this.apiService.getCourseContentKinds()
                 ]);
                 
-                this.courseContents = courseContents || [];
-                this.submissionGroups = submissionGroups || [];
-                this.contentTypes = contentTypes || [];
+                this.courses = courses || [];
                 this.contentKinds = contentKinds || [];
                 
-                if (this.courseContents.length === 0) {
+                if (this.courses.length === 0) {
+                    return [new MessageItem('No courses available', 'info')];
+                }
+                
+                // Return course items
+                return this.courses.map(course => new CourseTreeItem(course));
+            } catch (error: any) {
+                console.error('Failed to load student courses:', error);
+                const message = error?.response?.data?.message || error?.message || 'Unknown error';
+                vscode.window.showErrorMessage(`Failed to load courses: ${message}`);
+                return [new MessageItem(`Error loading courses: ${message}`, 'error')];
+            }
+        }
+        
+        // Handle course item - fetch course contents
+        if (element instanceof CourseTreeItem) {
+            try {
+                // Check cache first
+                let courseContents = this.courseContentsCache.get(element.course.id);
+                
+                if (!courseContents) {
+                    // Fetch course contents for this specific course
+                    courseContents = await this.apiService.getStudentCourseContents(element.course.id) || [];
+                    this.courseContentsCache.set(element.course.id, courseContents);
+                }
+                
+                if (courseContents.length === 0) {
                     return [new MessageItem('No course content available', 'info')];
                 }
                 
-                // Build tree structure from ALL course content, not just submission groups
-                const tree = this.buildContentTree(this.courseContents, this.submissionGroups, this.contentTypes, this.contentKinds);
+                // Build tree structure from course content
+                const tree = this.buildContentTree(courseContents, [], [], this.contentKinds);
                 return this.createTreeItems(tree);
             } catch (error: any) {
-                console.error('Failed to load student course content:', error);
+                console.error('Failed to load course content:', error);
                 const message = error?.response?.data?.message || error?.message || 'Unknown error';
-                vscode.window.showErrorMessage(`Failed to load course content: ${message}`);
                 return [new MessageItem(`Error loading content: ${message}`, 'error')];
             }
         }
@@ -128,26 +141,12 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     }
     
     private buildContentTree(
-        courseContents: CourseContentList[], 
+        courseContents: any[], // Student endpoint returns enriched content
         submissionGroups: SubmissionGroupStudent[], 
         contentTypes: CourseContentTypeList[],
         contentKinds: CourseContentKindList[]
     ): ContentNode {
         const root: ContentNode = { children: new Map(), isUnit: false };
-        
-        // Create a map of submission groups by course content path for quick lookup
-        const submissionGroupMap = new Map<string, SubmissionGroupStudent>();
-        for (const sg of submissionGroups) {
-            if (sg.course_content_path) {
-                submissionGroupMap.set(sg.course_content_path, sg);
-            }
-        }
-        
-        // Create a map of content types by ID for quick lookup
-        const contentTypeMap = new Map<string, CourseContentTypeList>();
-        for (const ct of contentTypes) {
-            contentTypeMap.set(ct.id, ct);
-        }
         
         // Create a map of content kinds by ID for quick lookup
         const contentKindMap = new Map<string, CourseContentKindList>();
@@ -172,9 +171,10 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         const contentMap = new Map<string, ContentNode>();
         
         for (const content of sortedContent) {
-            const contentType = contentTypeMap.get(content.course_content_type_id);
+            // Student endpoint has everything embedded
+            const contentType = content.course_content_type;
             const contentKind = contentType ? contentKindMap.get(contentType.course_content_kind_id) : undefined;
-            const submissionGroup = submissionGroupMap.get(content.path);
+            const submissionGroup = content.submission_group;
             
             // Determine if this content is a unit (has descendants)
             const isUnit = contentKind ? contentKind.has_descendants : false;
@@ -231,8 +231,8 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         });
         
         sortedChildren.forEach(([name, child]) => {
-            if (child.isUnit && child.children.size > 0) {
-                // Unit node - contains other content items
+            if (child.isUnit) {
+                // Unit node - containers for other content items
                 const nodeId = child.courseContent ? child.courseContent.id : `unit-${name}`;
                 items.push(new CourseContentPathItem(
                     child.name || name, 
@@ -276,6 +276,38 @@ abstract class TreeItem extends vscode.TreeItem {
     }
 }
 
+class CourseTreeItem extends TreeItem {
+    constructor(
+        public readonly course: CourseList
+    ) {
+        super(
+            course.title || course.path, 
+            vscode.TreeItemCollapsibleState.Collapsed
+        );
+        
+        this.id = `course-${course.id}`;
+        this.contextValue = 'studentCourse';
+        this.iconPath = new vscode.ThemeIcon('book', new vscode.ThemeColor('charts.blue'));
+        
+        // Add description with course info
+        const parts: string[] = [];
+        if (course.path) {
+            parts.push(course.path);
+        }
+        this.description = parts.join(' • ');
+        
+        // Add tooltip
+        const tooltipParts: string[] = [
+            course.title || 'Course',
+            `ID: ${course.id}`
+        ];
+        if (course.path) {
+            tooltipParts.push(`Path: ${course.path}`);
+        }
+        this.tooltip = tooltipParts.join('\n');
+    }
+}
+
 class MessageItem extends TreeItem {
     constructor(message: string, severity: 'info' | 'warning' | 'error') {
         super(message, vscode.TreeItemCollapsibleState.None);
@@ -301,7 +333,19 @@ class CourseContentPathItem extends TreeItem {
     ) {
         super(name, expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
         
-        this.iconPath = new vscode.ThemeIcon('folder', new vscode.ThemeColor('charts.foreground'));
+        // Use colored icon if content type is available, otherwise use folder
+        if (node.contentType?.color) {
+            try {
+                // Units typically use circle shape
+                this.iconPath = IconGenerator.getColoredIcon(node.contentType.color, 'circle');
+            } catch {
+                // Fallback to default folder icon
+                this.iconPath = new vscode.ThemeIcon('folder');
+            }
+        } else {
+            this.iconPath = new vscode.ThemeIcon('folder');
+        }
+        
         this.contextValue = 'studentCourseUnit';
         this.id = node.courseContent ? node.courseContent.id : `unit-${name}`;
         
@@ -343,6 +387,8 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         this.setupContextValue();
         
         // Add command to open/clone repository if this is an assignment with repository
+        const directory = (this.courseContent as any).directory;
+        
         if (this.submissionGroup?.repository) {
             const isCloned = this.checkIfCloned();
             if (isCloned) {
@@ -358,6 +404,13 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
                     arguments: [this]
                 };
             }
+        } else if (directory && fs.existsSync(directory)) {
+            // If we have a directory field and it exists, allow opening it
+            this.command = {
+                command: 'vscode.openFolder',
+                title: 'Open Directory',
+                arguments: [vscode.Uri.file(directory), { forceNewWindow: false }]
+            };
         } else if (this.courseContent.example_id) {
             // For non-repository assignments, show info
             this.command = {
@@ -369,42 +422,36 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
     }
     
     private setupIcon(): void {
-        // Use colored icon based on content type (similar to lecturer tree)
+        // Use colored icon based on content type (exact same as lecturer tree)
         if (this.contentType?.color) {
             try {
-                const isAssignment = this.isAssignment();
-                const shape = isAssignment ? 'square' : 'circle';
-                const coloredIcon = IconGenerator.getColoredIcon(this.contentType.color, shape);
+                // Map content type slug to appropriate icon shape
+                const isAssignment = this.contentType.slug?.toLowerCase().includes('assignment') ||
+                                    this.contentType.slug?.toLowerCase().includes('exercise') ||
+                                    this.contentType.slug?.toLowerCase().includes('homework') ||
+                                    this.contentType.slug?.toLowerCase().includes('task');
                 
-                // Check if we got a valid icon (not a fallback ThemeIcon)
-                if (coloredIcon instanceof vscode.Uri) {
-                    this.iconPath = coloredIcon;
-                    return;
-                }
-                // If it's a ThemeIcon fallback, continue to our fallback logic
-            } catch (error) {
-                console.warn('Failed to generate colored icon:', error);
-                // Fallback to theme icons below
+                // Use square for assignments, circle for units/others
+                const shape = isAssignment ? 'square' : 'circle';
+                this.iconPath = IconGenerator.getColoredIcon(this.contentType.color, shape);
+                return;
+            } catch {
+                // Fallback to default icons
             }
         }
         
-        // Fallback to theme icons with status indicators
-        if (this.submissionGroup?.repository) {
+        // Fallback to default theme icons
+        if (this.courseContent.example_id) {
+            this.iconPath = new vscode.ThemeIcon('file-code');
+        } else if (this.submissionGroup?.repository) {
             const isCloned = this.checkIfCloned();
             if (isCloned) {
                 this.iconPath = new vscode.ThemeIcon('check', new vscode.ThemeColor('terminal.ansiGreen'));
             } else {
                 this.iconPath = new vscode.ThemeIcon('cloud-download', new vscode.ThemeColor('terminal.ansiBlue'));
             }
-        } else if (this.courseContent.example_id) {
-            // Assignment without repository
-            this.iconPath = new vscode.ThemeIcon('file-code', new vscode.ThemeColor('terminal.ansiYellow'));
-        } else if (this.isAssignment()) {
-            // Assignment type content
-            this.iconPath = new vscode.ThemeIcon('tasklist', new vscode.ThemeColor('charts.orange'));
         } else {
-            // Reading material or other content
-            this.iconPath = new vscode.ThemeIcon('book', new vscode.ThemeColor('charts.blue'));
+            this.iconPath = new vscode.ThemeIcon('file');
         }
     }
     
@@ -532,10 +579,24 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
     }
     
     getRepositoryPath(): string {
+        // First check if we have a directory field in courseContent (from student API)
+        const directory = (this.courseContent as any).directory;
+        if (directory) {
+            // Use the directory field directly - it's the actual file path
+            return directory;
+        }
+        
+        // Fallback to submission group based path
         if (!this.submissionGroup) return '';
         
         const courseId = this.submissionGroup.course_id;
-        const contentPath = this.submissionGroup.course_content_path || 'unknown';
+        const contentPath = this.submissionGroup.course_content_path;
+        
+        // Ensure we have required data
+        if (!courseId || !contentPath) {
+            console.warn('Missing courseId or contentPath for repository path');
+            return '';
+        }
         
         // Use GitWorktreeManager to get the correct worktree path
         const gitWorktreeManager = GitWorktreeManager.getInstance();

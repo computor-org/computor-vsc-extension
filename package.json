@@ -23,7 +23,6 @@
     "onView:computor.testResultsView",
     "onView:computor.lecturerView",
     "onView:computor.studentView",
-    "onView:computor.studentCourseContentView",
     "onView:computor.tutorView",
     "onView:computor.examplesView"
   ],
@@ -547,17 +546,10 @@
       "computor-student": [
         {
           "id": "computor.studentView",
-          "name": "My Courses",
-          "icon": "$(book)",
-          "contextualTitle": "Student Courses",
-          "when": "computor.authenticated"
-        },
-        {
-          "id": "computor.studentCourseContentView",
           "name": "Course Content",
-          "icon": "$(list-tree)",
-          "contextualTitle": "Course Content",
-          "when": "computor.authenticated && computor.courseSelected"
+          "icon": "$(book)",
+          "contextualTitle": "Student Course Content",
+          "when": "computor.authenticated"
         },
         {
           "id": "computor.fileExplorerStudent",
@@ -679,12 +671,12 @@
         },
         {
           "command": "computor.student.refreshCourseContent",
-          "when": "view == computor.studentCourseContentView",
+          "when": "view == computor.studentView",
           "group": "navigation@1"
         },
         {
           "command": "computor.student.selectCourse",
-          "when": "view == computor.studentCourseContentView",
+          "when": "view == computor.studentView",
           "group": "navigation@2"
         },
         {
