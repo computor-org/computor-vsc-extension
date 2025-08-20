@@ -5,6 +5,7 @@ import { ComputorApiService } from '../services/ComputorApiService';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
 import { WorkspaceManager } from '../services/WorkspaceManager';
 import { GitBranchManager } from '../services/GitBranchManager';
+import { GitWorktreeManager } from '../services/GitWorktreeManager';
 import { SubmissionGroupStudent } from '../types/generated';
 
 // Interface for course data used in commands
@@ -38,6 +39,13 @@ export class StudentCommands {
   }
 
   registerCommands(): void {
+    // Start work session - prompt for course and setup workspace
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.student.startWorkSession', async () => {
+        await this.startWorkSession();
+      })
+    );
+    
     // Refresh student view
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.student.refresh', () => {
@@ -536,6 +544,115 @@ export class StudentCommands {
       return (stat.type & vscode.FileType.File) !== 0;
     } catch {
       return false;
+    }
+  }
+  
+  /**
+   * Start a new work session by selecting a course and setting up the workspace
+   */
+  private async startWorkSession(): Promise<void> {
+    try {
+      // Fetch available courses for the student
+      const courses = await this.apiService.getStudentCourses();
+      
+      if (!courses || courses.length === 0) {
+        vscode.window.showInformationMessage('No courses available');
+        return;
+      }
+      
+      // Prepare quick pick items
+      const quickPickItems = courses.map(course => ({
+        label: course.title,
+        description: course.path,
+        detail: `Organization: ${course.organization_id}`,
+        course
+      }));
+      
+      // Show course selection dropdown
+      const selected = await vscode.window.showQuickPick(quickPickItems, {
+        placeHolder: 'Select a course to work on',
+        title: 'Course Selection',
+        ignoreFocusOut: true
+      });
+      
+      if (!selected) {
+        return;
+      }
+      
+      const course = selected.course;
+      
+      // Clone the course repository
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: `Setting up workspace for ${course.title}...`,
+        cancellable: false
+      }, async (progress) => {
+        progress.report({ increment: 20, message: 'Checking repository...' });
+        
+        if (!course.repository) {
+          vscode.window.showErrorMessage('No repository available for this course');
+          return;
+        }
+        
+        const repo = course.repository;
+        const cloneUrl = repo.clone_url;
+        
+        // Get GitLab token
+        const gitlabUrl = repo.provider_url;
+        const token = await this.gitLabTokenManager.ensureTokenForUrl(gitlabUrl);
+        
+        if (!token) {
+          vscode.window.showErrorMessage('GitLab authentication required');
+          return;
+        }
+        
+        progress.report({ increment: 30, message: 'Cloning repository...' });
+        
+        // Build authenticated URL
+        const authenticatedUrl = this.gitLabTokenManager.buildAuthenticatedCloneUrl(cloneUrl, token);
+        
+        // Create workspace path
+        const workspaceRoot = await this.workspaceManager.getWorkspaceRoot();
+        const coursePath = path.join(workspaceRoot, 'courses', course.id);
+        
+        // Check if repository already exists
+        const gitWorktreeManager = GitWorktreeManager.getInstance();
+        const repoExists = await gitWorktreeManager.sharedRepoExists(workspaceRoot, course.id);
+        
+        if (!repoExists) {
+          // Clone the shared repository
+          await gitWorktreeManager.cloneSharedRepository(
+            workspaceRoot,
+            course.id,
+            cloneUrl,
+            authenticatedUrl
+          );
+        }
+        
+        progress.report({ increment: 40, message: 'Opening workspace...' });
+        
+        // Open the course repository in a new window
+        const courseWorkspaceUri = vscode.Uri.file(coursePath);
+        
+        // Store current course info for the new window
+        await this.context.globalState.update('selectedCourseId', course.id);
+        await this.context.globalState.update('selectedCourseInfo', {
+          id: course.id,
+          title: course.title,
+          path: course.path,
+          organizationId: course.organization_id,
+          courseFamilyId: course.course_family_id
+        });
+        
+        progress.report({ increment: 10, message: 'Opening new window...' });
+        
+        // Open in new window with the course repository as the workspace
+        await vscode.commands.executeCommand('vscode.openFolder', courseWorkspaceUri, true);
+      });
+    } catch (error: any) {
+      console.error('Failed to start work session:', error);
+      const message = error?.message || 'Unknown error';
+      vscode.window.showErrorMessage(`Failed to start work session: ${message}`);
     }
   }
 }
