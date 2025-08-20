@@ -128,8 +128,14 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                         return [new MessageItem('No courses available', 'info')];
                     }
                     
-                    // Return course items
-                    return this.courses.map(course => new CourseTreeItem(course));
+                    // Add a helpful message about starting work session
+                    const items: TreeItem[] = [
+                        new MessageItem('👆 Click "Start Work Session" (🚀) to begin', 'info')
+                    ];
+                    
+                    // Add course items
+                    items.push(...this.courses.map(course => new CourseTreeItem(course)));
+                    return items;
                 } catch (error: any) {
                     console.error('Failed to load student courses:', error);
                     const message = error?.response?.data?.message || error?.message || 'Unknown error';
@@ -344,6 +350,9 @@ class CourseTreeItem extends TreeItem {
         if (course.path) {
             tooltipParts.push(`Path: ${course.path}`);
         }
+        tooltipParts.push('');
+        tooltipParts.push('💡 Tip: Use "Start Work Session" button (🚀) in the toolbar');
+        tooltipParts.push('to set up your workspace for this course');
         this.tooltip = tooltipParts.join('\n');
     }
 }
