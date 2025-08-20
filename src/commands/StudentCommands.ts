@@ -14,10 +14,6 @@ interface CourseCommandData {
   path?: string;
 }
 
-// Interface for repository cloning items
-interface CloneRepositoryItem {
-  submissionGroup: SubmissionGroupStudent;
-}
 
 export class StudentCommands {
   private context: vscode.ExtensionContext;
@@ -205,7 +201,11 @@ export class StudentCommands {
 
     // Clone repository from course content tree
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.student.cloneRepository', async (item: CloneRepositoryItem) => {
+      vscode.commands.registerCommand('computor.student.cloneRepository', async (item: any) => {
+        console.log('[CloneRepo] Item received:', item);
+        console.log('[CloneRepo] Item courseContent:', item?.courseContent);
+        console.log('[CloneRepo] Item submissionGroup:', item?.submissionGroup);
+        
         // The item is a CourseContentItem from StudentCourseContentTreeProvider
         if (!item || !item.submissionGroup || !item.submissionGroup.repository) {
           vscode.window.showErrorMessage('No repository available for this assignment');
@@ -214,9 +214,15 @@ export class StudentCommands {
 
         const submissionGroup = item.submissionGroup;
         const courseId = submissionGroup.course_id;
+        // Get the directory from courseContent if available
+        const directory = item.courseContent?.directory;
+        
+        console.log('[CloneRepo] CourseId:', courseId);
+        console.log('[CloneRepo] Directory from courseContent:', directory);
+        console.log('[CloneRepo] SubmissionGroup course_content_path:', submissionGroup.course_content_path);
 
         try {
-          const repoPath = await this.workspaceManager.cloneStudentRepository(courseId, submissionGroup);
+          const repoPath = await this.workspaceManager.cloneStudentRepository(courseId, submissionGroup, directory);
           
           // Open the cloned repository in a new window or add to workspace
           const openInNewWindow = await vscode.window.showQuickPick(['Open in New Window', 'Add to Workspace'], {

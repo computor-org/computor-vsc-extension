@@ -29,6 +29,12 @@ export class GitWorktreeManager {
    * Get the path for an assignment worktree
    */
   getWorktreePath(workspaceRoot: string, courseId: string, assignmentPath: string): string {
+    console.log('[GitWorktreeManager] getWorktreePath called with:', { workspaceRoot, courseId, assignmentPath });
+    
+    if (!assignmentPath) {
+      throw new Error('Assignment path is required for worktree path');
+    }
+    
     // Convert assignment path (e.g., "1.basics") to folder name (e.g., "1-basics")
     const folderName = assignmentPath.replace(/\./g, '-');
     return path.join(workspaceRoot, 'courses', courseId, `assignment-${folderName}`);
@@ -127,6 +133,18 @@ export class GitWorktreeManager {
     authenticatedUrl: string,
     exampleIdentifier?: string
   ): Promise<string> {
+    console.log('[GitWorktreeManager] ensureAssignmentWorktree called with:', {
+      workspaceRoot,
+      courseId,
+      assignmentPath,
+      cloneUrl: cloneUrl?.substring(0, 50) + '...',
+      exampleIdentifier
+    });
+    
+    if (!assignmentPath) {
+      throw new Error('Assignment path is required for creating worktree');
+    }
+    
     // Ensure shared repository exists
     if (!await this.sharedRepoExists(workspaceRoot, courseId)) {
       await this.cloneSharedRepository(workspaceRoot, courseId, cloneUrl, authenticatedUrl);

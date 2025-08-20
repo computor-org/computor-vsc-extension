@@ -114,8 +114,14 @@ export class WorkspaceManager {
   // Student workspace methods using Git worktrees
   async cloneStudentRepository(
     courseId: string,
-    submissionGroup: SubmissionGroupStudent
+    submissionGroup: SubmissionGroupStudent,
+    directory?: string
   ): Promise<string> {
+    console.log('[WorkspaceManager] cloneStudentRepository called with:');
+    console.log('[WorkspaceManager] courseId:', courseId);
+    console.log('[WorkspaceManager] directory:', directory);
+    console.log('[WorkspaceManager] submissionGroup.course_content_path:', submissionGroup.course_content_path);
+    
     if (!this.config) {
       await this.initializeWorkspace();
     }
@@ -124,6 +130,7 @@ export class WorkspaceManager {
       throw new Error('No repository URL available for this submission group');
     }
 
+    // Use the provided directory if available, otherwise fall back to course_content_path for the assignment identifier
     const assignmentPath = submissionGroup.course_content_path;
     if (!assignmentPath) {
       throw new Error('No assignment path available for this submission group');
@@ -156,7 +163,7 @@ export class WorkspaceManager {
     // Build authenticated URL
     const authenticatedUrl = this.gitLabTokenManager.buildAuthenticatedCloneUrl(cloneUrl, token);
     
-    // Use worktree approach for efficient repository management
+    // If we have a directory, use it directly, otherwise use worktree approach
     const worktreePath = await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
       title: `Setting up assignment: ${submissionGroup.course_content_title || assignmentPath}`,
@@ -165,7 +172,13 @@ export class WorkspaceManager {
       try {
         progress.report({ increment: 30, message: 'Preparing workspace...' });
         
-        // Ensure assignment worktree exists
+        // If directory is provided and exists, we might already have the repo cloned
+        if (directory && fs.existsSync(directory)) {
+          progress.report({ increment: 70, message: 'Repository already exists!' });
+          return directory;
+        }
+        
+        // Otherwise, ensure assignment worktree exists
         const resultPath = await this.gitWorktreeManager.ensureAssignmentWorktree(
           this.workspaceRoot,
           courseId,
