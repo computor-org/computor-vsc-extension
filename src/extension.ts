@@ -235,17 +235,44 @@ export function activate(context: vscode.ExtensionContext) {
   const tutorCommands = new TutorCommands(context, tutorTreeDataProvider);
   tutorCommands.registerCommands();
 
-  // Initialize Example Tree Provider and View
+  // Initialize Example Tree Provider
   const exampleTreeProvider = new ExampleTreeProvider(context, apiService);
+  
+  // DIRECTLY register the refresh command here to ensure it's available
+  console.log('[Extension] Registering computor.refreshExamples directly...');
+  const refreshCommand = vscode.commands.registerCommand('computor.refreshExamples', async () => {
+    console.log('[Extension] refreshExamples command executed');
+    await exampleTreeProvider.loadData();
+  });
+  context.subscriptions.push(refreshCommand);
+  console.log('[Extension] computor.refreshExamples registered directly');
+  
+  // Test if the command is available
+  vscode.commands.getCommands(true).then(commands => {
+    if (commands.includes('computor.refreshExamples')) {
+      console.log('[Extension] ✓ computor.refreshExamples is in command list');
+    } else {
+      console.error('[Extension] ✗ computor.refreshExamples NOT in command list!');
+    }
+  });
+  
+  // Register other example commands
+  console.log('[Extension] Creating ExampleCommands...');
+  try {
+    new ExampleCommands(context, apiService, exampleTreeProvider);
+    console.log('[Extension] ExampleCommands created successfully');
+  } catch (error) {
+    console.error('[Extension] Failed to create ExampleCommands:', error);
+    vscode.window.showErrorMessage(`Failed to initialize Example commands: ${error}`);
+  }
+  
+  // Create the tree view AFTER commands are registered
   const exampleTreeView = vscode.window.createTreeView('computor.examplesView', {
     treeDataProvider: exampleTreeProvider,
     showCollapseAll: true,
     dragAndDropController: exampleTreeProvider
   });
   context.subscriptions.push(exampleTreeView);
-
-  // Register example commands
-  new ExampleCommands(context, apiService, exampleTreeProvider);
 
   // Initialize File Explorers for each role
   const fileExplorerLecturer = new FileExplorerProvider(context);
