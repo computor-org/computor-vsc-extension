@@ -5,9 +5,11 @@ export class VscodeCredentialStorage implements CredentialStorage {
   private static readonly KEY_PREFIX = 'computor.auth.';
   private static readonly INDEX_KEY = 'computor.auth.index';
   private secretStorage: vscode.SecretStorage;
+  private rolePrefix: string;
 
-  constructor(context: vscode.ExtensionContext) {
+  constructor(context: vscode.ExtensionContext, role?: string) {
     this.secretStorage = context.secrets;
+    this.rolePrefix = role ? `${role}.` : '';
   }
 
   async store(key: string, credentials: ComputorCredentials): Promise<void> {
@@ -34,7 +36,8 @@ export class VscodeCredentialStorage implements CredentialStorage {
   }
 
   async list(): Promise<string[]> {
-    const indexData = await this.secretStorage.get(VscodeCredentialStorage.INDEX_KEY);
+    const indexKey = this.getIndexKey();
+    const indexData = await this.secretStorage.get(indexKey);
     return indexData ? JSON.parse(indexData) : [];
   }
 
@@ -43,11 +46,16 @@ export class VscodeCredentialStorage implements CredentialStorage {
     for (const key of keys) {
       await this.delete(key);
     }
-    await this.secretStorage.delete(VscodeCredentialStorage.INDEX_KEY);
+    const indexKey = this.getIndexKey();
+    await this.secretStorage.delete(indexKey);
   }
 
   private getFullKey(key: string): string {
-    return `${VscodeCredentialStorage.KEY_PREFIX}${key}`;
+    return `${VscodeCredentialStorage.KEY_PREFIX}${this.rolePrefix}${key}`;
+  }
+
+  private getIndexKey(): string {
+    return `${VscodeCredentialStorage.INDEX_KEY}.${this.rolePrefix}index`;
   }
 
   private async updateIndex(key: string, action: 'add' | 'remove'): Promise<void> {
@@ -60,8 +68,9 @@ export class VscodeCredentialStorage implements CredentialStorage {
       keySet.delete(key);
     }
     
+    const indexKey = this.getIndexKey();
     await this.secretStorage.store(
-      VscodeCredentialStorage.INDEX_KEY, 
+      indexKey, 
       JSON.stringify(Array.from(keySet))
     );
   }

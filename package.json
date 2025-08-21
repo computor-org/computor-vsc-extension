@@ -15,9 +15,12 @@
     "onCommand:computor.showSettings",
     "onCommand:computor.signIn",
     "onCommand:computor.signOut",
+    "onCommand:computor.lecturer.signIn",
+    "onCommand:computor.lecturer.signOut",
     "onCommand:computor.showGitStatus",
     "onCommand:computor.selectWorkspaceDirectory",
     "onAuthenticationRequest:computor",
+    "onAuthenticationRequest:computor-lecturer",
     "onView:computor.apiTreeView",
     "onView:computor.jsonTreeView",
     "onView:computor.testResultsView",
@@ -68,6 +71,16 @@
       {
         "command": "computor.signOut",
         "title": "Computor: Sign Out",
+        "category": "Accounts"
+      },
+      {
+        "command": "computor.lecturer.signIn",
+        "title": "Computor: Sign In as Lecturer",
+        "category": "Accounts"
+      },
+      {
+        "command": "computor.lecturer.signOut",
+        "title": "Computor: Sign Out Lecturer",
         "category": "Accounts"
       },
       {
@@ -528,6 +541,11 @@
       {
         "view": "computor.welcome",
         "contents": "Welcome to Computor!\n\n[Sign In](command:computor.signIn)\n\nSign in to access lecturer features and manage your courses."
+      },
+      {
+        "view": "computor.lecturerView",
+        "contents": "Welcome to Computor Lecturer!\n\n[Sign In as Lecturer](command:computor.lecturer.signIn)\n\nSign in to access lecturer features and manage your courses.",
+        "when": "!computor.lecturer.authenticated"
       }
     ],
     "views": {
@@ -537,21 +555,21 @@
           "name": "Course Management",
           "icon": "$(mortar-board)",
           "contextualTitle": "Lecturer Course Management",
-          "when": "computor.authenticated"
+          "when": "computor.lecturer.authenticated"
         },
         {
           "id": "computor.examplesView",
           "name": "Example Workbench",
           "icon": "$(repo)",
           "contextualTitle": "Example Repository Workbench",
-          "when": "computor.authenticated"
+          "when": "computor.lecturer.authenticated"
         },
         {
           "id": "computor.fileExplorerLecturer",
           "name": "File Explorer",
           "icon": "$(files)",
           "contextualTitle": "File Explorer",
-          "when": "computor.authenticated"
+          "when": "computor.lecturer.authenticated"
         }
       ],
       "computor-student": [
