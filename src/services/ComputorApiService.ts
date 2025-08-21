@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { JwtHttpClient } from '../http/JwtHttpClient';
-import { ComputorAuthenticationProvider } from '../authentication/ComputorAuthenticationProvider';
+import { LecturerAuthenticationProvider } from '../authentication/LecturerAuthenticationProvider';
+import { TutorAuthenticationProvider } from '../authentication/TutorAuthenticationProvider';
+import { StudentAuthenticationProvider } from '../authentication/StudentAuthenticationProvider';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { ComputorAuthenticationSession } from '../types/AuthenticationTypes';
 import { errorRecoveryService } from './ErrorRecoveryService';
@@ -79,13 +81,28 @@ export class ComputorApiService {
   private async getHttpClient(): Promise<JwtHttpClient> {
     if (!this.httpClient) {
       const settings = await this.settingsManager.getSettings();
-      const sessions = await vscode.authentication.getSession('computor', [], { createIfNone: false });
       
-      if (!sessions) {
+      // Try to get session from any of the role providers
+      let session = await vscode.authentication.getSession('computor-lecturer', [], { createIfNone: false });
+      let authHeaders: Record<string, string> | undefined;
+      
+      if (session) {
+        authHeaders = LecturerAuthenticationProvider.getAuthHeaders(session as ComputorAuthenticationSession);
+      } else {
+        session = await vscode.authentication.getSession('computor-tutor', [], { createIfNone: false });
+        if (session) {
+          authHeaders = TutorAuthenticationProvider.getAuthHeaders(session as ComputorAuthenticationSession);
+        } else {
+          session = await vscode.authentication.getSession('computor-student', [], { createIfNone: false });
+          if (session) {
+            authHeaders = StudentAuthenticationProvider.getAuthHeaders(session as ComputorAuthenticationSession);
+          }
+        }
+      }
+      
+      if (!session || !authHeaders) {
         throw new Error('Not authenticated. Please sign in first.');
       }
-
-      const authHeaders = ComputorAuthenticationProvider.getAuthHeaders(sessions as ComputorAuthenticationSession);
       
       // For now, use a dummy Keycloak config since we're using token auth
       const keycloakConfig = {

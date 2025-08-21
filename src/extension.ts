@@ -4,7 +4,6 @@ import * as path from 'path';
 import * as os from 'os';
 import { UIShowcaseView } from './ui/views/UIShowcaseView';
 import { SettingsView } from './ui/views/SettingsView';
-import { ComputorAuthenticationProvider } from './authentication/ComputorAuthenticationProvider';
 import { LecturerAuthenticationProvider } from './authentication/LecturerAuthenticationProvider';
 import { TutorAuthenticationProvider } from './authentication/TutorAuthenticationProvider';
 import { StudentAuthenticationProvider } from './authentication/StudentAuthenticationProvider';
@@ -51,10 +50,6 @@ export function activate(context: vscode.ExtensionContext) {
     backendConnectionService.startHealthCheck(baseUrl, 30000); // Check every 30 seconds
   }, 2000);
 
-  // Initialize authentication providers
-  const authProvider = new ComputorAuthenticationProvider(context);
-  context.subscriptions.push(authProvider);
-  
   // Initialize lecturer authentication provider
   const lecturerAuthProvider = new LecturerAuthenticationProvider(context);
   context.subscriptions.push(lecturerAuthProvider);
@@ -101,51 +96,6 @@ export function activate(context: vscode.ExtensionContext) {
   const settingsCommand = vscode.commands.registerCommand('computor.showSettings', () => {
     const settingsView = new SettingsView(context);
     settingsView.render();
-  });
-
-  // Authentication commands
-  const signInCommand = vscode.commands.registerCommand('computor.signIn', async () => {
-    try {
-      const session = await vscode.authentication.getSession('computor', [], { createIfNone: true });
-      if (session) {
-        vscode.window.showInformationMessage(`Signed in as ${session.account.label}`);
-        // Set context to show authenticated views
-        vscode.commands.executeCommand('setContext', 'computor.authenticated', true);
-        
-        // Check if we need to open the workspace
-        const workspacePath = path.join(os.homedir(), '.computor', 'workspace');
-        const currentWorkspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        
-        // If not in the computor workspace, open it
-        if (!currentWorkspace || !currentWorkspace.startsWith(workspacePath)) {
-          // Ensure workspace directory exists
-          if (!fs.existsSync(workspacePath)) {
-            fs.mkdirSync(workspacePath, { recursive: true });
-          }
-          
-          // Open the workspace folder (false = in same window)
-          await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(workspacePath), false);
-        }
-      }
-    } catch (error) {
-      vscode.window.showErrorMessage(`Sign in failed: ${error}`);
-    }
-  });
-
-  const signOutCommand = vscode.commands.registerCommand('computor.signOut', async () => {
-    try {
-      const sessions = await vscode.authentication.getSession('computor', [], { createIfNone: false });
-      if (sessions) {
-        await authProvider.removeSession(sessions.id);
-        vscode.window.showInformationMessage('Signed out successfully');
-        // Clear context to hide authenticated views
-        vscode.commands.executeCommand('setContext', 'computor.authenticated', false);
-      } else {
-        vscode.window.showInformationMessage('No active session');
-      }
-    } catch (error) {
-      vscode.window.showErrorMessage(`Sign out failed: ${error}`);
-    }
   });
 
   // Lecturer authentication commands
@@ -553,13 +503,6 @@ export function activate(context: vscode.ExtensionContext) {
   const metaYamlStatusBarProvider = new MetaYamlStatusBarProvider(context);
   context.subscriptions.push(metaYamlStatusBarProvider);
 
-  // Check for existing authentication sessions
-  vscode.authentication.getSession('computor', [], { createIfNone: false }).then(session => {
-    if (session) {
-      vscode.commands.executeCommand('setContext', 'computor.authenticated', true);
-    }
-  });
-  
   // Check for existing lecturer authentication session
   vscode.authentication.getSession('computor-lecturer', [], { createIfNone: false }).then(session => {
     if (session) {
@@ -601,8 +544,6 @@ export function activate(context: vscode.ExtensionContext) {
     checkBackendCommand,
     uiShowcaseCommand, 
     settingsCommand,
-    signInCommand,
-    signOutCommand,
     lecturerSignInCommand,
     lecturerSignOutCommand,
     tutorSignInCommand,

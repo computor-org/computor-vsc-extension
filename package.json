@@ -13,8 +13,6 @@
     "onCommand:computor.activate",
     "onCommand:computor.showUIComponents",
     "onCommand:computor.showSettings",
-    "onCommand:computor.signIn",
-    "onCommand:computor.signOut",
     "onCommand:computor.lecturer.signIn",
     "onCommand:computor.lecturer.signOut",
     "onCommand:computor.tutor.signIn",
@@ -23,7 +21,6 @@
     "onCommand:computor.student.signOut",
     "onCommand:computor.showGitStatus",
     "onCommand:computor.selectWorkspaceDirectory",
-    "onAuthenticationRequest:computor",
     "onAuthenticationRequest:computor-lecturer",
     "onAuthenticationRequest:computor-tutor",
     "onAuthenticationRequest:computor-student",
@@ -68,16 +65,6 @@
       {
         "command": "computor.showSettings",
         "title": "Computor: Settings"
-      },
-      {
-        "command": "computor.signIn",
-        "title": "Computor: Sign In",
-        "category": "Accounts"
-      },
-      {
-        "command": "computor.signOut",
-        "title": "Computor: Sign Out",
-        "category": "Accounts"
       },
       {
         "command": "computor.lecturer.signIn",
@@ -565,10 +552,6 @@
     ],
     "viewsWelcome": [
       {
-        "view": "computor.welcome",
-        "contents": "Welcome to Computor!\n\n[Sign In](command:computor.signIn)\n\nSign in to access lecturer features and manage your courses."
-      },
-      {
         "view": "computor.lecturerView",
         "contents": "Welcome to Computor Lecturer!\n\n[Sign In as Lecturer](command:computor.lecturer.signIn)\n\nSign in to access lecturer features and manage your courses.",
         "when": "!computor.lecturer.authenticated"
@@ -646,7 +629,7 @@
           "name": "Computor API",
           "icon": "$(globe)",
           "contextualTitle": "Computor API Data",
-          "when": "computor.authenticated"
+          "when": "computor.lecturer.authenticated || computor.tutor.authenticated || computor.student.authenticated"
         },
         {
           "id": "computor.jsonTreeView",
