@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
+import { promisify } from 'util';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { CourseSelectionService } from '../../../services/CourseSelectionService';
 import { GitWorktreeManager } from '../../../services/GitWorktreeManager';
@@ -80,6 +81,95 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     }
     
     async getChildren(element?: TreeItem): Promise<TreeItem[]> {
+        // Handle filesystem children for assignment items
+        if (element instanceof CourseContentItem) {
+            const contentType = element.contentType;
+            const isAssignment = contentType?.course_content_kind_id === 'assignment';
+            const directory = (element.courseContent as any).directory;
+            
+            if (isAssignment && directory) {
+                const workspaceFolders = vscode.workspace.workspaceFolders || [];
+                if (workspaceFolders.length > 0 && workspaceFolders[0]) {
+                    const assignmentPath = path.join(workspaceFolders[0].uri.fsPath, directory);
+                    
+                    if (fs.existsSync(assignmentPath)) {
+                        // Read directory contents and create file/folder items
+                        try {
+                            const readdir = promisify(fs.readdir);
+                            const stat = promisify(fs.stat);
+                            const files = await readdir(assignmentPath);
+                            const items: TreeItem[] = [];
+                            
+                            for (const file of files) {
+                                const filePath = path.join(assignmentPath, file);
+                                const stats = await stat(filePath);
+                                const isDirectory = stats.isDirectory();
+                                
+                                const fileItem = new FileSystemItem(
+                                    file,
+                                    vscode.Uri.file(filePath),
+                                    isDirectory ? vscode.FileType.Directory : vscode.FileType.File
+                                );
+                                items.push(fileItem);
+                            }
+                            
+                            // Sort: directories first, then files, alphabetically
+                            items.sort((a, b) => {
+                                const aIsDir = (a as FileSystemItem).type === vscode.FileType.Directory;
+                                const bIsDir = (b as FileSystemItem).type === vscode.FileType.Directory;
+                                if (aIsDir && !bIsDir) return -1;
+                                if (!aIsDir && bIsDir) return 1;
+                                return a.label!.toString().localeCompare(b.label!.toString());
+                            });
+                            
+                            return items;
+                        } catch (error) {
+                            console.error('Error reading assignment directory:', error);
+                            return [];
+                        }
+                    }
+                }
+            }
+            return [];
+        }
+        
+        // Handle filesystem children for FileSystemItem
+        if (element instanceof FileSystemItem && element.type === vscode.FileType.Directory) {
+            try {
+                const readdir = promisify(fs.readdir);
+                const stat = promisify(fs.stat);
+                const files = await readdir(element.uri.fsPath);
+                const items: TreeItem[] = [];
+                
+                for (const file of files) {
+                    const filePath = path.join(element.uri.fsPath, file);
+                    const stats = await stat(filePath);
+                    const isDirectory = stats.isDirectory();
+                    
+                    const fileItem = new FileSystemItem(
+                        file,
+                        vscode.Uri.file(filePath),
+                        isDirectory ? vscode.FileType.Directory : vscode.FileType.File
+                    );
+                    items.push(fileItem);
+                }
+                
+                // Sort: directories first, then files, alphabetically
+                items.sort((a, b) => {
+                    const aIsDir = (a as FileSystemItem).type === vscode.FileType.Directory;
+                    const bIsDir = (b as FileSystemItem).type === vscode.FileType.Directory;
+                    if (aIsDir && !bIsDir) return -1;
+                    if (!aIsDir && bIsDir) return 1;
+                    return a.label!.toString().localeCompare(b.label!.toString());
+                });
+                
+                return items;
+            } catch (error) {
+                console.error('Error reading directory:', error);
+                return [];
+            }
+        }
+        
         if (!element) {
             // Root level - check if we have a selected course (when running in course workspace)
             const selectedCourseId = this.courseSelection.getCurrentCourseId();
@@ -436,7 +526,18 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         void courseSelection; // Not used but required for type consistency
         void expanded; // Not used but required for type consistency
         const label = courseContent.title || courseContent.path;
-        super(label, vscode.TreeItemCollapsibleState.None);
+        
+        // If this is an assignment with a cloned repository, make it collapsible to show files
+        const isAssignment = contentType?.course_content_kind_id === 'assignment';
+        const directory = (courseContent as any).directory;
+        const workspaceFolders = vscode.workspace.workspaceFolders || [];
+        let hasClonedRepo = false;
+        if (isAssignment && directory && workspaceFolders.length > 0 && workspaceFolders[0]) {
+            const assignmentPath = path.join(workspaceFolders[0].uri.fsPath, directory);
+            hasClonedRepo = fs.existsSync(assignmentPath);
+        }
+        
+        super(label, hasClonedRepo ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
         
         this.id = courseContent.id;
         this.setupIcon();
@@ -445,7 +546,7 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         this.setupContextValue();
         
         // Add command to open/clone repository if this is an assignment with repository
-        const directory = (this.courseContent as any).directory;
+        const assignmentDir = (this.courseContent as any).directory;
         
         if (this.submissionGroup?.repository) {
             const isCloned = this.checkIfCloned();
@@ -462,7 +563,7 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
                     arguments: [this]
                 };
             }
-        } else if (directory && fs.existsSync(directory)) {
+        } else if (assignmentDir && fs.existsSync(assignmentDir)) {
             // If we have a directory field and it exists, allow opening it
             this.command = {
                 command: 'computor.student.openAssignment',
@@ -672,5 +773,52 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         const gitWorktreeManager = GitWorktreeManager.getInstance();
         const workspaceRoot = path.join(os.homedir(), '.computor', 'workspace');
         return gitWorktreeManager.getWorktreePath(workspaceRoot, courseId, contentPath);
+    }
+}
+
+// File system item for showing files and folders under assignments
+class FileSystemItem extends TreeItem {
+    constructor(
+        public readonly name: string,
+        public readonly uri: vscode.Uri,
+        public readonly type: vscode.FileType
+    ) {
+        super(
+            name,
+            type === vscode.FileType.Directory 
+                ? vscode.TreeItemCollapsibleState.Collapsed 
+                : vscode.TreeItemCollapsibleState.None
+        );
+        
+        this.id = uri.fsPath;
+        this.resourceUri = uri;
+        
+        if (type === vscode.FileType.File) {
+            this.command = {
+                command: 'vscode.open',
+                title: 'Open File',
+                arguments: [uri]
+            };
+            this.contextValue = 'file';
+            
+            // Set appropriate icon based on file extension
+            const ext = path.extname(name).toLowerCase();
+            if (['.ts', '.js', '.tsx', '.jsx'].includes(ext)) {
+                this.iconPath = new vscode.ThemeIcon('file-code');
+            } else if (['.json', '.xml', '.yaml', '.yml'].includes(ext)) {
+                this.iconPath = new vscode.ThemeIcon('file-code');
+            } else if (['.md', '.txt'].includes(ext)) {
+                this.iconPath = new vscode.ThemeIcon('file-text');
+            } else if (['.png', '.jpg', '.jpeg', '.gif', '.svg'].includes(ext)) {
+                this.iconPath = new vscode.ThemeIcon('file-media');
+            } else {
+                this.iconPath = new vscode.ThemeIcon('file');
+            }
+        } else {
+            this.contextValue = 'folder';
+            this.iconPath = new vscode.ThemeIcon('folder');
+        }
+        
+        this.tooltip = uri.fsPath;
     }
 }

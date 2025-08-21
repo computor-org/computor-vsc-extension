@@ -35,6 +35,9 @@ export function activate(context: vscode.ExtensionContext) {
   // Initialize Icon Generator
   IconGenerator.initialize(context);
 
+  // Initialize Settings Manager (used throughout the extension)
+  const settingsManager = new ComputorSettingsManager(context);
+
   // Initialize GitLab token manager (singleton - shared by all views)
   GitLabTokenManager.getInstance(context);
   
@@ -44,7 +47,6 @@ export function activate(context: vscode.ExtensionContext) {
   
   // Start backend health checks after a short delay to allow settings to load
   setTimeout(async () => {
-    const settingsManager = new ComputorSettingsManager(context);
     const settings = await settingsManager.getSettings();
     const baseUrl = settings.authentication.baseUrl;
     backendConnectionService.startHealthCheck(baseUrl, 30000); // Check every 30 seconds
@@ -65,6 +67,16 @@ export function activate(context: vscode.ExtensionContext) {
   // Initialize Git manager
   const gitManager = new GitManager(context);
   context.subscriptions.push(gitManager);
+  
+  // Initialize API service (needed for course selection)
+  const apiService = new ComputorApiService(context);
+  
+  // Initialize Status Bar Service
+  const statusBarService = StatusBarService.initialize(context);
+  context.subscriptions.push(statusBarService);
+
+  // Initialize Course Selection Service (needed for student sign-in)
+  const courseSelectionService = CourseSelectionService.initialize(context, apiService, statusBarService);
 
   // Original activation command
   const activateCommand = vscode.commands.registerCommand('computor.activate', () => {
@@ -73,7 +85,6 @@ export function activate(context: vscode.ExtensionContext) {
   
   // Backend connection check command
   const checkBackendCommand = vscode.commands.registerCommand('computor.checkBackendConnection', async () => {
-    const settingsManager = new ComputorSettingsManager(context);
     const settings = await settingsManager.getSettings();
     const baseUrl = settings.authentication.baseUrl;
     
@@ -203,19 +214,77 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.executeCommand('setContext', 'computor.lecturer.authenticated', false);
         vscode.commands.executeCommand('setContext', 'computor.tutor.authenticated', false);
         
-        // Check if we need to open the workspace
-        const workspacePath = path.join(os.homedir(), '.computor', 'workspace');
-        const currentWorkspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        // Clear any persisted course selection to force fresh selection
+        await context.globalState.update('selectedCourseId', undefined);
+        await context.globalState.update('selectedCourseInfo', undefined);
         
-        // If not in the computor workspace, open it
-        if (!currentWorkspace || !currentWorkspace.startsWith(workspacePath)) {
-          // Ensure workspace directory exists
-          if (!fs.existsSync(workspacePath)) {
-            fs.mkdirSync(workspacePath, { recursive: true });
+        // After authentication, immediately ask for course selection
+        try {
+          // Fetch available courses for the student
+          const courses = await apiService.getStudentCourses();
+          
+          if (!courses || courses.length === 0) {
+            vscode.window.showInformationMessage('No courses available for your account');
+            return;
           }
           
-          // Open the workspace folder (false = in same window)
-          await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(workspacePath), false);
+          // Prepare quick pick items
+          const quickPickItems = courses.map(course => ({
+            label: course.title,
+            description: course.path,
+            detail: `Organization: ${course.organization_id}`,
+            course
+          }));
+          
+          // Show course selection dropdown
+          const selected = await vscode.window.showQuickPick(quickPickItems, {
+            placeHolder: 'Select a course to work on',
+            title: 'Course Selection',
+            ignoreFocusOut: true
+          });
+          
+          if (!selected) {
+            vscode.window.showWarningMessage('No course selected. Please select a course to continue.');
+            return;
+          }
+          
+          const selectedCourse = selected.course;
+          
+          // Update course selection
+          const courseInfo = {
+            id: selectedCourse.id,
+            title: selectedCourse.title,
+            path: selectedCourse.path,
+            organizationId: selectedCourse.organization_id,
+            courseFamilyId: selectedCourse.course_family_id
+          };
+          
+          // Switch to course workspace
+          await courseSelectionService.switchToCourse(courseInfo);
+          
+          // Check if we need to clone/update the repository
+          const workspaceDir = await settingsManager.getWorkspaceDirectory();
+          const courseWorkspace = path.join(workspaceDir || os.homedir(), 'computor', 'courses', selectedCourse.id);
+          
+          // Ensure directory exists
+          if (!fs.existsSync(courseWorkspace)) {
+            fs.mkdirSync(courseWorkspace, { recursive: true });
+          }
+          
+          // Check if we need to switch workspace
+          const currentWorkspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+          if (!currentWorkspace || currentWorkspace !== courseWorkspace) {
+            // Open the course workspace folder
+            await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(courseWorkspace), false);
+          }
+          
+          // Refresh the student view to show course content
+          studentCourseContentProvider.refresh();
+          
+          vscode.window.showInformationMessage(`Successfully connected to course: ${selectedCourse.title}`);
+          
+        } catch (error) {
+          vscode.window.showErrorMessage(`Failed to select course: ${error}`);
         }
       }
     } catch (error) {
@@ -285,16 +354,6 @@ export function activate(context: vscode.ExtensionContext) {
   // Register lecturer commands
   const lecturerCommands = new LecturerCommands(context, lecturerTreeDataProvider);
   lecturerCommands.registerCommands();
-  
-  // Initialize API service
-  const apiService = new ComputorApiService(context);
-
-  // Initialize Status Bar Service
-  const statusBarService = StatusBarService.initialize(context);
-  context.subscriptions.push(statusBarService);
-
-  // Initialize Course Selection Service
-  const courseSelectionService = CourseSelectionService.initialize(context, apiService, statusBarService);
   
   // Initialize Student View (single tree for all student content)
   const studentCourseContentProvider = new StudentCourseContentTreeProvider(apiService, courseSelectionService);
@@ -404,8 +463,7 @@ export function activate(context: vscode.ExtensionContext) {
   const fileExplorerTutor = new FileExplorerProvider(context);
   
   // Set initial workspace directory from settings
-  const settingsManagerForExplorer = new ComputorSettingsManager(context);
-  settingsManagerForExplorer.getWorkspaceDirectory().then(workspaceDir => {
+  settingsManager.getWorkspaceDirectory().then(workspaceDir => {
     if (workspaceDir && fs.existsSync(workspaceDir)) {
       fileExplorerLecturer.setRootPath(workspaceDir);
       fileExplorerStudent.setRootPath(workspaceDir);
@@ -449,7 +507,7 @@ export function activate(context: vscode.ExtensionContext) {
     }),
     vscode.commands.registerCommand('computor.fileExplorer.goToWorkspace', async () => {
       // Get the selected workspace directory from settings
-      const workspaceDir = await settingsManagerForExplorer.getWorkspaceDirectory();
+      const workspaceDir = await settingsManager.getWorkspaceDirectory();
       if (workspaceDir && fs.existsSync(workspaceDir)) {
         fileExplorerLecturer.setRootPath(workspaceDir);
         fileExplorerStudent.setRootPath(workspaceDir);
@@ -528,7 +586,6 @@ export function activate(context: vscode.ExtensionContext) {
   });
 
   // Check and prompt for workspace directory if not set
-  const settingsManager = new ComputorSettingsManager(context);
   settingsManager.getWorkspaceDirectory().then(dir => {
     if (!dir) {
       vscode.window.showInformationMessage(
