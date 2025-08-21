@@ -104,8 +104,10 @@ export function activate(context: vscode.ExtensionContext) {
       const session = await vscode.authentication.getSession('computor-lecturer', [], { createIfNone: true });
       if (session) {
         vscode.window.showInformationMessage(`Signed in as Lecturer: ${session.account.label}`);
-        // Set context to show lecturer views
+        // Set context to show lecturer views and hide others
         vscode.commands.executeCommand('setContext', 'computor.lecturer.authenticated', true);
+        vscode.commands.executeCommand('setContext', 'computor.tutor.authenticated', false);
+        vscode.commands.executeCommand('setContext', 'computor.student.authenticated', false);
         
         // Check if we need to open the workspace
         const workspacePath = path.join(os.homedir(), '.computor', 'workspace');
@@ -149,8 +151,10 @@ export function activate(context: vscode.ExtensionContext) {
       const session = await vscode.authentication.getSession('computor-tutor', [], { createIfNone: true });
       if (session) {
         vscode.window.showInformationMessage(`Signed in as Tutor: ${session.account.label}`);
-        // Set context to show tutor views
+        // Set context to show tutor views and hide others
         vscode.commands.executeCommand('setContext', 'computor.tutor.authenticated', true);
+        vscode.commands.executeCommand('setContext', 'computor.lecturer.authenticated', false);
+        vscode.commands.executeCommand('setContext', 'computor.student.authenticated', false);
         
         // Check if we need to open the workspace
         const workspacePath = path.join(os.homedir(), '.computor', 'workspace');
@@ -194,8 +198,10 @@ export function activate(context: vscode.ExtensionContext) {
       const session = await vscode.authentication.getSession('computor-student', [], { createIfNone: true });
       if (session) {
         vscode.window.showInformationMessage(`Signed in as Student: ${session.account.label}`);
-        // Set context to show student views
+        // Set context to show student views and hide others
         vscode.commands.executeCommand('setContext', 'computor.student.authenticated', true);
+        vscode.commands.executeCommand('setContext', 'computor.lecturer.authenticated', false);
+        vscode.commands.executeCommand('setContext', 'computor.tutor.authenticated', false);
         
         // Check if we need to open the workspace
         const workspacePath = path.join(os.homedir(), '.computor', 'workspace');
@@ -503,24 +509,21 @@ export function activate(context: vscode.ExtensionContext) {
   const metaYamlStatusBarProvider = new MetaYamlStatusBarProvider(context);
   context.subscriptions.push(metaYamlStatusBarProvider);
 
-  // Check for existing lecturer authentication session
-  vscode.authentication.getSession('computor-lecturer', [], { createIfNone: false }).then(session => {
-    if (session) {
-      vscode.commands.executeCommand('setContext', 'computor.lecturer.authenticated', true);
-    }
-  });
-  
-  // Check for existing tutor authentication session
-  vscode.authentication.getSession('computor-tutor', [], { createIfNone: false }).then(session => {
-    if (session) {
-      vscode.commands.executeCommand('setContext', 'computor.tutor.authenticated', true);
-    }
-  });
-  
-  // Check for existing student authentication session
-  vscode.authentication.getSession('computor-student', [], { createIfNone: false }).then(session => {
-    if (session) {
-      vscode.commands.executeCommand('setContext', 'computor.student.authenticated', true);
+  // Check for existing authentication sessions (only one should be active)
+  Promise.all([
+    vscode.authentication.getSession('computor-lecturer', [], { createIfNone: false }),
+    vscode.authentication.getSession('computor-tutor', [], { createIfNone: false }),
+    vscode.authentication.getSession('computor-student', [], { createIfNone: false })
+  ]).then(([lecturerSession, tutorSession, studentSession]) => {
+    // Set all contexts based on which session exists
+    vscode.commands.executeCommand('setContext', 'computor.lecturer.authenticated', !!lecturerSession);
+    vscode.commands.executeCommand('setContext', 'computor.tutor.authenticated', !!tutorSession);
+    vscode.commands.executeCommand('setContext', 'computor.student.authenticated', !!studentSession);
+    
+    // Warn if multiple sessions exist (shouldn't happen normally)
+    const activeSessions = [lecturerSession, tutorSession, studentSession].filter(s => s).length;
+    if (activeSessions > 1) {
+      vscode.window.showWarningMessage('Multiple role sessions detected. Please sign out and sign in with a single role.');
     }
   });
 
