@@ -270,11 +270,21 @@ export function activate(context: vscode.ExtensionContext) {
             fs.mkdirSync(courseWorkspace, { recursive: true });
           }
           
-          // Check if we need to switch workspace
-          const currentWorkspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-          if (!currentWorkspace || !currentWorkspace.startsWith(courseWorkspace)) {
-            // Open the course workspace folder
-            await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(courseWorkspace), false);
+          // Update workspace folders instead of opening new folder to avoid extension reload
+          const workspaceFolders = vscode.workspace.workspaceFolders || [];
+          const courseWorkspaceUri = vscode.Uri.file(courseWorkspace);
+          const existingIndex = workspaceFolders.findIndex(
+            folder => folder.uri.fsPath === courseWorkspace
+          );
+          
+          if (existingIndex === -1) {
+            // Add the course workspace as a new workspace folder
+            const newName = `📚 ${selectedCourse.title}`;
+            vscode.workspace.updateWorkspaceFolders(
+              workspaceFolders.length,
+              0,
+              { uri: courseWorkspaceUri, name: newName }
+            );
           }
           
           // Refresh the student view to show course content
@@ -298,7 +308,7 @@ export function activate(context: vscode.ExtensionContext) {
         await studentAuthProvider.removeSession(sessions.id);
         vscode.window.showInformationMessage('Student signed out successfully');
         // Clear context to hide student views
-        vscode.commands.executeCommand('setContext', 'computor.student.authenticated', false);
+        await vscode.commands.executeCommand('setContext', 'computor.student.authenticated', false);
       } else {
         vscode.window.showInformationMessage('No active student session');
       }
@@ -571,11 +581,11 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.authentication.getSession('computor-lecturer', [], { createIfNone: false }),
     vscode.authentication.getSession('computor-tutor', [], { createIfNone: false }),
     vscode.authentication.getSession('computor-student', [], { createIfNone: false })
-  ]).then(([lecturerSession, tutorSession, studentSession]) => {
+  ]).then(async ([lecturerSession, tutorSession, studentSession]) => {
     // Set all contexts based on which session exists
-    vscode.commands.executeCommand('setContext', 'computor.lecturer.authenticated', !!lecturerSession);
-    vscode.commands.executeCommand('setContext', 'computor.tutor.authenticated', !!tutorSession);
-    vscode.commands.executeCommand('setContext', 'computor.student.authenticated', !!studentSession);
+    await vscode.commands.executeCommand('setContext', 'computor.lecturer.authenticated', !!lecturerSession);
+    await vscode.commands.executeCommand('setContext', 'computor.tutor.authenticated', !!tutorSession);
+    await vscode.commands.executeCommand('setContext', 'computor.student.authenticated', !!studentSession);
     
     // Warn if multiple sessions exist (shouldn't happen normally)
     const activeSessions = [lecturerSession, tutorSession, studentSession].filter(s => s).length;
