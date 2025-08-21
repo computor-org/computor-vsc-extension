@@ -1,11 +1,13 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 import { StudentCourseContentTreeProvider } from '../ui/tree/student/StudentCourseContentTreeProvider';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
 import { WorkspaceManager } from '../services/WorkspaceManager';
 import { GitBranchManager } from '../services/GitBranchManager';
 import { GitWorktreeManager } from '../services/GitWorktreeManager';
+import { CourseSelectionService } from '../services/CourseSelectionService';
 import { SubmissionGroupStudent } from '../types/generated';
 
 // Interface for course data used in commands
@@ -207,6 +209,45 @@ export class StudentCommands {
       })
     );
 
+    // Open assignment directory in file explorer
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.student.openAssignment', async (item: any) => {
+        if (!item) {
+          return;
+        }
+        
+        let targetPath: string | undefined;
+        
+        // Check if repository is cloned
+        if (item.submissionGroup?.repository) {
+          const repoPath = item.getRepositoryPath?.();
+          if (repoPath && fs.existsSync(repoPath)) {
+            targetPath = repoPath;
+          }
+        } else if (item.courseContent?.directory && fs.existsSync(item.courseContent.directory)) {
+          targetPath = item.courseContent.directory;
+        }
+        
+        if (targetPath) {
+          // Update file explorer to show this directory
+          await vscode.commands.executeCommand('computor.fileExplorer.goToWorkspace');
+          
+          // Open the first file in the directory if exists
+          const files = fs.readdirSync(targetPath).filter(f => !f.startsWith('.'));
+          if (files.length > 0 && files[0]) {
+            const firstFile = path.join(targetPath, files[0]);
+            if (fs.statSync(firstFile).isFile()) {
+              await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(firstFile));
+            }
+          }
+          
+          vscode.window.showInformationMessage(`Assignment opened: ${path.basename(targetPath)}`);
+        } else {
+          vscode.window.showWarningMessage('Assignment directory not found. Please clone the repository first.');
+        }
+      })
+    );
+    
     // Clone repository from course content tree
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.student.cloneRepository', async (item: any) => {
@@ -221,7 +262,22 @@ export class StudentCommands {
         }
 
         const submissionGroup = item.submissionGroup;
-        const courseId = submissionGroup.course_id;
+        let courseId = submissionGroup.course_id;
+        
+        // If course_id is not in submission group, try to get it from course selection
+        if (!courseId) {
+          const courseSelection = CourseSelectionService.getInstance();
+          courseId = courseSelection.getCurrentCourseId();
+          
+          if (!courseId) {
+            console.error('[CloneRepo] Course ID is missing from submission group and no course selected:', submissionGroup);
+            vscode.window.showErrorMessage('No course selected. Please select a course first.');
+            return;
+          }
+          
+          console.log('[CloneRepo] Using course ID from course selection:', courseId);
+        }
+        
         // Get the directory from courseContent if available
         const directory = item.courseContent?.directory;
         
@@ -238,7 +294,9 @@ export class StudentCommands {
           });
 
           if (openInNewWindow === 'Open in New Window') {
-            vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(repoPath), true);
+            // Refresh the tree view instead of opening new window
+            await vscode.commands.executeCommand('computor.student.refresh');
+            vscode.window.showInformationMessage(`Assignment ready at: ${repoPath}`);
           } else if (openInNewWindow === 'Add to Workspace') {
             const workspaceFolders = vscode.workspace.workspaceFolders || [];
             const name = path.basename(repoPath);
@@ -652,7 +710,6 @@ export class StudentCommands {
         
         // Create workspace path
         const workspaceRoot = await this.workspaceManager.getWorkspaceRoot();
-        const coursePath = path.join(workspaceRoot, 'courses', course.id);
         
         // Check if repository already exists
         const gitWorktreeManager = GitWorktreeManager.getInstance();
@@ -668,12 +725,9 @@ export class StudentCommands {
           );
         }
         
-        progress.report({ increment: 40, message: 'Opening workspace...' });
+        progress.report({ increment: 40, message: 'Setting up workspace...' });
         
-        // Open the course repository in a new window
-        const courseWorkspaceUri = vscode.Uri.file(coursePath);
-        
-        // Store current course info for the new window
+        // Store current course info
         await this.context.globalState.update('selectedCourseId', course.id);
         await this.context.globalState.update('selectedCourseInfo', {
           id: course.id,
@@ -683,10 +737,13 @@ export class StudentCommands {
           courseFamilyId: course.course_family_id
         });
         
-        progress.report({ increment: 10, message: 'Opening new window...' });
+        progress.report({ increment: 10, message: 'Workspace ready!' });
         
-        // Open in new window with the course repository as the workspace
-        await vscode.commands.executeCommand('vscode.openFolder', courseWorkspaceUri, true);
+        // Refresh the student tree view to show the new course content
+        await vscode.commands.executeCommand('computor.student.refresh');
+        
+        // Show success message
+        vscode.window.showInformationMessage(`Workspace ready for ${course.title}. Check the Student View to see your assignments.`);
       });
     } catch (error: any) {
       console.error('Failed to start work session:', error);

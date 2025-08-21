@@ -11,9 +11,9 @@ export class FileExplorerProvider implements vscode.TreeDataProvider<FileItem> {
   private showHiddenFiles: boolean = false;
   private fileWatcher: vscode.FileSystemWatcher | undefined;
 
-  constructor(private context: vscode.ExtensionContext) {
+  constructor(private context: vscode.ExtensionContext, initialPath?: string) {
     // Default to workspace root or home directory
-    this.workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.env.HOME || '';
+    this.workspaceRoot = initialPath || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.env.HOME || '';
     this.currentPath = this.workspaceRoot;
     
     // Watch for file changes

@@ -1,4 +1,7 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import { UIShowcaseView } from './ui/views/UIShowcaseView';
 import { SettingsView } from './ui/views/SettingsView';
 import { ComputorAuthenticationProvider } from './authentication/ComputorAuthenticationProvider';
@@ -93,6 +96,21 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.window.showInformationMessage(`Signed in as ${session.account.label}`);
         // Set context to show authenticated views
         vscode.commands.executeCommand('setContext', 'computor.authenticated', true);
+        
+        // Check if we need to open the workspace
+        const workspacePath = path.join(os.homedir(), '.computor', 'workspace');
+        const currentWorkspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        
+        // If not in the computor workspace, open it
+        if (!currentWorkspace || !currentWorkspace.startsWith(workspacePath)) {
+          // Ensure workspace directory exists
+          if (!fs.existsSync(workspacePath)) {
+            fs.mkdirSync(workspacePath, { recursive: true });
+          }
+          
+          // Open the workspace folder (false = in same window)
+          await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(workspacePath), false);
+        }
       }
     } catch (error) {
       vscode.window.showErrorMessage(`Sign in failed: ${error}`);
@@ -279,6 +297,16 @@ export function activate(context: vscode.ExtensionContext) {
   const fileExplorerStudent = new FileExplorerProvider(context);
   const fileExplorerTutor = new FileExplorerProvider(context);
   
+  // Set initial workspace directory from settings
+  const settingsManagerForExplorer = new ComputorSettingsManager(context);
+  settingsManagerForExplorer.getWorkspaceDirectory().then(workspaceDir => {
+    if (workspaceDir && fs.existsSync(workspaceDir)) {
+      fileExplorerLecturer.setRootPath(workspaceDir);
+      fileExplorerStudent.setRootPath(workspaceDir);
+      fileExplorerTutor.setRootPath(workspaceDir);
+    }
+  });
+  
   // Create tree views for file explorers
   const lecturerFileExplorer = vscode.window.createTreeView('computor.fileExplorerLecturer', {
     treeDataProvider: fileExplorerLecturer,
@@ -313,10 +341,17 @@ export function activate(context: vscode.ExtensionContext) {
       fileExplorerStudent.goHome();
       fileExplorerTutor.goHome();
     }),
-    vscode.commands.registerCommand('computor.fileExplorer.goToWorkspace', () => {
-      fileExplorerLecturer.goToWorkspace();
-      fileExplorerStudent.goToWorkspace();
-      fileExplorerTutor.goToWorkspace();
+    vscode.commands.registerCommand('computor.fileExplorer.goToWorkspace', async () => {
+      // Get the selected workspace directory from settings
+      const workspaceDir = await settingsManagerForExplorer.getWorkspaceDirectory();
+      if (workspaceDir && fs.existsSync(workspaceDir)) {
+        fileExplorerLecturer.setRootPath(workspaceDir);
+        fileExplorerStudent.setRootPath(workspaceDir);
+        fileExplorerTutor.setRootPath(workspaceDir);
+      } else {
+        vscode.window.showWarningMessage('No workspace directory selected. Please select one first.');
+        vscode.commands.executeCommand('computor.selectWorkspaceDirectory');
+      }
     }),
     vscode.commands.registerCommand('computor.fileExplorer.toggleHidden', () => {
       fileExplorerLecturer.toggleHiddenFiles();
