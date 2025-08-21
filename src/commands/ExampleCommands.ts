@@ -17,12 +17,16 @@ export class ExampleCommands {
     private apiService: ComputorApiService,
     private treeProvider: ExampleTreeProvider
   ) {
+    console.log('[ExampleCommands] Constructor called');
     this.gitWrapper = new GitWrapper();
     this.tokenManager = GitLabTokenManager.getInstance(context);
+    console.log('[ExampleCommands] Calling registerCommands...');
     this.registerCommands();
+    console.log('[ExampleCommands] Constructor completed');
   }
 
   private registerCommands(): void {
+    console.log('[ExampleCommands] registerCommands called');
     // Checkout example command
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.checkoutExample', async (item: ExampleTreeItem) => {
@@ -58,12 +62,8 @@ export class ExampleCommands {
       })
     );
 
-    // Refresh examples command
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.refreshExamples', async () => {
-        await this.treeProvider.loadData();
-      })
-    );
+    // Refresh examples command - SKIP, already registered in extension.ts
+    // console.log('[ExampleCommands] Skipping computor.refreshExamples - registered in extension.ts');
 
     // Checkout multiple examples
     this.context.subscriptions.push(

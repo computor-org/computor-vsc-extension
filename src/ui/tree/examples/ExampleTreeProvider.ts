@@ -29,7 +29,13 @@ export class ExampleTreeProvider implements vscode.TreeDataProvider<ExampleTreeI
     private apiService: ComputorApiService
   ) {
     void context;
-    this.loadData();
+    // Load data asynchronously after construction
+    setTimeout(() => {
+      this.loadData().catch(error => {
+        console.error('[ExampleTreeProvider] Failed to load initial data:', error);
+        vscode.window.showErrorMessage(`Failed to load examples: ${error.message || error}`);
+      });
+    }, 100);
   }
 
   async loadData(clearCache: boolean = false): Promise<void> {
