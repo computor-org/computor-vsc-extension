@@ -541,6 +541,7 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             const assignmentPath = path.join(workspaceFolders[0].uri.fsPath, directory);
             hasClonedRepo = fs.existsSync(assignmentPath);
         }
+        void hasClonedRepo; // Suppress unused variable warning
         
         // Always make assignments with repositories expandable, regardless of clone status
         const shouldBeExpandable = isAssignment && hasRepository;

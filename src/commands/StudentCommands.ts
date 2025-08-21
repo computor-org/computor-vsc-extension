@@ -34,6 +34,7 @@ export class StudentCommands {
     this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
     this.workspaceManager = WorkspaceManager.getInstance(context);
     this.gitBranchManager = GitBranchManager.getInstance();
+    void this.courseContentTreeProvider; // Unused for now
   }
   
   setCourseContentTreeProvider(provider: any): void {
