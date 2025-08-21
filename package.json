@@ -17,10 +17,13 @@
     "onCommand:computor.signOut",
     "onCommand:computor.lecturer.signIn",
     "onCommand:computor.lecturer.signOut",
+    "onCommand:computor.tutor.signIn",
+    "onCommand:computor.tutor.signOut",
     "onCommand:computor.showGitStatus",
     "onCommand:computor.selectWorkspaceDirectory",
     "onAuthenticationRequest:computor",
     "onAuthenticationRequest:computor-lecturer",
+    "onAuthenticationRequest:computor-tutor",
     "onView:computor.apiTreeView",
     "onView:computor.jsonTreeView",
     "onView:computor.testResultsView",
@@ -81,6 +84,16 @@
       {
         "command": "computor.lecturer.signOut",
         "title": "Computor: Sign Out Lecturer",
+        "category": "Accounts"
+      },
+      {
+        "command": "computor.tutor.signIn",
+        "title": "Computor: Sign In as Tutor",
+        "category": "Accounts"
+      },
+      {
+        "command": "computor.tutor.signOut",
+        "title": "Computor: Sign Out Tutor",
         "category": "Accounts"
       },
       {
@@ -546,6 +559,11 @@
         "view": "computor.lecturerView",
         "contents": "Welcome to Computor Lecturer!\n\n[Sign In as Lecturer](command:computor.lecturer.signIn)\n\nSign in to access lecturer features and manage your courses.",
         "when": "!computor.lecturer.authenticated"
+      },
+      {
+        "view": "computor.tutorView",
+        "contents": "Welcome to Computor Tutor!\n\n[Sign In as Tutor](command:computor.tutor.signIn)\n\nSign in to access tutor features and review student submissions.",
+        "when": "!computor.tutor.authenticated"
       }
     ],
     "views": {
@@ -594,14 +612,14 @@
           "name": "Student Submissions",
           "icon": "$(checklist)",
           "contextualTitle": "Tutor Review",
-          "when": "computor.authenticated"
+          "when": "computor.tutor.authenticated"
         },
         {
           "id": "computor.fileExplorerTutor",
           "name": "Submission Files",
           "icon": "$(files)",
           "contextualTitle": "Submission Files",
-          "when": "computor.authenticated"
+          "when": "computor.tutor.authenticated"
         }
       ],
       "explorer": [

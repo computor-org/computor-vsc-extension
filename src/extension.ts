@@ -6,6 +6,7 @@ import { UIShowcaseView } from './ui/views/UIShowcaseView';
 import { SettingsView } from './ui/views/SettingsView';
 import { ComputorAuthenticationProvider } from './authentication/ComputorAuthenticationProvider';
 import { LecturerAuthenticationProvider } from './authentication/LecturerAuthenticationProvider';
+import { TutorAuthenticationProvider } from './authentication/TutorAuthenticationProvider';
 import { GitManager } from './git/GitManager';
 import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataProvider';
 import { LecturerCommands } from './commands/LecturerCommands';
@@ -56,6 +57,10 @@ export function activate(context: vscode.ExtensionContext) {
   // Initialize lecturer authentication provider
   const lecturerAuthProvider = new LecturerAuthenticationProvider(context);
   context.subscriptions.push(lecturerAuthProvider);
+  
+  // Initialize tutor authentication provider
+  const tutorAuthProvider = new TutorAuthenticationProvider(context);
+  context.subscriptions.push(tutorAuthProvider);
 
   // Initialize Git manager
   const gitManager = new GitManager(context);
@@ -180,6 +185,51 @@ export function activate(context: vscode.ExtensionContext) {
       }
     } catch (error) {
       vscode.window.showErrorMessage(`Lecturer sign out failed: ${error}`);
+    }
+  });
+
+  // Tutor authentication commands
+  const tutorSignInCommand = vscode.commands.registerCommand('computor.tutor.signIn', async () => {
+    try {
+      const session = await vscode.authentication.getSession('computor-tutor', [], { createIfNone: true });
+      if (session) {
+        vscode.window.showInformationMessage(`Signed in as Tutor: ${session.account.label}`);
+        // Set context to show tutor views
+        vscode.commands.executeCommand('setContext', 'computor.tutor.authenticated', true);
+        
+        // Check if we need to open the workspace
+        const workspacePath = path.join(os.homedir(), '.computor', 'workspace');
+        const currentWorkspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        
+        // If not in the computor workspace, open it
+        if (!currentWorkspace || !currentWorkspace.startsWith(workspacePath)) {
+          // Ensure workspace directory exists
+          if (!fs.existsSync(workspacePath)) {
+            fs.mkdirSync(workspacePath, { recursive: true });
+          }
+          
+          // Open the workspace folder (false = in same window)
+          await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(workspacePath), false);
+        }
+      }
+    } catch (error) {
+      vscode.window.showErrorMessage(`Tutor sign in failed: ${error}`);
+    }
+  });
+
+  const tutorSignOutCommand = vscode.commands.registerCommand('computor.tutor.signOut', async () => {
+    try {
+      const sessions = await vscode.authentication.getSession('computor-tutor', [], { createIfNone: false });
+      if (sessions) {
+        await tutorAuthProvider.removeSession(sessions.id);
+        vscode.window.showInformationMessage('Tutor signed out successfully');
+        // Clear context to hide tutor views
+        vscode.commands.executeCommand('setContext', 'computor.tutor.authenticated', false);
+      } else {
+        vscode.window.showInformationMessage('No active tutor session');
+      }
+    } catch (error) {
+      vscode.window.showErrorMessage(`Tutor sign out failed: ${error}`);
     }
   });
 
@@ -466,6 +516,13 @@ export function activate(context: vscode.ExtensionContext) {
       vscode.commands.executeCommand('setContext', 'computor.lecturer.authenticated', true);
     }
   });
+  
+  // Check for existing tutor authentication session
+  vscode.authentication.getSession('computor-tutor', [], { createIfNone: false }).then(session => {
+    if (session) {
+      vscode.commands.executeCommand('setContext', 'computor.tutor.authenticated', true);
+    }
+  });
 
   // Check and prompt for workspace directory if not set
   const settingsManager = new ComputorSettingsManager(context);
@@ -491,6 +548,8 @@ export function activate(context: vscode.ExtensionContext) {
     signOutCommand,
     lecturerSignInCommand,
     lecturerSignOutCommand,
+    tutorSignInCommand,
+    tutorSignOutCommand,
     gitStatusCommand,
     performanceReportCommand
   );
