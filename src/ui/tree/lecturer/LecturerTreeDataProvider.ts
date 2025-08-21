@@ -78,8 +78,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     console.log('Full tree refresh requested');
     console.log('Current expanded states before refresh:', Object.keys(this.expandedStates));
     
-    // Clear backend API caches
-    this.apiService.clearCourseCache('');
+    // Clear ALL backend API caches - organizations, courses, course families, etc.
+    this.clearAllCaches();
     this.paginationState.clear();
     
     // Clear all virtual scrolling services
@@ -149,6 +149,14 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   private clearCourseCache(courseId: string): void {
     // Use backend API cache clearing
     this.apiService.clearCourseCache(courseId);
+  }
+
+  /**
+   * Clear ALL caches to force a complete refresh
+   */
+  private clearAllCaches(): void {
+    // Clear all cache entries in the API service
+    this.apiService.clearAllCaches();
   }
 
   /**

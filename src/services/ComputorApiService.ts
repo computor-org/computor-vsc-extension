@@ -553,6 +553,16 @@ export class ComputorApiService {
     multiTierCache.delete(membersKey);
   }
 
+  clearAllCaches(): void {
+    // Clear ALL caches to force complete data refresh
+    console.log('[ComputorApiService] Clearing all caches...');
+    
+    // Clear the entire cache
+    multiTierCache.clear();
+    
+    console.log('[ComputorApiService] All caches cleared');
+  }
+
   async generateStudentTemplate(courseId: string): Promise<{ task_id: string }> {
     const client = await this.getHttpClient();
     const response = await client.post<{ task_id: string }>(
