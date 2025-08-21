@@ -19,11 +19,14 @@
     "onCommand:computor.lecturer.signOut",
     "onCommand:computor.tutor.signIn",
     "onCommand:computor.tutor.signOut",
+    "onCommand:computor.student.signIn",
+    "onCommand:computor.student.signOut",
     "onCommand:computor.showGitStatus",
     "onCommand:computor.selectWorkspaceDirectory",
     "onAuthenticationRequest:computor",
     "onAuthenticationRequest:computor-lecturer",
     "onAuthenticationRequest:computor-tutor",
+    "onAuthenticationRequest:computor-student",
     "onView:computor.apiTreeView",
     "onView:computor.jsonTreeView",
     "onView:computor.testResultsView",
@@ -94,6 +97,16 @@
       {
         "command": "computor.tutor.signOut",
         "title": "Computor: Sign Out Tutor",
+        "category": "Accounts"
+      },
+      {
+        "command": "computor.student.signIn",
+        "title": "Computor: Sign In as Student",
+        "category": "Accounts"
+      },
+      {
+        "command": "computor.student.signOut",
+        "title": "Computor: Sign Out Student",
         "category": "Accounts"
       },
       {
@@ -564,6 +577,11 @@
         "view": "computor.tutorView",
         "contents": "Welcome to Computor Tutor!\n\n[Sign In as Tutor](command:computor.tutor.signIn)\n\nSign in to access tutor features and review student submissions.",
         "when": "!computor.tutor.authenticated"
+      },
+      {
+        "view": "computor.studentView",
+        "contents": "Welcome to Computor Student!\n\n[Sign In as Student](command:computor.student.signIn)\n\nSign in to access your courses and assignments.",
+        "when": "!computor.student.authenticated"
       }
     ],
     "views": {
@@ -596,14 +614,14 @@
           "name": "Course Content",
           "icon": "$(book)",
           "contextualTitle": "Student Course Content",
-          "when": "computor.authenticated"
+          "when": "computor.student.authenticated"
         },
         {
           "id": "computor.fileExplorerStudent",
           "name": "Assignment Files",
           "icon": "$(files)",
           "contextualTitle": "Assignment Files",
-          "when": "computor.authenticated"
+          "when": "computor.student.authenticated"
         }
       ],
       "computor-tutor": [

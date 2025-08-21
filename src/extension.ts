@@ -7,6 +7,7 @@ import { SettingsView } from './ui/views/SettingsView';
 import { ComputorAuthenticationProvider } from './authentication/ComputorAuthenticationProvider';
 import { LecturerAuthenticationProvider } from './authentication/LecturerAuthenticationProvider';
 import { TutorAuthenticationProvider } from './authentication/TutorAuthenticationProvider';
+import { StudentAuthenticationProvider } from './authentication/StudentAuthenticationProvider';
 import { GitManager } from './git/GitManager';
 import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataProvider';
 import { LecturerCommands } from './commands/LecturerCommands';
@@ -61,6 +62,10 @@ export function activate(context: vscode.ExtensionContext) {
   // Initialize tutor authentication provider
   const tutorAuthProvider = new TutorAuthenticationProvider(context);
   context.subscriptions.push(tutorAuthProvider);
+  
+  // Initialize student authentication provider
+  const studentAuthProvider = new StudentAuthenticationProvider(context);
+  context.subscriptions.push(studentAuthProvider);
 
   // Initialize Git manager
   const gitManager = new GitManager(context);
@@ -230,6 +235,51 @@ export function activate(context: vscode.ExtensionContext) {
       }
     } catch (error) {
       vscode.window.showErrorMessage(`Tutor sign out failed: ${error}`);
+    }
+  });
+
+  // Student authentication commands
+  const studentSignInCommand = vscode.commands.registerCommand('computor.student.signIn', async () => {
+    try {
+      const session = await vscode.authentication.getSession('computor-student', [], { createIfNone: true });
+      if (session) {
+        vscode.window.showInformationMessage(`Signed in as Student: ${session.account.label}`);
+        // Set context to show student views
+        vscode.commands.executeCommand('setContext', 'computor.student.authenticated', true);
+        
+        // Check if we need to open the workspace
+        const workspacePath = path.join(os.homedir(), '.computor', 'workspace');
+        const currentWorkspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        
+        // If not in the computor workspace, open it
+        if (!currentWorkspace || !currentWorkspace.startsWith(workspacePath)) {
+          // Ensure workspace directory exists
+          if (!fs.existsSync(workspacePath)) {
+            fs.mkdirSync(workspacePath, { recursive: true });
+          }
+          
+          // Open the workspace folder (false = in same window)
+          await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(workspacePath), false);
+        }
+      }
+    } catch (error) {
+      vscode.window.showErrorMessage(`Student sign in failed: ${error}`);
+    }
+  });
+
+  const studentSignOutCommand = vscode.commands.registerCommand('computor.student.signOut', async () => {
+    try {
+      const sessions = await vscode.authentication.getSession('computor-student', [], { createIfNone: false });
+      if (sessions) {
+        await studentAuthProvider.removeSession(sessions.id);
+        vscode.window.showInformationMessage('Student signed out successfully');
+        // Clear context to hide student views
+        vscode.commands.executeCommand('setContext', 'computor.student.authenticated', false);
+      } else {
+        vscode.window.showInformationMessage('No active student session');
+      }
+    } catch (error) {
+      vscode.window.showErrorMessage(`Student sign out failed: ${error}`);
     }
   });
 
@@ -523,6 +573,13 @@ export function activate(context: vscode.ExtensionContext) {
       vscode.commands.executeCommand('setContext', 'computor.tutor.authenticated', true);
     }
   });
+  
+  // Check for existing student authentication session
+  vscode.authentication.getSession('computor-student', [], { createIfNone: false }).then(session => {
+    if (session) {
+      vscode.commands.executeCommand('setContext', 'computor.student.authenticated', true);
+    }
+  });
 
   // Check and prompt for workspace directory if not set
   const settingsManager = new ComputorSettingsManager(context);
@@ -550,6 +607,8 @@ export function activate(context: vscode.ExtensionContext) {
     lecturerSignOutCommand,
     tutorSignInCommand,
     tutorSignOutCommand,
+    studentSignInCommand,
+    studentSignOutCommand,
     gitStatusCommand,
     performanceReportCommand
   );
