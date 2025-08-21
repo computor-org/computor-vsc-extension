@@ -285,6 +285,11 @@
         "category": "Computor Student"
       },
       {
+        "command": "computor.student.openAssignment",
+        "title": "Open Assignment",
+        "category": "Computor Student"
+      },
+      {
         "command": "computor.student.viewCourse",
         "title": "View Course Details",
         "category": "Computor Student"
@@ -701,6 +706,16 @@
           "group": "navigation@2"
         },
         {
+          "command": "computor.selectWorkspaceDirectory",
+          "when": "view == computor.studentView",
+          "group": "navigation@2"
+        },
+        {
+          "command": "computor.selectWorkspaceDirectory",
+          "when": "view == computor.tutorView",
+          "group": "navigation@2"
+        },
+        {
           "command": "computor.releaseCourseContent",
           "when": "view == computor.lecturerView",
           "group": "navigation@3"
@@ -724,6 +739,36 @@
           "command": "computor.filterExamplesByTags",
           "when": "view == computor.examplesView",
           "group": "navigation@4"
+        },
+        {
+          "command": "computor.selectWorkspaceDirectory",
+          "when": "view == computor.fileExplorerLecturer",
+          "group": "navigation@1"
+        },
+        {
+          "command": "computor.fileExplorer.refresh",
+          "when": "view == computor.fileExplorerLecturer",
+          "group": "navigation@2"
+        },
+        {
+          "command": "computor.selectWorkspaceDirectory",
+          "when": "view == computor.fileExplorerStudent",
+          "group": "navigation@1"
+        },
+        {
+          "command": "computor.fileExplorer.refresh",
+          "when": "view == computor.fileExplorerStudent",
+          "group": "navigation@2"
+        },
+        {
+          "command": "computor.selectWorkspaceDirectory",
+          "when": "view == computor.fileExplorerTutor",
+          "group": "navigation@1"
+        },
+        {
+          "command": "computor.fileExplorer.refresh",
+          "when": "view == computor.fileExplorerTutor",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [

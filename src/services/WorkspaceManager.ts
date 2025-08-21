@@ -179,6 +179,21 @@ export class WorkspaceManager {
         }
         
         // Otherwise, ensure assignment worktree exists
+        console.log('[WorkspaceManager] About to call ensureAssignmentWorktree with:');
+        console.log('[WorkspaceManager] - workspaceRoot:', this.workspaceRoot);
+        console.log('[WorkspaceManager] - courseId:', courseId);
+        console.log('[WorkspaceManager] - assignmentPath:', assignmentPath);
+        
+        if (!this.workspaceRoot) {
+          throw new Error('Workspace root is not initialized');
+        }
+        if (!courseId) {
+          throw new Error('Course ID is undefined');
+        }
+        if (!assignmentPath) {
+          throw new Error('Assignment path is undefined');
+        }
+        
         const resultPath = await this.gitWorktreeManager.ensureAssignmentWorktree(
           this.workspaceRoot,
           courseId,

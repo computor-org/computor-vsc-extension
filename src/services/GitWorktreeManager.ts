@@ -22,6 +22,12 @@ export class GitWorktreeManager {
    * Get the path for the shared repository (.git-repo)
    */
   getSharedRepoPath(workspaceRoot: string, courseId: string): string {
+    if (!workspaceRoot) {
+      throw new Error('Workspace root is undefined');
+    }
+    if (!courseId) {
+      throw new Error('Course ID is undefined');
+    }
     return path.join(workspaceRoot, 'courses', courseId, '.git-repo');
   }
 

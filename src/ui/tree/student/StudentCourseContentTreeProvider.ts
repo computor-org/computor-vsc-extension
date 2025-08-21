@@ -451,9 +451,9 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             const isCloned = this.checkIfCloned();
             if (isCloned) {
                 this.command = {
-                    command: 'vscode.openFolder',
-                    title: 'Open Repository',
-                    arguments: [vscode.Uri.file(this.getRepositoryPath()), { forceNewWindow: false }]
+                    command: 'computor.student.openAssignment',
+                    title: 'Open Assignment',
+                    arguments: [this]
                 };
             } else {
                 this.command = {
@@ -465,9 +465,9 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         } else if (directory && fs.existsSync(directory)) {
             // If we have a directory field and it exists, allow opening it
             this.command = {
-                command: 'vscode.openFolder',
-                title: 'Open Directory',
-                arguments: [vscode.Uri.file(directory), { forceNewWindow: false }]
+                command: 'computor.student.openAssignment',
+                title: 'Open Assignment',
+                arguments: [this]
             };
         } else if (this.courseContent.example_id) {
             // For non-repository assignments, show info

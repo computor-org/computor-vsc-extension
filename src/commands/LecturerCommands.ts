@@ -195,14 +195,17 @@ export class LecturerCommands {
       canSelectFolders: true,
       canSelectFiles: false,
       canSelectMany: false,
-      openLabel: 'Select Repository Directory',
-      title: 'Select Directory for Cloned Repositories'
+      openLabel: 'Select Workspace Directory',
+      title: 'Select Workspace Directory'
     });
 
     if (result && result.length > 0 && result[0]) {
       const directory = result[0].fsPath;
       await this.settingsManager.setWorkspaceDirectory(directory);
-      vscode.window.showInformationMessage(`Repository directory set to: ${directory}`);
+      vscode.window.showInformationMessage(`Workspace directory set to: ${directory}`);
+      
+      // Update file explorers to show new workspace
+      await vscode.commands.executeCommand('computor.fileExplorer.goToWorkspace');
     }
   }
 
