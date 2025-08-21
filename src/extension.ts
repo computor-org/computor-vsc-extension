@@ -112,6 +112,17 @@ export function activate(context: vscode.ExtensionContext) {
   // Lecturer authentication commands
   const lecturerSignInCommand = vscode.commands.registerCommand('computor.lecturer.signIn', async () => {
     try {
+      // First, sign out of other roles
+      const tutorSession = await vscode.authentication.getSession('computor-tutor', [], { createIfNone: false });
+      if (tutorSession) {
+        await tutorAuthProvider.removeSession(tutorSession.id);
+      }
+      const studentSession = await vscode.authentication.getSession('computor-student', [], { createIfNone: false });
+      if (studentSession) {
+        await studentAuthProvider.removeSession(studentSession.id);
+      }
+      
+      // Now sign in as lecturer
       const session = await vscode.authentication.getSession('computor-lecturer', [], { createIfNone: true });
       if (session) {
         vscode.window.showInformationMessage(`Signed in as Lecturer: ${session.account.label}`);
@@ -159,6 +170,17 @@ export function activate(context: vscode.ExtensionContext) {
   // Tutor authentication commands
   const tutorSignInCommand = vscode.commands.registerCommand('computor.tutor.signIn', async () => {
     try {
+      // First, sign out of other roles
+      const lecturerSession = await vscode.authentication.getSession('computor-lecturer', [], { createIfNone: false });
+      if (lecturerSession) {
+        await lecturerAuthProvider.removeSession(lecturerSession.id);
+      }
+      const studentSession = await vscode.authentication.getSession('computor-student', [], { createIfNone: false });
+      if (studentSession) {
+        await studentAuthProvider.removeSession(studentSession.id);
+      }
+      
+      // Now sign in as tutor
       const session = await vscode.authentication.getSession('computor-tutor', [], { createIfNone: true });
       if (session) {
         vscode.window.showInformationMessage(`Signed in as Tutor: ${session.account.label}`);
@@ -206,6 +228,17 @@ export function activate(context: vscode.ExtensionContext) {
   // Student authentication commands
   const studentSignInCommand = vscode.commands.registerCommand('computor.student.signIn', async () => {
     try {
+      // First, sign out of other roles
+      const lecturerSession = await vscode.authentication.getSession('computor-lecturer', [], { createIfNone: false });
+      if (lecturerSession) {
+        await lecturerAuthProvider.removeSession(lecturerSession.id);
+      }
+      const tutorSession = await vscode.authentication.getSession('computor-tutor', [], { createIfNone: false });
+      if (tutorSession) {
+        await tutorAuthProvider.removeSession(tutorSession.id);
+      }
+      
+      // Now sign in as student
       const session = await vscode.authentication.getSession('computor-student', [], { createIfNone: true });
       if (session) {
         vscode.window.showInformationMessage(`Signed in as Student: ${session.account.label}`);
