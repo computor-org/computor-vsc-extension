@@ -115,10 +115,10 @@ export function activate(context: vscode.ExtensionContext) {
       const session = await vscode.authentication.getSession('computor-lecturer', [], { createIfNone: true });
       if (session) {
         vscode.window.showInformationMessage(`Signed in as Lecturer: ${session.account.label}`);
-        // Set context to show lecturer views and hide others
-        vscode.commands.executeCommand('setContext', 'computor.lecturer.authenticated', true);
-        vscode.commands.executeCommand('setContext', 'computor.tutor.authenticated', false);
-        vscode.commands.executeCommand('setContext', 'computor.student.authenticated', false);
+        // Set context to show lecturer views and hide others (await to ensure they complete)
+        await vscode.commands.executeCommand('setContext', 'computor.lecturer.authenticated', true);
+        await vscode.commands.executeCommand('setContext', 'computor.tutor.authenticated', false);
+        await vscode.commands.executeCommand('setContext', 'computor.student.authenticated', false);
         
         // Check if we need to open the workspace
         const workspacePath = path.join(os.homedir(), '.computor', 'workspace');
@@ -162,10 +162,10 @@ export function activate(context: vscode.ExtensionContext) {
       const session = await vscode.authentication.getSession('computor-tutor', [], { createIfNone: true });
       if (session) {
         vscode.window.showInformationMessage(`Signed in as Tutor: ${session.account.label}`);
-        // Set context to show tutor views and hide others
-        vscode.commands.executeCommand('setContext', 'computor.tutor.authenticated', true);
-        vscode.commands.executeCommand('setContext', 'computor.lecturer.authenticated', false);
-        vscode.commands.executeCommand('setContext', 'computor.student.authenticated', false);
+        // Set context to show tutor views and hide others (await to ensure they complete)
+        await vscode.commands.executeCommand('setContext', 'computor.tutor.authenticated', true);
+        await vscode.commands.executeCommand('setContext', 'computor.lecturer.authenticated', false);
+        await vscode.commands.executeCommand('setContext', 'computor.student.authenticated', false);
         
         // Check if we need to open the workspace
         const workspacePath = path.join(os.homedir(), '.computor', 'workspace');
@@ -209,10 +209,10 @@ export function activate(context: vscode.ExtensionContext) {
       const session = await vscode.authentication.getSession('computor-student', [], { createIfNone: true });
       if (session) {
         vscode.window.showInformationMessage(`Signed in as Student: ${session.account.label}`);
-        // Set context to show student views and hide others
-        vscode.commands.executeCommand('setContext', 'computor.student.authenticated', true);
-        vscode.commands.executeCommand('setContext', 'computor.lecturer.authenticated', false);
-        vscode.commands.executeCommand('setContext', 'computor.tutor.authenticated', false);
+        // Set context to show student views and hide others (await to ensure they complete)
+        await vscode.commands.executeCommand('setContext', 'computor.student.authenticated', true);
+        await vscode.commands.executeCommand('setContext', 'computor.lecturer.authenticated', false);
+        await vscode.commands.executeCommand('setContext', 'computor.tutor.authenticated', false);
         
         // Clear any persisted course selection to force fresh selection
         await context.globalState.update('selectedCourseId', undefined);
@@ -262,9 +262,8 @@ export function activate(context: vscode.ExtensionContext) {
           // Switch to course workspace
           await courseSelectionService.switchToCourse(courseInfo);
           
-          // Check if we need to clone/update the repository
-          const workspaceDir = await settingsManager.getWorkspaceDirectory();
-          const courseWorkspace = path.join(workspaceDir || os.homedir(), 'computor', 'courses', selectedCourse.id);
+          // Use the same workspace root as assignments
+          const courseWorkspace = path.join(os.homedir(), '.computor', 'workspace');
           
           // Ensure directory exists
           if (!fs.existsSync(courseWorkspace)) {
@@ -273,7 +272,7 @@ export function activate(context: vscode.ExtensionContext) {
           
           // Check if we need to switch workspace
           const currentWorkspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-          if (!currentWorkspace || currentWorkspace !== courseWorkspace) {
+          if (!currentWorkspace || !currentWorkspace.startsWith(courseWorkspace)) {
             // Open the course workspace folder
             await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(courseWorkspace), false);
           }

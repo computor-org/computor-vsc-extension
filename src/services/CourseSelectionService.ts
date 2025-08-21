@@ -30,7 +30,7 @@ export class CourseSelectionService {
         this.context = context;
         this.apiService = apiService;
         this.statusBarService = statusBarService;
-        this.workspaceRoot = path.join(os.homedir(), 'computor');
+        this.workspaceRoot = path.join(os.homedir(), '.computor', 'workspace');
         
         // Load last selected course
         this.loadLastSelectedCourse();
@@ -120,8 +120,8 @@ export class CourseSelectionService {
         this.currentCourseId = course.id;
         this.currentCourseInfo = course;
 
-        // Update workspace folder
-        const courseWorkspace = path.join(this.workspaceRoot, 'courses', course.id);
+        // Update workspace folder - use the same workspace root as assignments
+        const courseWorkspace = this.workspaceRoot;
         
         // Ensure directory exists
         try {
@@ -173,10 +173,7 @@ export class CourseSelectionService {
     }
 
     getCourseWorkspacePath(): string | undefined {
-        if (!this.currentCourseId) {
-            return undefined;
-        }
-        return path.join(this.workspaceRoot, 'courses', this.currentCourseId);
+        return this.workspaceRoot;
     }
 
     async ensureCourseSelected(): Promise<CourseInfo | undefined> {

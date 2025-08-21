@@ -307,10 +307,8 @@ export class StudentCommands {
             );
           }
 
-          // Only refresh the specific content item, not the entire tree
-          if (this.courseContentTreeProvider && 'refreshContentItem' in this.courseContentTreeProvider) {
-            this.courseContentTreeProvider.refreshContentItem((item as any).courseContent?.id);
-          }
+          // Refresh the tree to show cloned files
+          this.treeDataProvider.refresh();
 
           vscode.window.showInformationMessage(`Repository cloned successfully to ${repoPath}`);
         } catch (error: any) {

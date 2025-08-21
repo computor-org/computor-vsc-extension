@@ -86,14 +86,17 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
             const contentType = element.contentType;
             const isAssignment = contentType?.course_content_kind_id === 'assignment';
             const directory = (element.courseContent as any).directory;
+            const hasRepository = !!element.submissionGroup?.repository;
             
-            if (isAssignment && directory) {
+            if (isAssignment && hasRepository) {
                 const workspaceFolders = vscode.workspace.workspaceFolders || [];
-                if (workspaceFolders.length > 0 && workspaceFolders[0]) {
+                
+                // Check if repository is cloned
+                if (directory && workspaceFolders.length > 0 && workspaceFolders[0]) {
                     const assignmentPath = path.join(workspaceFolders[0].uri.fsPath, directory);
                     
                     if (fs.existsSync(assignmentPath)) {
-                        // Read directory contents and create file/folder items
+                        // Repository is cloned - show actual files
                         try {
                             const readdir = promisify(fs.readdir);
                             const stat = promisify(fs.stat);
@@ -125,10 +128,13 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                             return items;
                         } catch (error) {
                             console.error('Error reading assignment directory:', error);
-                            return [];
+                            return [new CloneRepositoryTreeItem(element)];
                         }
                     }
                 }
+                
+                // Repository not cloned - show clone option
+                return [new CloneRepositoryTreeItem(element)];
             }
             return [];
         }
@@ -218,10 +224,8 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                         return [new MessageItem('No courses available', 'info')];
                     }
                     
-                    // Add a helpful message about starting work session
-                    const items: TreeItem[] = [
-                        new MessageItem('👆 Click "Start Work Session" (🚀) to begin', 'info')
-                    ];
+                    // Show courses directly without the start session message
+                    const items: TreeItem[] = [];
                     
                     // Add course items
                     items.push(...this.courses.map(course => new CourseTreeItem(course)));
@@ -527,8 +531,9 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         void expanded; // Not used but required for type consistency
         const label = courseContent.title || courseContent.path;
         
-        // If this is an assignment with a cloned repository, make it collapsible to show files
+        // Make assignments with repositories always expandable
         const isAssignment = contentType?.course_content_kind_id === 'assignment';
+        const hasRepository = !!submissionGroup?.repository;
         const directory = (courseContent as any).directory;
         const workspaceFolders = vscode.workspace.workspaceFolders || [];
         let hasClonedRepo = false;
@@ -537,7 +542,9 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             hasClonedRepo = fs.existsSync(assignmentPath);
         }
         
-        super(label, hasClonedRepo ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
+        // Always make assignments with repositories expandable, regardless of clone status
+        const shouldBeExpandable = isAssignment && hasRepository;
+        super(label, shouldBeExpandable ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
         
         this.id = courseContent.id;
         this.setupIcon();
@@ -545,55 +552,12 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         this.setupTooltip();
         this.setupContextValue();
         
-        // Add command to open/clone repository if this is an assignment with repository
-        const assignmentDir = (this.courseContent as any).directory;
-        
-        if (this.submissionGroup?.repository) {
-            const isCloned = this.checkIfCloned();
-            if (isCloned) {
-                this.command = {
-                    command: 'computor.student.openAssignment',
-                    title: 'Open Assignment',
-                    arguments: [this]
-                };
-            } else {
-                this.command = {
-                    command: 'computor.student.cloneRepository',
-                    title: 'Clone Repository',
-                    arguments: [this]
-                };
-            }
-        } else if (assignmentDir && fs.existsSync(assignmentDir)) {
-            // If we have a directory field and it exists, allow opening it
-            this.command = {
-                command: 'computor.student.openAssignment',
-                title: 'Open Assignment',
-                arguments: [this]
-            };
-        } else if (this.courseContent.example_id) {
-            // For non-repository assignments, show info
-            this.command = {
-                command: 'computor.student.viewContent',
-                title: 'View Assignment Details',
-                arguments: [this]
-            };
-        }
+        // Don't add commands to assignments since they are now expandable to show filesystem
+        // Commands will be shown as child items when expanded
     }
     
     private setupIcon(): void {
-        // Priority 1: Check if repository is cloned (for assignments with repos)
-        if (this.submissionGroup?.repository) {
-            const isCloned = this.checkIfCloned();
-            if (isCloned) {
-                this.iconPath = new vscode.ThemeIcon('check', new vscode.ThemeColor('terminal.ansiGreen'));
-                return;
-            } else {
-                this.iconPath = new vscode.ThemeIcon('cloud-download', new vscode.ThemeColor('terminal.ansiBlue'));
-                return;
-            }
-        }
-        
-        // Priority 2: Use colored icon based on content type
+        // Use colored icon based on content type
         if (this.contentType?.color) {
             try {
                 // Map content type slug to appropriate icon shape
@@ -614,13 +578,6 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         // Fallback to default theme icons
         if (this.courseContent.example_id) {
             this.iconPath = new vscode.ThemeIcon('file-code');
-        } else if (this.submissionGroup?.repository) {
-            const isCloned = this.checkIfCloned();
-            if (isCloned) {
-                this.iconPath = new vscode.ThemeIcon('check', new vscode.ThemeColor('terminal.ansiGreen'));
-            } else {
-                this.iconPath = new vscode.ThemeIcon('cloud-download', new vscode.ThemeColor('terminal.ansiBlue'));
-            }
         } else {
             this.iconPath = new vscode.ThemeIcon('file');
         }
@@ -640,12 +597,6 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         // Content type
         if (this.contentType?.title) {
             parts.push(this.contentType.title);
-        }
-        
-        // Clone status for repository assignments
-        if (this.submissionGroup?.repository) {
-            const isCloned = this.checkIfCloned();
-            parts.push(isCloned ? '✓ Cloned' : 'Clone required');
         }
         
         // Team indicator
@@ -773,6 +724,25 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         const gitWorktreeManager = GitWorktreeManager.getInstance();
         const workspaceRoot = path.join(os.homedir(), '.computor', 'workspace');
         return gitWorktreeManager.getWorktreePath(workspaceRoot, courseId, contentPath);
+    }
+}
+
+// Clone repository item for showing when repository needs to be cloned
+class CloneRepositoryTreeItem extends TreeItem {
+    constructor(public readonly courseContentItem: CourseContentItem) {
+        super('📥 Click to clone repository', vscode.TreeItemCollapsibleState.None);
+        
+        this.id = `clone-${courseContentItem.courseContent.id}`;
+        this.contextValue = 'cloneRepository';
+        this.iconPath = new vscode.ThemeIcon('cloud-download', new vscode.ThemeColor('charts.blue'));
+        
+        this.command = {
+            command: 'computor.student.cloneRepository',
+            title: 'Clone Repository',
+            arguments: [courseContentItem]
+        };
+        
+        this.tooltip = 'Click to clone the assignment repository and start working';
     }
 }
 
