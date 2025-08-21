@@ -261,25 +261,25 @@ export class StudentCommands {
       })
     );
 
-    // Submit assignment
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.student.submitAssignment', async (item: any) => {
-        if (!item || !item.content.example_id) {
-          vscode.window.showErrorMessage('This content does not have an assignment');
-          return;
-        }
+    // Submit assignment - REMOVED: duplicate registration, see line 441 for the actual implementation
+    // this.context.subscriptions.push(
+    //   vscode.commands.registerCommand('computor.student.submitAssignment', async (item: any) => {
+    //     if (!item || !item.content.example_id) {
+    //       vscode.window.showErrorMessage('This content does not have an assignment');
+    //       return;
+    //     }
 
-        // Here we would typically:
-        // 1. Commit and push changes
-        // 2. Create a merge request
-        // 3. Notify the system of submission
+    //     // Here we would typically:
+    //     // 1. Commit and push changes
+    //     // 2. Create a merge request
+    //     // 3. Notify the system of submission
         
-        vscode.window.showInformationMessage(
-          `Assignment submission functionality coming soon!`,
-          'OK'
-        );
-      })
-    );
+    //     vscode.window.showInformationMessage(
+    //       `Assignment submission functionality coming soon!`,
+    //       'OK'
+    //     );
+    //   })
+    // );
 
     // Open course in browser (if GitLab URL exists)
     this.context.subscriptions.push(
@@ -581,24 +581,63 @@ export class StudentCommands {
       
       const course = selected.course;
       
-      // Clone the course repository
+      // Clone the student's repository
       await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
         title: `Setting up workspace for ${course.title}...`,
         cancellable: false
       }, async (progress) => {
-        progress.report({ increment: 20, message: 'Checking repository...' });
+        progress.report({ increment: 10, message: 'Fetching course contents...' });
         
-        if (!course.repository) {
-          vscode.window.showErrorMessage('No repository available for this course');
+        // Fetch the student's course contents to get their repository information
+        const courseContents = await this.apiService.getStudentCourseContents(course.id);
+        
+        if (!courseContents || courseContents.length === 0) {
+          vscode.window.showErrorMessage('No course contents available');
           return;
         }
         
-        const repo = course.repository;
-        const cloneUrl = repo.clone_url;
+        progress.report({ increment: 10, message: 'Checking repository...' });
+        
+        // Find unique student repositories from submission groups
+        const studentRepositories = new Map<string, any>();
+        
+        for (const content of courseContents) {
+          if (content.submission_group?.repository) {
+            const repo = content.submission_group.repository;
+            if (repo.full_path) {
+              // Use full_path as unique key to avoid duplicates
+              studentRepositories.set(repo.full_path, repo);
+            }
+          }
+        }
+        
+        if (studentRepositories.size === 0) {
+          vscode.window.showErrorMessage('No student repository available. Please contact your instructor.');
+          return;
+        }
+        
+        // For now, use the first repository (later we might handle multiple repositories)
+        const studentRepo = Array.from(studentRepositories.values())[0];
+        
+        if (studentRepositories.size > 1) {
+          // Log a warning if there are multiple repositories
+          console.warn(`Found ${studentRepositories.size} different student repositories for course ${course.id}. Using: ${studentRepo.full_path}`);
+        }
+        
+        // Use the student's repository clone URL
+        const cloneUrl = studentRepo.clone_url || 
+          (studentRepo.full_path && studentRepo.url 
+            ? `${studentRepo.url}/${studentRepo.full_path}.git`
+            : undefined);
+        
+        if (!cloneUrl) {
+          vscode.window.showErrorMessage('Student repository URL is incomplete');
+          return;
+        }
         
         // Get GitLab token
-        const gitlabUrl = repo.provider_url;
+        const gitlabUrl = studentRepo.url || studentRepo.provider_url;
         const token = await this.gitLabTokenManager.ensureTokenForUrl(gitlabUrl);
         
         if (!token) {
@@ -606,7 +645,7 @@ export class StudentCommands {
           return;
         }
         
-        progress.report({ increment: 30, message: 'Cloning repository...' });
+        progress.report({ increment: 30, message: 'Cloning student repository...' });
         
         // Build authenticated URL
         const authenticatedUrl = this.gitLabTokenManager.buildAuthenticatedCloneUrl(cloneUrl, token);
@@ -620,7 +659,7 @@ export class StudentCommands {
         const repoExists = await gitWorktreeManager.sharedRepoExists(workspaceRoot, course.id);
         
         if (!repoExists) {
-          // Clone the shared repository
+          // Clone the student's repository
           await gitWorktreeManager.cloneSharedRepository(
             workspaceRoot,
             course.id,
