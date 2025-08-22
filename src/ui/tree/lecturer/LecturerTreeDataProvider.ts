@@ -62,8 +62,9 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   // Virtual scrolling services for large datasets
   private virtualScrollServices: Map<string, VirtualScrollingService<any>> = new Map();
 
-  constructor(context: vscode.ExtensionContext) {
-    this.apiService = new ComputorApiService(context);
+  constructor(context: vscode.ExtensionContext, apiService?: ComputorApiService) {
+    // Use provided apiService or create a new one
+    this.apiService = apiService || new ComputorApiService(context);
     this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
     this.settingsManager = new ComputorSettingsManager(context);
     

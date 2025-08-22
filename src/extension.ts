@@ -311,8 +311,12 @@ class ComputorExtension {
   }
 
   private async activateLecturerRole(disposables: vscode.Disposable[]): Promise<void> {
-    // Create tree data provider
-    const treeDataProvider = new LecturerTreeDataProvider(this.context);
+    if (!this.apiService) {
+      throw new Error('API service not initialized');
+    }
+    
+    // Create tree data provider with shared API service
+    const treeDataProvider = new LecturerTreeDataProvider(this.context, this.apiService);
     
     // Register tree view
     const treeView = vscode.window.createTreeView('computor.lecturer.courses', {
@@ -322,8 +326,8 @@ class ComputorExtension {
     });
     disposables.push(treeView);
 
-    // Register commands
-    const commands = new LecturerCommands(this.context, treeDataProvider);
+    // Register commands with shared API service
+    const commands = new LecturerCommands(this.context, treeDataProvider, this.apiService);
     commands.registerCommands();
 
     // Track tree expansion state
@@ -366,8 +370,8 @@ class ComputorExtension {
     });
     disposables.push(treeView);
 
-    // Register commands
-    const commands = new StudentCommands(this.context, treeDataProvider);
+    // Register commands with shared API service
+    const commands = new StudentCommands(this.context, treeDataProvider, this.apiService);
     commands.registerCommands();
 
     // Track tree expansion state
@@ -381,8 +385,12 @@ class ComputorExtension {
   }
 
   private async activateTutorRole(disposables: vscode.Disposable[]): Promise<void> {
-    // Create tree data provider
-    const treeDataProvider = new TutorTreeDataProvider(this.context);
+    if (!this.apiService) {
+      throw new Error('API service not initialized');
+    }
+    
+    // Create tree data provider with shared API service
+    const treeDataProvider = new TutorTreeDataProvider(this.context, this.apiService);
     
     // Register tree view
     const treeView = vscode.window.createTreeView('computor.tutor.courses', {
@@ -392,8 +400,8 @@ class ComputorExtension {
     });
     disposables.push(treeView);
 
-    // Register commands
-    const commands = new TutorCommands(this.context, treeDataProvider);
+    // Register commands with shared API service
+    const commands = new TutorCommands(this.context, treeDataProvider, this.apiService);
     commands.registerCommands();
   }
 

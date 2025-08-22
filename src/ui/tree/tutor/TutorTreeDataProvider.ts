@@ -108,8 +108,9 @@ export class TutorTreeDataProvider implements vscode.TreeDataProvider<vscode.Tre
   private repositoriesCache: Map<string, ExampleRepository[]> = new Map();
   private examplesCache: Map<string, Example[]> = new Map();
 
-  constructor(context: vscode.ExtensionContext) {
-    this.apiService = new ComputorApiService(context);
+  constructor(context: vscode.ExtensionContext, apiService?: ComputorApiService) {
+    // Use provided apiService or create a new one
+    this.apiService = apiService || new ComputorApiService(context);
   }
 
   refresh(): void {

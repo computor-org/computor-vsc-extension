@@ -12,10 +12,15 @@ export class TutorCommands {
   private apiService: ComputorApiService;
   private workspaceManager: WorkspaceManager;
 
-  constructor(context: vscode.ExtensionContext, treeDataProvider: TutorTreeDataProvider) {
+  constructor(
+    context: vscode.ExtensionContext, 
+    treeDataProvider: TutorTreeDataProvider,
+    apiService?: ComputorApiService
+  ) {
     this.context = context;
     this.treeDataProvider = treeDataProvider;
-    this.apiService = new ComputorApiService(context);
+    // Use provided apiService or create a new one
+    this.apiService = apiService || new ComputorApiService(context);
     this.workspaceManager = WorkspaceManager.getInstance(context);
   }
 

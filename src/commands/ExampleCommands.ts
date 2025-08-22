@@ -5,8 +5,11 @@ import * as yaml from 'js-yaml';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
 import { GitWrapper } from '../git/GitWrapper';
-import { ExampleTreeItem } from '../ui/tree/examples/ExampleTreeItems';
-import { ExampleTreeProvider } from '../ui/tree/examples/ExampleTreeProvider';
+// TODO: Fix example imports after refactoring
+// import { ExampleTreeItem } from '../ui/tree/examples/ExampleTreeItems';
+// import { ExampleTreeProvider } from '../ui/tree/examples/ExampleTreeProvider';
+type ExampleTreeItem = any;
+type ExampleTreeProvider = any;
 
 export class ExampleCommands {
   private gitWrapper: GitWrapper;

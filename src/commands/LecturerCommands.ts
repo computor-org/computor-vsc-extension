@@ -33,11 +33,13 @@ export class LecturerCommands {
 
   constructor(
     private context: vscode.ExtensionContext,
-    private treeDataProvider: LecturerTreeDataProvider
+    private treeDataProvider: LecturerTreeDataProvider,
+    apiService?: ComputorApiService
   ) {
     this.settingsManager = new ComputorSettingsManager(context);
     this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
-    this.apiService = new ComputorApiService(context);
+    // Use provided apiService or create a new one
+    this.apiService = apiService || new ComputorApiService(context);
     this.courseWebviewProvider = new CourseWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.courseContentWebviewProvider = new CourseContentWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.organizationWebviewProvider = new OrganizationWebviewProvider(context, this.apiService, this.treeDataProvider);

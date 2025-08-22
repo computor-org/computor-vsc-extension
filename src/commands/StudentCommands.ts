@@ -27,10 +27,15 @@ export class StudentCommands {
   private workspaceManager: WorkspaceManager;
   private gitBranchManager: GitBranchManager;
 
-  constructor(context: vscode.ExtensionContext, treeDataProvider: StudentCourseContentTreeProvider) {
+  constructor(
+    context: vscode.ExtensionContext, 
+    treeDataProvider: StudentCourseContentTreeProvider,
+    apiService?: ComputorApiService
+  ) {
     this.context = context;
     this.treeDataProvider = treeDataProvider;
-    this.apiService = new ComputorApiService(context);
+    // Use provided apiService or create a new one
+    this.apiService = apiService || new ComputorApiService(context);
     this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
     this.workspaceManager = WorkspaceManager.getInstance(context);
     this.gitBranchManager = GitBranchManager.getInstance();
