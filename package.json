@@ -543,7 +543,7 @@
         "when": "!computor.tutor.authenticated"
       },
       {
-        "view": "computor.studentView",
+        "view": "computor.student.courseContent",
         "contents": "Welcome to Computor Student!\n\n[Sign In as Student](command:computor.student.signIn)\n\nSign in to access your courses and assignments.",
         "when": "!computor.student.authenticated"
       }
@@ -653,27 +653,27 @@
         },
         {
           "command": "computor.student.refresh",
-          "when": "view == computor.studentView",
+          "when": "view == computor.student.courseContent",
           "group": "navigation@1"
         },
         {
           "command": "computor.student.startWorkSession",
-          "when": "view == computor.studentView",
+          "when": "view == computor.student.courseContent",
           "group": "navigation@1"
         },
         {
           "command": "computor.student.selectCourse",
-          "when": "view == computor.studentView",
+          "when": "view == computor.student.courseContent",
           "group": "navigation@2"
         },
         {
           "command": "computor.student.refreshCourseContent",
-          "when": "view == computor.studentView",
+          "when": "view == computor.student.courseContent",
           "group": "navigation@3"
         },
         {
           "command": "computor.student.selectCourse",
-          "when": "view == computor.studentView",
+          "when": "view == computor.student.courseContent",
           "group": "navigation@2"
         },
         {
@@ -688,7 +688,7 @@
         },
         {
           "command": "computor.selectWorkspaceDirectory",
-          "when": "view == computor.studentView",
+          "when": "view == computor.student.courseContent",
           "group": "navigation@2"
         },
         {
@@ -870,47 +870,47 @@
         },
         {
           "command": "computor.student.viewCourse",
-          "when": "view == computor.studentView && viewItem == studentCourse",
+          "when": "view == computor.student.courseContent && viewItem == studentCourse",
           "group": "1_details@1"
         },
         {
           "command": "computor.student.cloneCourseRepository",
-          "when": "view == computor.studentView && viewItem == studentCourse",
+          "when": "view == computor.student.courseContent && viewItem == studentCourse",
           "group": "2_actions@1"
         },
         {
           "command": "computor.student.openInBrowser",
-          "when": "view == computor.studentView && viewItem == studentCourse",
+          "when": "view == computor.student.courseContent && viewItem == studentCourse",
           "group": "2_actions@2"
         },
         {
           "command": "computor.student.viewContent",
-          "when": "view == computor.studentView && viewItem =~ /studentContent/",
+          "when": "view == computor.student.courseContent && viewItem =~ /studentContent/",
           "group": "1_details@1"
         },
         {
           "command": "computor.student.startAssignment",
-          "when": "view == computor.studentView && viewItem == studentContentWithExample",
+          "when": "view == computor.student.courseContent && viewItem == studentContentWithExample",
           "group": "2_actions@1"
         },
         {
           "command": "computor.student.submitAssignment",
-          "when": "view == computor.studentView && viewItem == studentContentWithExample",
+          "when": "view == computor.student.courseContent && viewItem == studentContentWithExample",
           "group": "2_actions@2"
         },
         {
           "command": "computor.student.cloneSubmissionGroupRepository",
-          "when": "view == computor.studentView && viewItem == studentSubmissionGroupWithRepo",
+          "when": "view == computor.student.courseContent && viewItem == studentSubmissionGroupWithRepo",
           "group": "2_actions@1"
         },
         {
           "command": "computor.student.viewSubmissionGroup",
-          "when": "view == computor.studentView && viewItem =~ /studentSubmissionGroup/",
+          "when": "view == computor.student.courseContent && viewItem =~ /studentSubmissionGroup/",
           "group": "1_details@1"
         },
         {
           "command": "computor.student.syncAllRepositories",
-          "when": "view == computor.studentView && viewItem == studentCourse",
+          "when": "view == computor.student.courseContent && viewItem == studentCourse",
           "group": "3_sync@1"
         },
         {
