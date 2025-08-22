@@ -10,6 +10,7 @@ import { LecturerCommands } from './commands/LecturerCommands';
 import { StudentCommands } from './commands/StudentCommands';
 import { TutorCommands } from './commands/TutorCommands';
 import { LecturerExampleCommands } from './commands/LecturerExampleCommands';
+import { IconGenerator } from './utils/IconGenerator';
 
 interface RoleConfiguration {
   role: 'student' | 'tutor' | 'lecturer';
@@ -44,6 +45,9 @@ class ComputorExtension {
 
   async activate(): Promise<void> {
     console.log('Computor extension is activating...');
+
+    // Initialize IconGenerator for colored icons
+    IconGenerator.initialize(this.context);
 
     // Register base commands that are always available
     this.registerBaseCommands();
@@ -461,6 +465,8 @@ class ComputorExtension {
 
   deactivate(): void {
     this.clearAllRoles();
+    // Clean up generated icons
+    IconGenerator.cleanup();
   }
 }
 

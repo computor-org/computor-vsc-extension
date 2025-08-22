@@ -95,14 +95,10 @@ export class CourseContentTreeItem extends vscode.TreeItem {
       parts.push('nonSubmittable');
     }
     
-    // Check if it's an assignment based on content type slug or kind
-    const isAssignmentLike = this.contentType?.slug?.toLowerCase().includes('assignment') ||
-                            this.contentType?.slug?.toLowerCase().includes('exercise') ||
-                            this.contentType?.slug?.toLowerCase().includes('homework') ||
-                            this.contentType?.slug?.toLowerCase().includes('task') ||
-                            this.isSubmittable;
+    // Check if it's an assignment based on course_content_kind_id
+    const isAssignment = this.contentType?.course_content_kind_id === 'assignment';
     
-    if (isAssignmentLike) {
+    if (isAssignment) {
       parts.push('assignment');
       if (this.courseContent.example_id) {
         parts.push('hasExample');
@@ -119,30 +115,23 @@ export class CourseContentTreeItem extends vscode.TreeItem {
   }
 
   private getIcon(): vscode.ThemeIcon | vscode.Uri {
-    // Use colored icon based on content type
-    if (this.contentType?.color) {
-      try {
-        // Map content type slug to appropriate icon shape
-        const isAssignment = this.contentType.slug?.toLowerCase().includes('assignment') ||
-                            this.contentType.slug?.toLowerCase().includes('exercise') ||
-                            this.contentType.slug?.toLowerCase().includes('homework') ||
-                            this.contentType.slug?.toLowerCase().includes('task');
-        
-        // Use square for assignments, circle for units/others
-        const shape = isAssignment ? 'square' : 'circle';
-        return IconGenerator.getColoredIcon(this.contentType.color, shape);
-      } catch {
-        // Fallback to default icons
-      }
-    }
+    // Use the color from contentType, or grey as default
+    const color = this.contentType?.color || 'grey';
     
-    // Fallback to default theme icons
-    if (this.courseContent.example_id) {
-      return new vscode.ThemeIcon('file-code');
-    } else if (this.hasChildren) {
-      return new vscode.ThemeIcon('folder');
-    } else {
-      return new vscode.ThemeIcon('file');
+    try {
+      // Determine shape based on course_content_kind_id
+      // 'assignment' gets square, 'unit' (or anything else) gets circle
+      const shape = this.contentType?.course_content_kind_id === 'assignment' ? 'square' : 'circle';
+      return IconGenerator.getColoredIcon(color, shape);
+    } catch {
+      // Fallback to default theme icons if icon generation fails
+      if (this.courseContent.example_id) {
+        return new vscode.ThemeIcon('file-code');
+      } else if (this.hasChildren) {
+        return new vscode.ThemeIcon('folder');
+      } else {
+        return new vscode.ThemeIcon('file');
+      }
     }
   }
 
