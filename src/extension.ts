@@ -355,8 +355,16 @@ class ComputorExtension {
     // The full implementation would require StatusBarService which we're not using yet
     const courseSelection = {
       getCurrentCourse: () => null,
-      selectCourse: async (courseId: string) => { console.log('Selected course:', courseId); },
-      getWorkspaceRoot: () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || ''
+      getCurrentCourseId: () => undefined,
+      getCurrentCourseInfo: () => undefined,
+      getCourseWorkspacePath: () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '',
+      getWorkspaceRoot: () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '',
+      selectCourse: async (courseId?: string) => { 
+        console.log('Selected course:', courseId); 
+        return undefined;
+      },
+      ensureCourseSelected: async () => undefined,
+      clearSelection: async () => { console.log('Cleared course selection'); }
     } as any;
     
     // Create tree data provider
