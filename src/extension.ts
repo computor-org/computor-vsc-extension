@@ -3,6 +3,7 @@ import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
 import { ComputorApiService } from './services/ComputorApiService';
 import { BasicAuthHttpClient } from './http/BasicAuthHttpClient';
 import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataProvider';
+import { LecturerExampleTreeProvider } from './ui/tree/lecturer/LecturerExampleTreeProvider';
 import { StudentCourseContentTreeProvider } from './ui/tree/student/StudentCourseContentTreeProvider';
 import { TutorTreeDataProvider } from './ui/tree/tutor/TutorTreeDataProvider';
 import { LecturerCommands } from './commands/LecturerCommands';
@@ -322,13 +323,45 @@ class ComputorExtension {
     const treeView = vscode.window.createTreeView('computor.lecturer.courses', {
       treeDataProvider,
       showCollapseAll: true,
-      canSelectMany: false
+      canSelectMany: false,
+      dragAndDropController: treeDataProvider
     });
     disposables.push(treeView);
+
+    // Create example tree provider
+    const exampleTreeProvider = new LecturerExampleTreeProvider(this.context, this.apiService);
+    
+    // Register example tree view with drag support
+    const exampleTreeView = vscode.window.createTreeView('computor.lecturer.examples', {
+      treeDataProvider: exampleTreeProvider,
+      showCollapseAll: true,
+      canSelectMany: true,
+      dragAndDropController: exampleTreeProvider
+    });
+    disposables.push(exampleTreeView);
 
     // Register commands with shared API service
     const commands = new LecturerCommands(this.context, treeDataProvider, this.apiService);
     commands.registerCommands();
+    
+    // Register example-specific commands
+    disposables.push(
+      vscode.commands.registerCommand('computor.refreshExamples', () => {
+        exampleTreeProvider.refresh();
+      }),
+      vscode.commands.registerCommand('computor.searchExamples', async () => {
+        const query = await vscode.window.showInputBox({
+          prompt: 'Search examples by title, identifier, or tags',
+          placeHolder: 'Enter search query'
+        });
+        if (query !== undefined) {
+          exampleTreeProvider.setSearchQuery(query);
+        }
+      }),
+      vscode.commands.registerCommand('computor.clearExampleSearch', () => {
+        exampleTreeProvider.clearSearch();
+      })
+    );
 
     // Track tree expansion state
     treeView.onDidExpandElement(async (e) => {
