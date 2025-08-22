@@ -5,8 +5,11 @@ import {
   ExampleList
 } from '../../../types/generated';
 
+// Export tree items for use in commands
+export { ExampleRepositoryTreeItem, ExampleTreeItem };
+
 // Tree items for example view
-export class ExampleRepositoryTreeItem extends vscode.TreeItem {
+class ExampleRepositoryTreeItem extends vscode.TreeItem {
   constructor(
     public readonly repository: ExampleRepositoryList,
     public readonly collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.Collapsed
@@ -20,7 +23,7 @@ export class ExampleRepositoryTreeItem extends vscode.TreeItem {
   }
 }
 
-export class ExampleTreeItem extends vscode.TreeItem {
+class ExampleTreeItem extends vscode.TreeItem {
   constructor(
     public readonly example: ExampleList,
     public readonly repository: ExampleRepositoryList

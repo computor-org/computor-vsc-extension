@@ -1,23 +1,21 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as yaml from 'js-yaml';
+import JSZip from 'jszip';
 import { ComputorApiService } from '../services/ComputorApiService';
-import { ExampleTreeItem, LecturerExampleTreeProvider } from '../ui/tree/lecturer/LecturerExampleTreeProvider';
-// import { GitWrapper } from '../git/GitWrapper'; // Will be used for git operations
-// import { ExampleUploadRequest } from '../types/generated';
+import { ExampleTreeItem, ExampleRepositoryTreeItem, LecturerExampleTreeProvider } from '../ui/tree/lecturer/LecturerExampleTreeProvider';
+import { ExampleUploadRequest } from '../types/generated';
 
 /**
  * Simplified example commands for the lecturer view
  */
 export class LecturerExampleCommands {
-  // private gitWrapper: GitWrapper; // Will be used for git operations
-
   constructor(
     private context: vscode.ExtensionContext,
     private apiService: ComputorApiService,
     private treeProvider: LecturerExampleTreeProvider
   ) {
-    // this.gitWrapper = new GitWrapper(); // Will be used for git operations
     this.registerCommands();
   }
 
@@ -129,8 +127,8 @@ export class LecturerExampleCommands {
 
     // Upload examples from ZIP
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.uploadExamplesFromZip', async () => {
-        vscode.window.showInformationMessage('Upload examples from ZIP - not yet implemented');
+      vscode.commands.registerCommand('computor.uploadExamplesFromZip', async (item?: ExampleRepositoryTreeItem) => {
+        await this.uploadExamplesFromZip(item);
       })
     );
 
@@ -187,6 +185,7 @@ export class LecturerExampleCommands {
    * Upload an existing example
    */
   private async uploadExample(item?: ExampleTreeItem): Promise<void> {
+    void item; // Currently unused - keeping for future enhancement
     // If no item provided, ask user to select a folder
     const folderUri = await vscode.window.showOpenDialog({
       canSelectFolders: true,
@@ -372,5 +371,240 @@ Explain how to use this example.
     vscode.window.showInformationMessage(`Uploading example from ${metaFile.fsPath} - not yet fully implemented`);
     
     // TODO: Read meta.yaml, package the example, and upload
+  }
+
+  /**
+   * Upload examples from a ZIP file to a repository
+   */
+  private async uploadExamplesFromZip(item?: ExampleRepositoryTreeItem): Promise<void> {
+    try {
+      // Get repository - either from selected item or ask user
+      let repositoryId: string;
+      let repositoryName: string;
+      
+      if (item && item.repository) {
+        repositoryId = item.repository.id;
+        repositoryName = item.repository.name;
+      } else {
+        // Ask user to select a repository
+        const repositories = await this.apiService.getExampleRepositories();
+        if (repositories.length === 0) {
+          vscode.window.showErrorMessage('No example repositories available');
+          return;
+        }
+        
+        const selected = await vscode.window.showQuickPick(
+          repositories.map(r => ({
+            label: r.name,
+            description: r.description || undefined,
+            id: r.id
+          })),
+          { placeHolder: 'Select repository to upload examples to' }
+        );
+        
+        if (!selected) {
+          return;
+        }
+        
+        repositoryId = selected.id;
+        repositoryName = selected.label;
+      }
+
+      // Show file picker for ZIP file
+      const zipFileUri = await vscode.window.showOpenDialog({
+        canSelectFiles: true,
+        canSelectFolders: false,
+        canSelectMany: false,
+        filters: {
+          'ZIP Archives': ['zip']
+        },
+        title: 'Select ZIP file containing examples'
+      });
+
+      if (!zipFileUri || zipFileUri.length === 0) {
+        return;
+      }
+
+      const firstFile = zipFileUri[0];
+      if (!firstFile) {
+        return;
+      }
+      const zipFilePath = firstFile.fsPath;
+      const zipFileName = path.basename(zipFilePath);
+
+      // Read the ZIP file
+      const zipContent = await fs.promises.readFile(zipFilePath);
+      const zip = new JSZip();
+
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: `Processing ${zipFileName}`,
+        cancellable: false
+      }, async (progress) => {
+        progress.report({ increment: 0, message: 'Loading ZIP file...' });
+
+        // Load the ZIP content
+        const loadedZip = await zip.loadAsync(zipContent);
+
+        // Find all directories that contain meta.yaml files
+        const allPaths = Object.keys(loadedZip.files).filter(path => 
+          !path.startsWith('__MACOSX/') && !path.includes('/.')
+        );
+        
+        const metaYamlPaths = allPaths.filter(path => path.endsWith('meta.yaml'));
+        
+        if (metaYamlPaths.length === 0) {
+          throw new Error('No meta.yaml files found in the ZIP archive');
+        }
+
+        progress.report({ increment: 20, message: `Found ${metaYamlPaths.length} example(s)...` });
+
+        // Process each example
+        const examples: Array<{
+          directory: string;
+          title: string;
+          identifier: string;
+          files: { [key: string]: string };
+        }> = [];
+
+        for (const metaPath of metaYamlPaths) {
+          const directoryPath = metaPath.replace('/meta.yaml', '');
+          const directoryName = directoryPath.includes('/') ? 
+            directoryPath.split('/').pop()! : directoryPath;
+
+          // Read meta.yaml content
+          const metaFile = loadedZip.files[metaPath];
+          if (!metaFile) {
+            console.warn(`Skipping ${directoryPath}: meta.yaml file not found in ZIP`);
+            continue;
+          }
+          const metaContent = await metaFile.async('string');
+          const metaData = yaml.load(metaContent) as any;
+
+          if (!metaData) {
+            console.warn(`Skipping ${directoryPath}: Failed to parse meta.yaml`);
+            continue;
+          }
+
+          // Collect all files in this directory
+          const files: { [key: string]: string } = {};
+          const directoryPrefix = directoryPath === directoryName ? directoryName + '/' : directoryPath + '/';
+
+          for (const [filePath, zipEntry] of Object.entries(loadedZip.files)) {
+            const entry = zipEntry as JSZip.JSZipObject;
+            if (!entry.dir && filePath.startsWith(directoryPrefix) && 
+                !filePath.startsWith('__MACOSX/') && !filePath.includes('/.')) {
+              
+              const relativePath = filePath.substring(directoryPrefix.length);
+              
+              try {
+                const content = await entry.async('string');
+                files[relativePath] = content;
+              } catch (err) {
+                console.warn(`Failed to extract ${filePath}:`, err);
+              }
+            }
+          }
+
+          examples.push({
+            directory: directoryName,
+            title: metaData.title || directoryName,
+            identifier: metaData.identifier || metaData.slug || directoryName,
+            files
+          });
+        }
+
+        if (examples.length === 0) {
+          throw new Error('No valid examples found in ZIP file');
+        }
+
+        // Show selection dialog with all items preselected
+        const quickPickItems = examples.map(ex => ({
+          label: ex.title,
+          description: ex.identifier,
+          detail: `${Object.keys(ex.files).length} files`,
+          example: ex,
+          picked: true  // Preselect all items
+        }));
+
+        const selectedItems = await vscode.window.showQuickPick(
+          quickPickItems,
+          {
+            canPickMany: true,
+            placeHolder: `Select examples to upload to ${repositoryName}`,
+            title: 'Select Examples to Upload'
+          }
+        );
+
+        if (!selectedItems || selectedItems.length === 0) {
+          return;
+        }
+
+        progress.report({ increment: 40, message: `Uploading ${selectedItems.length} example(s)...` });
+
+        // Upload selected examples
+        let successCount = 0;
+        const errors: string[] = [];
+
+        for (let i = 0; i < selectedItems.length; i++) {
+          const item = selectedItems[i];
+          if (!item) continue;
+          const example = item.example;
+          
+          progress.report({ 
+            increment: 40 + (40 * i / selectedItems.length), 
+            message: `Uploading ${example.title}...` 
+          });
+
+          try {
+            const uploadRequest: ExampleUploadRequest = {
+              repository_id: repositoryId,
+              directory: example.directory,
+              files: example.files
+            };
+
+            await this.apiService.uploadExample(uploadRequest);
+            successCount++;
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            errors.push(`${example.title}: ${errorMsg}`);
+            console.error(`Failed to upload ${example.title}:`, error);
+          }
+        }
+
+        progress.report({ increment: 100, message: 'Complete!' });
+
+        // Show results
+        if (successCount === selectedItems.length) {
+          vscode.window.showInformationMessage(
+            `Successfully uploaded ${successCount} example(s) to ${repositoryName}`
+          );
+        } else if (successCount > 0) {
+          vscode.window.showWarningMessage(
+            `Uploaded ${successCount} of ${selectedItems.length} examples. Errors: ${errors.join('; ')}`
+          );
+        } else {
+          vscode.window.showErrorMessage(
+            `Failed to upload examples. Errors: ${errors.join('; ')}`
+          );
+        }
+
+        // Refresh the tree to show new examples
+        if (successCount > 0) {
+          // Add a small delay to ensure the backend has processed the uploads
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // Refresh the tree
+          this.treeProvider.refresh();
+          
+          console.log(`Refreshed tree after uploading ${successCount} examples`);
+        }
+      });
+
+    } catch (error) {
+      console.error('Failed to upload examples from ZIP:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`Failed to upload examples: ${errorMessage}`);
+    }
   }
 }
