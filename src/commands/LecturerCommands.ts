@@ -57,21 +57,43 @@ export class LecturerCommands {
       })
     );
 
-    // Tree refresh
+    // Tree refresh - register both command names for compatibility
+    const refreshHandler = async () => {
+      console.log('=== LECTURER TREE REFRESH COMMAND TRIGGERED ===');
+      
+      // Clear ALL API caches first - this is crucial
+      console.log('Clearing all API caches...');
+      this.apiService.clearCourseCache(''); // Clear all course caches
+      
+      // Use the standard refresh mechanism
+      console.log('Refreshing lecturer tree...');
+      this.treeDataProvider.refresh();
+      
+      console.log('Tree refresh completed');
+      vscode.window.showInformationMessage('✅ Lecturer tree refreshed successfully!');
+    };
+    
+    // Register with both command names for backward compatibility
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.refreshLecturerTree', async () => {
-        console.log('=== LECTURER TREE REFRESH COMMAND TRIGGERED ===');
-        
-        // Clear ALL API caches first - this is crucial
-        console.log('Clearing all API caches...');
-        this.apiService.clearCourseCache(''); // Clear all course caches
-        
-        // Use the standard refresh mechanism
-        console.log('Refreshing lecturer tree...');
-        this.treeDataProvider.refresh();
-        
-        console.log('Tree refresh completed');
-        vscode.window.showInformationMessage('✅ Lecturer tree refreshed successfully!');
+      vscode.commands.registerCommand('computor.refreshLecturerTree', refreshHandler)
+    );
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.refreshCourses', refreshHandler)
+    );
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.refresh', refreshHandler)
+    );
+
+    // Course management commands
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.createCourse', async () => {
+        await this.createCourse();
+      })
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.manageCourse', async (item: CourseTreeItem) => {
+        await this.manageCourse(item);
       })
     );
 
@@ -190,6 +212,265 @@ export class LecturerCommands {
         await this.showCourseGroupDetails(item);
       })
     );
+  }
+
+  /**
+   * Create a new course
+   */
+  private async createCourse(): Promise<void> {
+    // Get organization
+    const organizations = await this.apiService.getOrganizations();
+    if (!organizations || organizations.length === 0) {
+      vscode.window.showErrorMessage('No organizations available');
+      return;
+    }
+
+    const selectedOrg = await vscode.window.showQuickPick(
+      organizations.map(org => ({
+        label: org.title || org.path,
+        description: org.path,
+        organization: org
+      })),
+      { placeHolder: 'Select organization' }
+    );
+
+    if (!selectedOrg) {
+      return;
+    }
+
+    // Get course family  
+    const families = await this.apiService.getCourseFamilies(selectedOrg.organization.id);
+    if (!families || families.length === 0) {
+      vscode.window.showErrorMessage('No course families available in this organization');
+      return;
+    }
+
+    const selectedFamily = await vscode.window.showQuickPick(
+      families.map(family => ({
+        label: family.title || family.path,
+        description: family.path,
+        family: family
+      })),
+      { placeHolder: 'Select course family' }
+    );
+
+    if (!selectedFamily) {
+      return;
+    }
+
+    // Get course details
+    const coursePath = await vscode.window.showInputBox({
+      prompt: 'Enter course path (URL-friendly identifier)',
+      placeHolder: 'e.g., cs101-2024, intro-programming-fall',
+      validateInput: (value) => {
+        if (!value) {
+          return 'Course path is required';
+        }
+        if (!/^[a-z0-9-]+$/.test(value)) {
+          return 'Path must contain only lowercase letters, numbers, and hyphens';
+        }
+        return null;
+      }
+    });
+
+    if (!coursePath) {
+      return;
+    }
+
+    const courseTitle = await vscode.window.showInputBox({
+      prompt: 'Enter course title',
+      placeHolder: 'e.g., Introduction to Computer Science',
+      value: coursePath.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+    });
+
+    if (!courseTitle) {
+      return;
+    }
+
+    try {
+      // TODO: Implement createCourse in ComputorApiService
+      // For now, show a message that this feature is coming soon
+      vscode.window.showInformationMessage(
+        `Course creation feature is coming soon! Would create: "${courseTitle}" in ${selectedFamily.family.title}`
+      );
+      
+      // When API is ready, uncomment:
+      // await this.apiService.createCourse({
+      //   path: coursePath,
+      //   title: courseTitle,
+      //   course_family_id: selectedFamily.family.id
+      // });
+      // vscode.window.showInformationMessage(`Course "${courseTitle}" created successfully!`);
+      // this.treeDataProvider.refresh();
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to create course: ${error}`);
+    }
+  }
+
+  /**
+   * Manage course settings and properties
+   */
+  private async manageCourse(item?: CourseTreeItem): Promise<void> {
+    let course;
+    
+    if (item) {
+      course = item.course;
+    } else {
+      // If no item provided, ask user to select a course
+      const courses = await this.getAllCourses();
+      if (!courses || courses.length === 0) {
+        vscode.window.showInformationMessage('No courses available');
+        return;
+      }
+
+      const selected = await vscode.window.showQuickPick(
+        courses.map(c => ({
+          label: c.title || c.path,
+          description: `${c.organization?.title || ''} > ${c.course_family?.title || ''}`,
+          course: c
+        })),
+        { placeHolder: 'Select course to manage' }
+      );
+
+      if (!selected) {
+        return;
+      }
+      course = selected.course;
+    }
+
+    // Show management options
+    const action = await vscode.window.showQuickPick([
+      { label: '$(edit) Edit Course Details', value: 'edit' },
+      { label: '$(repo) Configure GitLab Repository', value: 'gitlab' },
+      { label: '$(gear) Course Settings', value: 'settings' },
+      { label: '$(trash) Delete Course', value: 'delete' }
+    ], {
+      placeHolder: `Manage: ${course.title || course.path}`
+    });
+
+    if (!action) {
+      return;
+    }
+
+    switch (action.value) {
+      case 'edit':
+        await this.editCourseDetails(course);
+        break;
+      case 'gitlab':
+        await this.configureGitLabRepository(course);
+        break;
+      case 'settings':
+        await this.showCourseSettings(course);
+        break;
+      case 'delete':
+        await this.deleteCourse(course);
+        break;
+    }
+  }
+
+  private async getAllCourses(): Promise<any[]> {
+    const courses: any[] = [];
+    const organizations = await this.apiService.getOrganizations();
+    
+    for (const org of organizations || []) {
+      const families = await this.apiService.getCourseFamilies(org.id);
+      for (const family of families || []) {
+        const familyCourses = await this.apiService.getCourses(family.id);
+        courses.push(...(familyCourses || []).map(c => ({
+          ...c,
+          organization: org,
+          course_family: family
+        })));
+      }
+    }
+    
+    return courses;
+  }
+
+  private async editCourseDetails(course: any): Promise<void> {
+    const newTitle = await vscode.window.showInputBox({
+      prompt: 'Enter new course title',
+      value: course.title || course.path
+    });
+
+    if (!newTitle || newTitle === course.title) {
+      return;
+    }
+
+    try {
+      await this.apiService.updateCourse(course.id, { title: newTitle });
+      vscode.window.showInformationMessage('Course updated successfully');
+      this.treeDataProvider.refresh();
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to update course: ${error}`);
+    }
+  }
+
+  private async configureGitLabRepository(course: any): Promise<void> {
+    const repoUrl = await vscode.window.showInputBox({
+      prompt: 'Enter GitLab repository URL',
+      placeHolder: 'https://gitlab.example.com/org/repo.git',
+      value: course.properties?.gitlab?.url || ''
+    });
+
+    if (!repoUrl) {
+      return;
+    }
+
+    try {
+      await this.apiService.updateCourse(course.id, {
+        properties: {
+          ...course.properties,
+          gitlab: {
+            ...course.properties?.gitlab,
+            url: repoUrl
+          }
+        }
+      });
+      vscode.window.showInformationMessage('GitLab repository configured successfully');
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to configure repository: ${error}`);
+    }
+  }
+
+  private async showCourseSettings(course: any): Promise<void> {
+    // For now, just show the course details webview
+    if (course) {
+      await this.courseWebviewProvider.show(
+        `Course Settings: ${course.title || course.path}`,
+        {
+          course: course,
+          courseFamily: course.course_family,
+          organization: course.organization
+        }
+      );
+    }
+  }
+
+  private async deleteCourse(course: any): Promise<void> {
+    const confirmation = await vscode.window.showWarningMessage(
+      `Are you sure you want to delete the course "${course.title || course.path}"? This action cannot be undone.`,
+      { modal: true },
+      'Delete',
+      'Cancel'
+    );
+
+    if (confirmation === 'Delete') {
+      try {
+        // TODO: Implement deleteCourse in ComputorApiService
+        // For now, show a message that this feature is coming soon
+        vscode.window.showInformationMessage(
+          `Course deletion feature is coming soon! Would delete: "${course.title || course.path}"`
+        );
+        
+        // When API is ready, uncomment:
+        // await this.apiService.deleteCourse(course.id);
+        // vscode.window.showInformationMessage('Course deleted successfully');
+        // this.treeDataProvider.refresh();
+      } catch (error) {
+        vscode.window.showErrorMessage(`Failed to delete course: ${error}`);
+      }
+    }
   }
 
   private async selectWorkspaceDirectory(): Promise<void> {

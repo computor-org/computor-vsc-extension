@@ -533,7 +533,7 @@
     ],
     "viewsWelcome": [
       {
-        "view": "computor.lecturerView",
+        "view": "computor.lecturer.courses",
         "contents": "Welcome to Computor Lecturer!\n\n[Sign In as Lecturer](command:computor.lecturer.signIn)\n\nSign in to access lecturer features and manage your courses.",
         "when": "!computor.lecturer.authenticated"
       },
@@ -648,7 +648,7 @@
         },
         {
           "command": "computor.refreshLecturerTree",
-          "when": "view == computor.lecturerView",
+          "when": "view == computor.lecturer.courses",
           "group": "navigation@1"
         },
         {
@@ -683,7 +683,7 @@
         },
         {
           "command": "computor.selectWorkspaceDirectory",
-          "when": "view == computor.lecturerView",
+          "when": "view == computor.lecturer.courses",
           "group": "navigation@2"
         },
         {
@@ -698,7 +698,7 @@
         },
         {
           "command": "computor.releaseCourseContent",
-          "when": "view == computor.lecturerView",
+          "when": "view == computor.lecturer.courses",
           "group": "navigation@3"
         },
         {
@@ -790,82 +790,82 @@
         },
         {
           "command": "computor.createCourseContent",
-          "when": "view == computor.lecturerView && viewItem =~ /course\\.contents/",
+          "when": "view == computor.lecturer.courses && viewItem =~ /course\\.contents/",
           "group": "1_content@1"
         },
         {
           "command": "computor.createCourseContent",
-          "when": "view == computor.lecturerView && viewItem =~ /courseContent\\.nonSubmittable/",
+          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent\\.nonSubmittable/",
           "group": "1_content@1"
         },
         {
           "command": "computor.createCourseContentType",
-          "when": "view == computor.lecturerView && viewItem == course.contentTypes",
+          "when": "view == computor.lecturer.courses && viewItem == course.contentTypes",
           "group": "1_content@1"
         },
         {
           "command": "computor.createCourseGroup",
-          "when": "view == computor.lecturerView && viewItem == course.groups",
+          "when": "view == computor.lecturer.courses && viewItem == course.groups",
           "group": "1_content@1"
         },
         {
           "command": "computor.renameCourseContent",
-          "when": "view == computor.lecturerView && viewItem =~ /courseContent/",
+          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent/",
           "group": "2_edit@1"
         },
         {
           "command": "computor.deleteCourseContent",
-          "when": "view == computor.lecturerView && viewItem =~ /courseContent/",
+          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent/",
           "group": "3_delete@1"
         },
         {
           "command": "computor.assignExample",
-          "when": "view == computor.lecturerView && viewItem =~ /courseContent.*assignment.*noExample/",
+          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment.*noExample/",
           "group": "4_example@1"
         },
         {
           "command": "computor.unassignExample",
-          "when": "view == computor.lecturerView && viewItem =~ /courseContent.*assignment.*hasExample/",
+          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment.*hasExample/",
           "group": "4_example@1"
         },
         {
           "command": "computor.showCourseDetails",
-          "when": "view == computor.lecturerView && viewItem == course",
+          "when": "view == computor.lecturer.courses && viewItem == course",
           "group": "5_details@1"
         },
         {
           "command": "computor.showCourseContentDetails",
-          "when": "view == computor.lecturerView && viewItem =~ /courseContent/",
+          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent/",
           "group": "5_details@1"
         },
         {
           "command": "computor.showOrganizationDetails",
-          "when": "view == computor.lecturerView && viewItem == organization",
+          "when": "view == computor.lecturer.courses && viewItem == organization",
           "group": "5_details@1"
         },
         {
           "command": "computor.showCourseFamilyDetails",
-          "when": "view == computor.lecturerView && viewItem == courseFamily",
+          "when": "view == computor.lecturer.courses && viewItem == courseFamily",
           "group": "5_details@1"
         },
         {
           "command": "computor.showCourseContentTypeDetails",
-          "when": "view == computor.lecturerView && viewItem == courseContentType",
+          "when": "view == computor.lecturer.courses && viewItem == courseContentType",
           "group": "5_details@1"
         },
         {
           "command": "computor.showCourseGroupDetails",
-          "when": "view == computor.lecturerView && viewItem == course.group",
+          "when": "view == computor.lecturer.courses && viewItem == course.group",
           "group": "5_details@1"
         },
         {
           "command": "computor.openGitLabRepo",
-          "when": "view == computor.lecturerView && viewItem =~ /course/",
+          "when": "view == computor.lecturer.courses && viewItem =~ /course/",
           "group": "5_gitlab@1"
         },
         {
           "command": "computor.releaseCourseContent",
-          "when": "view == computor.lecturerView && viewItem == course",
+          "when": "view == computor.lecturer.courses && viewItem == course",
           "group": "5_gitlab@2"
         },
         {
