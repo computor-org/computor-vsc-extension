@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { 
   ExampleRepositoryList,
-  ExampleGet
+  ExampleList
 } from '../../../types/generated';
 
 // Tree items for example view
@@ -22,7 +22,7 @@ export class ExampleRepositoryTreeItem extends vscode.TreeItem {
 
 export class ExampleTreeItem extends vscode.TreeItem {
   constructor(
-    public readonly example: ExampleGet,
+    public readonly example: ExampleList,
     public readonly repository: ExampleRepositoryList
   ) {
     super(example.title, vscode.TreeItemCollapsibleState.None);
@@ -89,15 +89,13 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
   
   // Caches
   private repositoriesCache: ExampleRepositoryList[] | null = null;
-  private examplesCache: Map<string, ExampleGet[]> = new Map();
+  private examplesCache: Map<string, ExampleList[]> = new Map();
 
   constructor(
     context: vscode.ExtensionContext,
     providedApiService?: ComputorApiService
   ) {
     this.apiService = providedApiService || new ComputorApiService(context);
-    // API service will be used when example API endpoints are ready
-    void this.apiService;
   }
 
   refresh(): void {
@@ -137,22 +135,15 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
 
   private async getExampleRepositories(): Promise<ExampleRepositoryTreeItem[]> {
     if (!this.repositoriesCache) {
-      // TODO: Implement getExampleRepositories in ComputorApiService
-      // For now, return empty array or mock data
-      // Will use: const repos = await this.apiService.getExampleRepositories();
-      this.repositoriesCache = [];
-      
-      // Mock data for testing (remove this when API is ready)
-      this.repositoriesCache = [
-        {
-          id: 'repo-1',
-          name: 'Default Examples',
-          description: 'Built-in example repository',
-          source_type: 'git',
-          source_url: 'https://gitlab.com/examples/default',
-          organization_id: 'org-1'
-        } as ExampleRepositoryList
-      ];
+      try {
+        // Fetch example repositories from API
+        this.repositoriesCache = await this.apiService.getExampleRepositories();
+        console.log(`Loaded ${this.repositoriesCache.length} example repositories`);
+      } catch (error) {
+        console.error('Failed to load example repositories:', error);
+        vscode.window.showErrorMessage(`Failed to load example repositories: ${error}`);
+        this.repositoriesCache = [];
+      }
     }
 
     return this.repositoriesCache.map(repo => 
@@ -164,27 +155,16 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
     const cacheKey = repository.id;
     
     if (!this.examplesCache.has(cacheKey)) {
-      // TODO: Implement getExamplesForRepository in ComputorApiService
-      // For now, return empty array or mock data
-      
-      // Mock data for testing (remove this when API is ready)
-      const mockExamples: ExampleGet[] = [
-        {
-          id: 'ex-1',
-          directory: 'hello-world',
-          identifier: 'hello-world-basic',
-          title: 'Hello World Example',
-          subject: 'Programming Basics',
-          category: 'Introduction',
-          tags: ['beginner', 'hello-world'],
-          example_repository_id: repository.id,
-          dependencies: [],
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        } as ExampleGet
-      ];
-      
-      this.examplesCache.set(cacheKey, mockExamples);
+      try {
+        // Fetch examples for this repository from API
+        const examples = await this.apiService.getExamples(repository.id);
+        console.log(`Loaded ${examples.length} examples for repository ${repository.name}`);
+        this.examplesCache.set(cacheKey, examples);
+      } catch (error) {
+        console.error(`Failed to load examples for repository ${repository.name}:`, error);
+        vscode.window.showErrorMessage(`Failed to load examples: ${error}`);
+        this.examplesCache.set(cacheKey, []);
+      }
     }
 
     const examples = this.examplesCache.get(cacheKey) || [];
@@ -246,7 +226,7 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
     const draggedExamples = source.map(item => ({
       exampleId: item.example.id,
       title: item.example.title,
-      repositoryId: item.repository.id
+      repositoryId: item.example.example_repository_id
     }));
     
     treeDataTransfer.set('application/vnd.code.tree.computorexample', 
