@@ -1,10 +1,6 @@
 import * as vscode from 'vscode';
 import { JwtHttpClient } from '../http/JwtHttpClient';
-import { LecturerAuthenticationProvider } from '../authentication/LecturerAuthenticationProvider';
-import { TutorAuthenticationProvider } from '../authentication/TutorAuthenticationProvider';
-import { StudentAuthenticationProvider } from '../authentication/StudentAuthenticationProvider';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
-import { ComputorAuthenticationSession } from '../types/AuthenticationTypes';
 import { errorRecoveryService } from './ErrorRecoveryService';
 import { requestBatchingService } from './RequestBatchingService';
 import { multiTierCache } from './CacheService';
@@ -56,12 +52,14 @@ interface ExampleQuery {
 export class ComputorApiService {
   private httpClient?: JwtHttpClient;
   private settingsManager: ComputorSettingsManager;
+  private context: vscode.ExtensionContext;
   
   // Batched method versions for improved performance
   public readonly batchedGetCourseContents: (courseId: string) => Promise<CourseContentList[] | undefined>;
   public readonly batchedGetCourseContentTypes: (courseId: string) => Promise<CourseContentTypeList[] | undefined>;
 
   constructor(context: vscode.ExtensionContext) {
+    this.context = context;
     this.settingsManager = new ComputorSettingsManager(context);
     
     // Create batched versions of frequently called methods
@@ -82,29 +80,16 @@ export class ComputorApiService {
     if (!this.httpClient) {
       const settings = await this.settingsManager.getSettings();
       
-      // Try to get session from any of the role providers
-      let session = await vscode.authentication.getSession('computor-lecturer', [], { createIfNone: false });
-      let authHeaders: Record<string, string> | undefined;
+      // Try to get stored credentials
+      const username = await this.context.secrets.get('computor.username');
+      const password = await this.context.secrets.get('computor.password');
       
-      if (session) {
-        authHeaders = LecturerAuthenticationProvider.getAuthHeaders(session as ComputorAuthenticationSession);
-      } else {
-        session = await vscode.authentication.getSession('computor-tutor', [], { createIfNone: false });
-        if (session) {
-          authHeaders = TutorAuthenticationProvider.getAuthHeaders(session as ComputorAuthenticationSession);
-        } else {
-          session = await vscode.authentication.getSession('computor-student', [], { createIfNone: false });
-          if (session) {
-            authHeaders = StudentAuthenticationProvider.getAuthHeaders(session as ComputorAuthenticationSession);
-          }
-        }
+      if (!username || !password) {
+        throw new Error('Not authenticated. Please login first using the Computor: Login command.');
       }
       
-      if (!session || !authHeaders) {
-        throw new Error('Not authenticated. Please sign in first.');
-      }
-      
-      // For now, use a dummy Keycloak config since we're using token auth
+      // For now, we'll use JwtHttpClient with basic auth headers
+      // In future, we should refactor to use BasicAuthHttpClient directly
       const keycloakConfig = {
         serverUrl: '',
         realm: '',
@@ -118,15 +103,12 @@ export class ComputorApiService {
         5000
       );
       
-      // Set the auth headers directly
+      // Set basic auth headers
+      const authHeaders = {
+        'Authorization': `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`,
+        'Content-Type': 'application/json; charset=utf-8'
+      };
       this.httpClient.setDefaultHeaders(authHeaders);
-      
-      // If we have a Bearer token, set it directly
-      const authHeader = authHeaders['Authorization'];
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        const token = authHeader.substring(7);
-        this.httpClient.setTokens(token);
-      }
     }
     return this.httpClient;
   }

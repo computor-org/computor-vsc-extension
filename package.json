@@ -10,20 +10,7 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:computor.activate",
-    "onCommand:computor.showUIComponents",
-    "onCommand:computor.showSettings",
-    "onCommand:computor.lecturer.signIn",
-    "onCommand:computor.lecturer.signOut",
-    "onCommand:computor.tutor.signIn",
-    "onCommand:computor.tutor.signOut",
-    "onCommand:computor.student.signIn",
-    "onCommand:computor.student.signOut",
-    "onCommand:computor.showGitStatus",
-    "onCommand:computor.selectWorkspaceDirectory",
-    "onAuthenticationRequest:computor-lecturer",
-    "onAuthenticationRequest:computor-tutor",
-    "onAuthenticationRequest:computor-student"
+    "onStartupFinished"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -48,6 +35,16 @@
     },
     "commands": [
       {
+        "command": "computor.login",
+        "title": "Computor: Login",
+        "category": "Computor"
+      },
+      {
+        "command": "computor.logout",
+        "title": "Computor: Logout",
+        "category": "Computor"
+      },
+      {
         "command": "computor.activate",
         "title": "Activate Computor"
       },
@@ -56,38 +53,15 @@
         "title": "Computor: Show UI Components"
       },
       {
-        "command": "computor.showSettings",
-        "title": "Computor: Settings"
+        "command": "computor.settings",
+        "title": "Computor: Settings",
+        "category": "Computor"
       },
       {
-        "command": "computor.lecturer.signIn",
-        "title": "Computor: Sign In as Lecturer",
-        "category": "Accounts"
-      },
-      {
-        "command": "computor.lecturer.signOut",
-        "title": "Computor: Sign Out Lecturer",
-        "category": "Accounts"
-      },
-      {
-        "command": "computor.tutor.signIn",
-        "title": "Computor: Sign In as Tutor",
-        "category": "Accounts"
-      },
-      {
-        "command": "computor.tutor.signOut",
-        "title": "Computor: Sign Out Tutor",
-        "category": "Accounts"
-      },
-      {
-        "command": "computor.student.signIn",
-        "title": "Computor: Sign In as Student",
-        "category": "Accounts"
-      },
-      {
-        "command": "computor.student.signOut",
-        "title": "Computor: Sign Out Student",
-        "category": "Accounts"
+        "command": "computor.refresh",
+        "title": "Computor: Refresh All",
+        "category": "Computor",
+        "icon": "$(refresh)"
       },
       {
         "command": "computor.showGitStatus",
@@ -264,8 +238,32 @@
         "category": "Computor Lecturer"
       },
       {
+        "command": "computor.lecturer.refreshCourses",
+        "title": "Refresh Lecturer Courses",
+        "icon": "$(refresh)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.lecturer.createCourse",
+        "title": "Create New Course",
+        "icon": "$(add)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.lecturer.manageCourse",
+        "title": "Manage Course",
+        "icon": "$(gear)",
+        "category": "Computor Lecturer"
+      },
+      {
         "command": "computor.student.refresh",
         "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "Computor Student"
+      },
+      {
+        "command": "computor.student.refreshCourses",
+        "title": "Refresh Student Courses",
         "icon": "$(refresh)",
         "category": "Computor Student"
       },
@@ -346,6 +344,12 @@
       {
         "command": "computor.tutor.refresh",
         "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "Computor Tutor"
+      },
+      {
+        "command": "computor.tutor.refreshCourses",
+        "title": "Refresh Tutor Courses",
         "icon": "$(refresh)",
         "category": "Computor Tutor"
       },
@@ -547,57 +551,32 @@
     "views": {
       "computor-lecturer": [
         {
-          "id": "computor.lecturerView",
-          "name": "Course Management",
+          "id": "computor.lecturer.courses",
+          "name": "Courses",
           "icon": "$(mortar-board)",
-          "contextualTitle": "Lecturer Course Management",
-          "when": "computor.lecturer.authenticated"
+          "contextualTitle": "Lecturer Courses"
         },
         {
-          "id": "computor.examplesView",
-          "name": "Example Workbench",
+          "id": "computor.lecturer.examples",
+          "name": "Examples",
           "icon": "$(repo)",
-          "contextualTitle": "Example Repository Workbench",
-          "when": "computor.lecturer.authenticated"
-        },
-        {
-          "id": "computor.fileExplorerLecturer",
-          "name": "File Explorer",
-          "icon": "$(files)",
-          "contextualTitle": "File Explorer",
-          "when": "computor.lecturer.authenticated"
+          "contextualTitle": "Example Repository"
         }
       ],
       "computor-student": [
         {
-          "id": "computor.studentView",
+          "id": "computor.student.courseContent",
           "name": "Course Content",
           "icon": "$(book)",
-          "contextualTitle": "Student Course Content",
-          "when": "computor.student.authenticated"
-        },
-        {
-          "id": "computor.fileExplorerStudent",
-          "name": "Assignment Files",
-          "icon": "$(files)",
-          "contextualTitle": "Assignment Files",
-          "when": "computor.student.authenticated"
+          "contextualTitle": "Student Course Content"
         }
       ],
       "computor-tutor": [
         {
-          "id": "computor.tutorView",
-          "name": "Student Submissions",
-          "icon": "$(checklist)",
-          "contextualTitle": "Tutor Review",
-          "when": "computor.tutor.authenticated"
-        },
-        {
-          "id": "computor.fileExplorerTutor",
-          "name": "Submission Files",
-          "icon": "$(files)",
-          "contextualTitle": "Submission Files",
-          "when": "computor.tutor.authenticated"
+          "id": "computor.tutor.courses",
+          "name": "Courses",
+          "icon": "$(person)",
+          "contextualTitle": "Tutor Dashboard"
         }
       ],
       "explorer": [
