@@ -9,6 +9,7 @@ import { TutorTreeDataProvider } from './ui/tree/tutor/TutorTreeDataProvider';
 import { LecturerCommands } from './commands/LecturerCommands';
 import { StudentCommands } from './commands/StudentCommands';
 import { TutorCommands } from './commands/TutorCommands';
+import { LecturerExampleCommands } from './commands/LecturerExampleCommands';
 
 interface RoleConfiguration {
   role: 'student' | 'tutor' | 'lecturer';
@@ -344,22 +345,15 @@ class ComputorExtension {
     const commands = new LecturerCommands(this.context, treeDataProvider, this.apiService);
     commands.registerCommands();
     
-    // Register example-specific commands
+    // Register example commands (includes all example-related commands)
+    const exampleCommands = new LecturerExampleCommands(this.context, this.apiService, exampleTreeProvider);
+    // Note: LecturerExampleCommands registers its own commands in the constructor
+    void exampleCommands; // Commands are registered in constructor
+    
+    // Register the refresh command here since it's simple and used by multiple places
     disposables.push(
       vscode.commands.registerCommand('computor.refreshExamples', () => {
         exampleTreeProvider.refresh();
-      }),
-      vscode.commands.registerCommand('computor.searchExamples', async () => {
-        const query = await vscode.window.showInputBox({
-          prompt: 'Search examples by title, identifier, or tags',
-          placeHolder: 'Enter search query'
-        });
-        if (query !== undefined) {
-          exampleTreeProvider.setSearchQuery(query);
-        }
-      }),
-      vscode.commands.registerCommand('computor.clearExampleSearch', () => {
-        exampleTreeProvider.clearSearch();
       })
     );
 

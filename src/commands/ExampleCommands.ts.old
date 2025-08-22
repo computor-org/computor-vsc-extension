@@ -5,11 +5,7 @@ import * as yaml from 'js-yaml';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
 import { GitWrapper } from '../git/GitWrapper';
-// TODO: Fix example imports after refactoring
-// import { ExampleTreeItem } from '../ui/tree/examples/ExampleTreeItems';
-// import { ExampleTreeProvider } from '../ui/tree/examples/ExampleTreeProvider';
-type ExampleTreeItem = any;
-type ExampleTreeProvider = any;
+import { ExampleTreeItem, LecturerExampleTreeProvider } from '../ui/tree/lecturer/LecturerExampleTreeProvider';
 
 export class ExampleCommands {
   private gitWrapper: GitWrapper;
@@ -18,7 +14,7 @@ export class ExampleCommands {
   constructor(
     private context: vscode.ExtensionContext,
     private apiService: ComputorApiService,
-    private treeProvider: ExampleTreeProvider
+    private treeProvider: LecturerExampleTreeProvider
   ) {
     console.log('[ExampleCommands] Constructor called');
     this.gitWrapper = new GitWrapper();
