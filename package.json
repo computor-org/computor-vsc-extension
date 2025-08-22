@@ -262,24 +262,6 @@
         "category": "Computor Student"
       },
       {
-        "command": "computor.student.refreshCourses",
-        "title": "Refresh Student Courses",
-        "icon": "$(refresh)",
-        "category": "Computor Student"
-      },
-      {
-        "command": "computor.student.refreshCourseContent",
-        "title": "Refresh Course Content",
-        "icon": "$(refresh)",
-        "category": "Computor Student"
-      },
-      {
-        "command": "computor.student.selectCourse",
-        "title": "Select Course",
-        "icon": "$(list-selection)",
-        "category": "Computor Student"
-      },
-      {
         "command": "computor.student.startWorkSession",
         "title": "Start Work Session",
         "icon": "$(rocket)",
@@ -660,21 +642,6 @@
           "command": "computor.student.startWorkSession",
           "when": "view == computor.student.courseContent",
           "group": "navigation@1"
-        },
-        {
-          "command": "computor.student.selectCourse",
-          "when": "view == computor.student.courseContent",
-          "group": "navigation@2"
-        },
-        {
-          "command": "computor.student.refreshCourseContent",
-          "when": "view == computor.student.courseContent",
-          "group": "navigation@3"
-        },
-        {
-          "command": "computor.student.selectCourse",
-          "when": "view == computor.student.courseContent",
-          "group": "navigation@2"
         },
         {
           "command": "computor.tutor.refresh",
