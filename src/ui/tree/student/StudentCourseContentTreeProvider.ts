@@ -56,6 +56,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
      * Refresh only the specific course content item without affecting the entire tree
      */
     refreshContentItem(contentId: string): void {
+        void contentId; // TODO: Implement targeted refresh using contentId
         // Find and refresh the specific content item without collapsing the tree
         // This is a targeted refresh that preserves tree state
         this._onDidChangeTreeData.fire(null);

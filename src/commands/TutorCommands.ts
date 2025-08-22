@@ -175,6 +175,7 @@ export class TutorCommands {
       title: `Downloading example "${example.title}"${withDependencies ? ' with dependencies' : ''}...`,
       cancellable: false
     }, async (progress) => {
+      void progress; // Progress not used in current implementation
       try {
         // Download example from API
         const downloadResponse = await this.apiService.downloadExample(example.id, withDependencies);

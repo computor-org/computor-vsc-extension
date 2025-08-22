@@ -135,6 +135,7 @@ export class StudentCommands {
           title: `Cloning ${repoName}...`,
           cancellable: false
         }, async (progress) => {
+          void progress; // Progress not needed for terminal operations
           try {
             const terminal = vscode.window.createTerminal({
               name: `Clone: ${repoName}`,
