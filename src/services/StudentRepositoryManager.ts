@@ -104,11 +104,17 @@ export class StudentRepositoryManager {
       if (isAssignment && repo?.clone_url) {
         const key = `${repo.clone_url}-${content.path}`;
         if (!repoMap.has(key)) {
+          console.log(`[StudentRepositoryManager] Repository info for ${content.title}:`, {
+            cloneUrl: repo.clone_url,
+            assignmentPath: content.path,
+            directory: content.directory,
+            exampleIdentifier: content.submission_group?.example_identifier
+          });
           repoMap.set(key, {
             cloneUrl: repo.clone_url,
             assignmentPath: content.path,
             assignmentTitle: content.title || content.path,
-            directory: content.directory
+            directory: content.directory || content.submission_group?.example_identifier
           });
         }
       }
@@ -143,12 +149,15 @@ export class StudentRepositoryManager {
     let upstreamUrl: string | undefined;
     try {
       const course = await this.apiService.getStudentCourse(courseId);
+      console.log('[StudentRepositoryManager] Course data:', JSON.stringify(course, null, 2));
       if (course?.repository) {
         // Construct upstream URL from provider_url and full_path
         const providerUrl = course.repository.provider_url;
         const fullPath = course.repository.full_path;
         upstreamUrl = `${providerUrl}/${fullPath}.git`;
         console.log(`[StudentRepositoryManager] Upstream repository: ${upstreamUrl}`);
+      } else {
+        console.log('[StudentRepositoryManager] No repository field in course data');
       }
     } catch (error) {
       console.warn('[StudentRepositoryManager] Could not get course information for upstream:', error);
@@ -259,9 +268,14 @@ export class StudentRepositoryManager {
     // This allows the tree view to find the files
     const content = courseContents.find(c => c.path === repo.assignmentPath);
     if (content) {
-      // Set the absolute path to the worktree
-      content.directory = worktreePath;
-      console.log(`[StudentRepositoryManager] Set directory for ${repo.assignmentTitle} to ${worktreePath}`);
+      // If we have a subdirectory specified, append it to the worktree path
+      let finalPath = worktreePath;
+      if (repo.directory) {
+        finalPath = path.join(worktreePath, repo.directory);
+      }
+      // Set the absolute path to the assignment directory
+      content.directory = finalPath;
+      console.log(`[StudentRepositoryManager] Set directory for ${repo.assignmentTitle} to ${finalPath}`);
     }
   }
 
