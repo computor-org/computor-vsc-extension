@@ -253,11 +253,15 @@ export class GitWorktreeManager {
         return;
       }
       
-      // Enable sparse-checkout
-      await execAsync('git sparse-checkout init --cone', { cwd: worktreePath });
+      // Enable sparse-checkout without cone mode for more flexible patterns
+      await execAsync('git sparse-checkout init', { cwd: worktreePath });
       
       // The example identifier is the actual directory name in the repository
       const patterns: string[] = [];
+      
+      // Include the specific assignment directory and all its contents
+      patterns.push(`${exampleIdentifier}/*`);
+      patterns.push(`${exampleIdentifier}/**`);
       
       // Always include essential root files
       patterns.push('README.md');
@@ -266,9 +270,6 @@ export class GitWorktreeManager {
       patterns.push('package.json');
       patterns.push('pyproject.toml');
       
-      // Include the specific assignment directory (using example.identifier)
-      patterns.push(exampleIdentifier);
-      
       // Set sparse-checkout patterns
       const sparseCheckoutCommand = `git sparse-checkout set ${patterns.map(p => `"${p}"`).join(' ')}`;
       console.log(`Setting sparse-checkout patterns: ${sparseCheckoutCommand}`);
@@ -276,7 +277,7 @@ export class GitWorktreeManager {
       await execAsync(sparseCheckoutCommand, { cwd: worktreePath });
       
       // Reapply checkout to update working directory
-      await execAsync('git checkout', { cwd: worktreePath });
+      await execAsync('git read-tree -m -u HEAD', { cwd: worktreePath });
       
       console.log(`Sparse-checkout configured for ${exampleIdentifier}`);
     } catch (error: any) {

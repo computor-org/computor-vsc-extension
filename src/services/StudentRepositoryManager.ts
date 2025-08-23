@@ -9,10 +9,9 @@ import { execAsync } from '../utils/exec';
 
 interface RepositoryInfo {
   cloneUrl: string;
-  assignmentPath: string;
+  assignmentPath: string;  // Path in course structure (e.g., "assignment1")
   assignmentTitle: string;
-  exampleIdentifier?: string;
-  directory?: string;
+  directory?: string;       // Directory path inside the git repository for sparse-checkout
 }
 
 /**
@@ -109,7 +108,6 @@ export class StudentRepositoryManager {
             cloneUrl: repo.clone_url,
             assignmentPath: content.path,
             assignmentTitle: content.title || content.path,
-            exampleIdentifier: content.submission_group?.example_identifier,
             directory: content.directory
           });
         }
@@ -139,6 +137,21 @@ export class StudentRepositoryManager {
     if (!token) {
       console.warn('[StudentRepositoryManager] No GitLab token available, skipping clone');
       return;
+    }
+    
+    // Get course information to find upstream repository
+    let upstreamUrl: string | undefined;
+    try {
+      const course = await this.apiService.getStudentCourse(courseId);
+      if (course?.repository) {
+        // Construct upstream URL from provider_url and full_path
+        const providerUrl = course.repository.provider_url;
+        const fullPath = course.repository.full_path;
+        upstreamUrl = `${providerUrl}/${fullPath}.git`;
+        console.log(`[StudentRepositoryManager] Upstream repository: ${upstreamUrl}`);
+      }
+    } catch (error) {
+      console.warn('[StudentRepositoryManager] Could not get course information for upstream:', error);
     }
     
     // Check if shared repository exists
@@ -190,6 +203,18 @@ export class StudentRepositoryManager {
       await this.updateRepository(sharedRepoPath);
     }
     
+    // Sync fork with upstream if available
+    if (upstreamUrl) {
+      console.log('[StudentRepositoryManager] Checking if fork needs update from upstream');
+      const updated = await this.syncForkWithUpstream(sharedRepoPath, upstreamUrl, token);
+      
+      if (updated) {
+        // If fork was updated, we need to update all worktrees
+        console.log('[StudentRepositoryManager] Fork was updated, updating worktrees');
+        // The worktrees will be updated when we process them below
+      }
+    }
+    
     // Set up worktrees for each assignment
     for (const repo of repositories) {
       await this.setupAssignmentWorktree(courseId, repo, token, courseContents);
@@ -223,7 +248,7 @@ export class StudentRepositoryManager {
         repo.assignmentPath,
         repo.cloneUrl,
         authenticatedUrl,
-        repo.exampleIdentifier
+        repo.directory  // Use directory field for sparse-checkout path
       );
     } else {
       console.log(`[StudentRepositoryManager] Worktree exists for ${repo.assignmentTitle}, updating`);
@@ -237,6 +262,120 @@ export class StudentRepositoryManager {
       // Set the absolute path to the worktree
       content.directory = worktreePath;
       console.log(`[StudentRepositoryManager] Set directory for ${repo.assignmentTitle} to ${worktreePath}`);
+    }
+  }
+
+  /**
+   * Sync fork with upstream repository
+   */
+  private async syncForkWithUpstream(
+    repoPath: string,
+    upstreamUrl: string,
+    token?: string
+  ): Promise<boolean> {
+    try {
+      // Add upstream remote if it doesn't exist
+      const { stdout: remotes } = await execAsync('git remote', { cwd: repoPath });
+      
+      if (!remotes.includes('upstream')) {
+        const authenticatedUpstreamUrl = token ? this.addTokenToUrl(upstreamUrl, token) : upstreamUrl;
+        console.log('[StudentRepositoryManager] Adding upstream remote');
+        await execAsync(`git remote add upstream "${authenticatedUpstreamUrl}"`, { cwd: repoPath });
+      } else {
+        // Update upstream URL in case it changed
+        const authenticatedUpstreamUrl = token ? this.addTokenToUrl(upstreamUrl, token) : upstreamUrl;
+        await execAsync(`git remote set-url upstream "${authenticatedUpstreamUrl}"`, { cwd: repoPath });
+      }
+      
+      // Fetch from upstream
+      console.log('[StudentRepositoryManager] Fetching from upstream');
+      await execAsync('git fetch upstream', {
+        cwd: repoPath,
+        env: {
+          ...process.env,
+          GIT_TERMINAL_PROMPT: '0'
+        }
+      });
+      
+      // Check if there are differences
+      const { stdout: diffCount } = await execAsync(
+        'git rev-list --count HEAD..upstream/main 2>/dev/null || git rev-list --count HEAD..upstream/master',
+        { cwd: repoPath }
+      );
+      
+      const needsUpdate = parseInt(diffCount.trim()) > 0;
+      
+      if (needsUpdate) {
+        console.log('[StudentRepositoryManager] Fork needs update from upstream');
+        
+        // Ask user for permission
+        const choice = await vscode.window.showInformationMessage(
+          'Your repository fork is behind the upstream template. Would you like to update it?',
+          'Yes, Update',
+          'Skip'
+        );
+        
+        if (choice === 'Yes, Update') {
+          // Merge upstream changes
+          console.log('[StudentRepositoryManager] Merging upstream changes');
+          const currentBranch = await this.getCurrentBranch(repoPath);
+          
+          if (currentBranch !== 'DETACHED') {
+            try {
+              // Try fast-forward merge first
+              await execAsync('git merge upstream/main --ff-only', { cwd: repoPath });
+            } catch {
+              try {
+                await execAsync('git merge upstream/master --ff-only', { cwd: repoPath });
+              } catch (mergeError) {
+                // If fast-forward fails, we need a regular merge
+                const mergeChoice = await vscode.window.showWarningMessage(
+                  'Cannot fast-forward merge. This will create a merge commit. Continue?',
+                  'Yes, Merge',
+                  'Cancel'
+                );
+                
+                if (mergeChoice === 'Yes, Merge') {
+                  try {
+                    await execAsync('git merge upstream/main', { cwd: repoPath });
+                  } catch {
+                    await execAsync('git merge upstream/master', { cwd: repoPath });
+                  }
+                  
+                  // Push the merge to origin
+                  await execAsync('git push origin', { 
+                    cwd: repoPath,
+                    env: {
+                      ...process.env,
+                      GIT_TERMINAL_PROMPT: '0'
+                    }
+                  });
+                }
+              }
+            }
+          }
+          return true;
+        }
+      } else {
+        console.log('[StudentRepositoryManager] Fork is up to date with upstream');
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('[StudentRepositoryManager] Failed to sync fork:', error);
+      return false;
+    }
+  }
+  
+  /**
+   * Get current branch name
+   */
+  private async getCurrentBranch(repoPath: string): Promise<string> {
+    try {
+      const { stdout } = await execAsync('git symbolic-ref --short HEAD', { cwd: repoPath });
+      return stdout.trim();
+    } catch {
+      return 'DETACHED';
     }
   }
 
