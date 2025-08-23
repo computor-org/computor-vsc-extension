@@ -914,35 +914,33 @@ export class ComputorApiService {
     has_repository?: boolean;
     is_graded?: boolean;
   }): Promise<SubmissionGroupStudent[]> {
-    // Build query params
-    const queryParams = new URLSearchParams();
-    if (params?.course_id) queryParams.append('course_id', params.course_id);
-    if (params?.course_content_id) queryParams.append('course_content_id', params.course_content_id);
-    if (params?.has_repository !== undefined) queryParams.append('has_repository', String(params.has_repository));
-    if (params?.is_graded !== undefined) queryParams.append('is_graded', String(params.is_graded));
-    
-    const cacheKey = `studentSubmissionGroups-${queryParams.toString()}`;
-    
-    // Check cache first
-    const cached = multiTierCache.get<SubmissionGroupStudent[]>(cacheKey);
-    if (cached) {
-      return cached;
-    }
-    
+    // Get course contents and extract submission groups
     try {
-      const result = await errorRecoveryService.executeWithRecovery(async () => {
-        const client = await this.getHttpClient();
-        const url = `/students/submission-groups${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-        const response = await client.get<SubmissionGroupStudent[]>(url);
-        return response.data;
-      }, {
-        maxRetries: 2,
-        exponentialBackoff: true
-      });
+      const courseContents = await this.getStudentCourseContents(params?.course_id);
       
-      // Cache in warm tier (shorter TTL since submission groups change more frequently)
-      multiTierCache.set(cacheKey, result, 'warm');
-      return result || [];
+      // Extract submission groups from course contents
+      const submissionGroups: SubmissionGroupStudent[] = [];
+      
+      for (const content of courseContents) {
+        if (content.submission_group) {
+          // Filter based on params
+          if (params?.course_content_id && content.id !== params.course_content_id) {
+            continue;
+          }
+          if (params?.has_repository !== undefined) {
+            const hasRepo = !!content.submission_group.repository;
+            if (hasRepo !== params.has_repository) continue;
+          }
+          if (params?.is_graded !== undefined) {
+            const isGraded = !!content.submission_group.latest_grading;
+            if (isGraded !== params.is_graded) continue;
+          }
+          
+          submissionGroups.push(content.submission_group);
+        }
+      }
+      
+      return submissionGroups;
     } catch (error) {
       console.error('Failed to get student submission groups:', error);
       return [];

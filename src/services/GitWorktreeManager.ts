@@ -192,7 +192,7 @@ export class GitWorktreeManager {
     sharedRepoPath: string,
     worktreePath: string,
     branchName: string,
-    assignmentPath?: string
+    directoryPath?: string
   ): Promise<void> {
     try {
       // Check if branch exists remotely
@@ -224,10 +224,10 @@ export class GitWorktreeManager {
       console.log(`Worktree created at ${worktreePath}`);
       
       // Configure sparse-checkout to only include assignment directory if we have the identifier
-      if (assignmentPath) {
-        await this.configureSparseCheckout(worktreePath, assignmentPath);
+      if (directoryPath) {
+        await this.configureSparseCheckout(worktreePath, directoryPath);
       } else {
-        console.log('No example identifier provided - full repository checked out');
+        console.log('No directory path provided - full repository checked out');
       }
     } catch (error: any) {
       console.error('Failed to create worktree:', error);
@@ -240,10 +240,10 @@ export class GitWorktreeManager {
    */
   private async configureSparseCheckout(
     worktreePath: string,
-    exampleIdentifier: string
+    directoryPath: string
   ): Promise<void> {
     try {
-      console.log(`Configuring sparse-checkout for ${exampleIdentifier} in ${worktreePath}`);
+      console.log(`Configuring sparse-checkout for directory "${directoryPath}" in ${worktreePath}`);
       
       // Check if the worktree has a proper working tree
       try {
@@ -253,15 +253,27 @@ export class GitWorktreeManager {
         return;
       }
       
+      // First, check if the directory exists in the repository
+      try {
+        const { stdout } = await execAsync(`git ls-tree HEAD "${directoryPath}"`, { cwd: worktreePath });
+        if (!stdout) {
+          console.warn(`Directory "${directoryPath}" not found in repository, skipping sparse-checkout`);
+          return;
+        }
+      } catch (error) {
+        console.warn(`Could not verify directory "${directoryPath}" in repository:`, error);
+        // Continue anyway - the directory might exist
+      }
+      
       // Enable sparse-checkout without cone mode for more flexible patterns
       await execAsync('git sparse-checkout init', { cwd: worktreePath });
       
-      // The example identifier is the actual directory name in the repository
+      // The directory path is the actual directory name in the repository
       const patterns: string[] = [];
       
       // Include the specific assignment directory and all its contents
-      patterns.push(`${exampleIdentifier}/*`);
-      patterns.push(`${exampleIdentifier}/**`);
+      patterns.push(`${directoryPath}/*`);
+      patterns.push(`${directoryPath}/**`);
       
       // Always include essential root files
       patterns.push('README.md');
@@ -279,7 +291,7 @@ export class GitWorktreeManager {
       // Reapply checkout to update working directory
       await execAsync('git read-tree -m -u HEAD', { cwd: worktreePath });
       
-      console.log(`Sparse-checkout configured for ${exampleIdentifier}`);
+      console.log(`Sparse-checkout configured for ${directoryPath}`);
     } catch (error: any) {
       console.error('Failed to configure sparse-checkout:', error);
       // If sparse-checkout fails, continue with full checkout

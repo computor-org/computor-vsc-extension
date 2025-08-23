@@ -154,8 +154,8 @@ export class StudentRepositoryManager {
       console.warn('[StudentRepositoryManager] Could not get course information for upstream:', error);
     }
     
-    // Check if shared repository exists
-    const sharedRepoPath = path.join(this.workspaceRoot, 'courses', courseId, 'shared-repo');
+    // Check if shared repository exists (use the same path as GitWorktreeManager)
+    const sharedRepoPath = this.gitWorktreeManager.getSharedRepoPath(this.workspaceRoot, courseId);
     const sharedRepoExists = await this.directoryExists(sharedRepoPath);
     
     // Clone or update shared repository
