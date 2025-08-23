@@ -440,7 +440,13 @@ export class StudentCommands {
             for (const group of submissionGroups) {
               if (group.repository) {
                 try {
-                  await this.workspaceManager.cloneStudentRepository(group.course_id, group);
+                  // Use the courseId we have, or try to get it from the group
+                  const groupCourseId = courseId || group.course_id;
+                  if (!groupCourseId) {
+                    console.error(`No course ID available for ${group.course_content_title}`);
+                    continue;
+                  }
+                  await this.workspaceManager.cloneStudentRepository(groupCourseId, group);
                   synced++;
                   progress.report({ 
                     increment: (100 / submissionGroups.length),
