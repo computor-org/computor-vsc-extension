@@ -152,8 +152,8 @@ export class StudentRepositoryManager {
       console.log('[StudentRepositoryManager] Course data:', JSON.stringify(course, null, 2));
       if (course?.repository) {
         // Construct upstream URL from provider_url and full_path
-        const providerUrl = course.repository.provider_url;
-        const fullPath = course.repository.full_path;
+        const providerUrl = course.repository.provider_url.replace(/\/$/, ''); // Remove trailing slash if present
+        const fullPath = course.repository.full_path.replace(/^\//, ''); // Remove leading slash if present
         upstreamUrl = `${providerUrl}/${fullPath}.git`;
         console.log(`[StudentRepositoryManager] Upstream repository: ${upstreamUrl}`);
       } else {
@@ -291,13 +291,15 @@ export class StudentRepositoryManager {
       // Add upstream remote if it doesn't exist
       const { stdout: remotes } = await execAsync('git remote', { cwd: repoPath });
       
+      const authenticatedUpstreamUrl = token ? this.addTokenToUrl(upstreamUrl, token) : upstreamUrl;
+      console.log('[StudentRepositoryManager] Authenticated upstream URL:', authenticatedUpstreamUrl);
+      
       if (!remotes.includes('upstream')) {
-        const authenticatedUpstreamUrl = token ? this.addTokenToUrl(upstreamUrl, token) : upstreamUrl;
         console.log('[StudentRepositoryManager] Adding upstream remote');
         await execAsync(`git remote add upstream "${authenticatedUpstreamUrl}"`, { cwd: repoPath });
       } else {
         // Update upstream URL in case it changed
-        const authenticatedUpstreamUrl = token ? this.addTokenToUrl(upstreamUrl, token) : upstreamUrl;
+        console.log('[StudentRepositoryManager] Updating upstream remote URL');
         await execAsync(`git remote set-url upstream "${authenticatedUpstreamUrl}"`, { cwd: repoPath });
       }
       
