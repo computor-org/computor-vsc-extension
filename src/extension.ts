@@ -11,6 +11,7 @@ import { StudentCommands } from './commands/StudentCommands';
 import { TutorCommands } from './commands/TutorCommands';
 import { LecturerExampleCommands } from './commands/LecturerExampleCommands';
 import { IconGenerator } from './utils/IconGenerator';
+import { StudentRepositoryManager } from './services/StudentRepositoryManager';
 
 interface RoleConfiguration {
   role: 'student' | 'tutor' | 'lecturer';
@@ -382,6 +383,24 @@ class ComputorExtension {
       throw new Error('API service not initialized');
     }
 
+    // Create repository manager for auto-cloning
+    const repoManager = new StudentRepositoryManager(this.context, this.apiService);
+    
+    // Auto-setup repositories in the background
+    vscode.window.withProgress({
+      location: vscode.ProgressLocation.Window,
+      title: 'Setting up student repositories...',
+      cancellable: false
+    }, async () => {
+      try {
+        await repoManager.autoSetupRepositories();
+        console.log('Student repositories setup completed');
+      } catch (error) {
+        console.error('Failed to auto-setup repositories:', error);
+        // Don't show error - users can still manually clone
+      }
+    });
+
     // Create a minimal course selection service for now
     // The full implementation would require StatusBarService which we're not using yet
     const courseSelection = {
@@ -421,6 +440,11 @@ class ComputorExtension {
     treeView.onDidCollapseElement(async (e) => {
       await treeDataProvider.onTreeItemCollapsed(e.element as any);
     });
+    
+    // Refresh tree after repos are set up
+    setTimeout(() => {
+      treeDataProvider.refresh();
+    }, 3000); // Give repos time to clone
   }
 
   private async activateTutorRole(disposables: vscode.Disposable[]): Promise<void> {

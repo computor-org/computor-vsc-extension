@@ -92,26 +92,23 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
             if (isAssignment && hasRepository) {
                 let assignmentPath: string | undefined;
                 
-                // First, try to use the directory field from the API
+                // The directory field should now contain the absolute worktree path
+                // set by StudentRepositoryManager after cloning
                 if (directory) {
-                    // Check if it's an absolute path or relative
-                    if (path.isAbsolute(directory)) {
-                        assignmentPath = directory;
-                    } else {
-                        // If relative, join with workspace folder
-                        const workspaceFolders = vscode.workspace.workspaceFolders || [];
-                        if (workspaceFolders.length > 0 && workspaceFolders[0]) {
-                            assignmentPath = path.join(workspaceFolders[0].uri.fsPath, directory);
-                        }
+                    assignmentPath = directory;
+                    console.log('[StudentTree] Using directory from course content:', assignmentPath);
+                }
+                
+                // Fallback: compute using worktree manager if directory not set
+                if (!assignmentPath || !fs.existsSync(assignmentPath)) {
+                    const fallbackPath = element.getRepositoryPath();
+                    console.log('[StudentTree] Directory not found, trying worktree path:', fallbackPath);
+                    if (fallbackPath && fs.existsSync(fallbackPath)) {
+                        assignmentPath = fallbackPath;
                     }
                 }
                 
-                // If no directory field or path doesn't exist, try to compute using worktree manager
-                if (!assignmentPath || !fs.existsSync(assignmentPath)) {
-                    assignmentPath = element.getRepositoryPath();
-                }
-                
-                console.log('[StudentTree] Assignment path resolved to:', assignmentPath);
+                console.log('[StudentTree] Final assignment path:', assignmentPath);
                 
                 if (assignmentPath && fs.existsSync(assignmentPath)) {
                     // Repository is cloned - show actual files

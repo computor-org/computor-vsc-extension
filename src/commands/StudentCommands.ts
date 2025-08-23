@@ -111,6 +111,10 @@ export class StudentCommands {
             vscode.window.showInformationMessage(`No course contents found for ${courseTitle}`);
             return;
           }
+
+          for (const a of courseContents) {
+            console.log("content: " + JSON.stringify(a,null,2) + "\n--------\n");
+          }
           
           // Filter for assignments that have repositories
           const assignmentsWithRepos = courseContents.filter(content => {
