@@ -90,52 +90,69 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
             const hasRepository = !!element.submissionGroup?.repository;
             
             if (isAssignment && hasRepository) {
-                const workspaceFolders = vscode.workspace.workspaceFolders || [];
+                let assignmentPath: string | undefined;
                 
-                // Check if repository is cloned
-                if (directory && workspaceFolders.length > 0 && workspaceFolders[0]) {
-                    const assignmentPath = path.join(workspaceFolders[0].uri.fsPath, directory);
-                    
-                    if (fs.existsSync(assignmentPath)) {
-                        // Repository is cloned - show actual files
-                        try {
-                            const readdir = promisify(fs.readdir);
-                            const stat = promisify(fs.stat);
-                            const files = await readdir(assignmentPath);
-                            const items: TreeItem[] = [];
-                            
-                            for (const file of files) {
-                                const filePath = path.join(assignmentPath, file);
-                                const stats = await stat(filePath);
-                                const isDirectory = stats.isDirectory();
-                                
-                                const fileItem = new FileSystemItem(
-                                    file,
-                                    vscode.Uri.file(filePath),
-                                    isDirectory ? vscode.FileType.Directory : vscode.FileType.File
-                                );
-                                items.push(fileItem);
-                            }
-                            
-                            // Sort: directories first, then files, alphabetically
-                            items.sort((a, b) => {
-                                const aIsDir = (a as FileSystemItem).type === vscode.FileType.Directory;
-                                const bIsDir = (b as FileSystemItem).type === vscode.FileType.Directory;
-                                if (aIsDir && !bIsDir) return -1;
-                                if (!aIsDir && bIsDir) return 1;
-                                return a.label!.toString().localeCompare(b.label!.toString());
-                            });
-                            
-                            return items;
-                        } catch (error) {
-                            console.error('Error reading assignment directory:', error);
-                            return [new CloneRepositoryTreeItem(element)];
+                // First, try to use the directory field from the API
+                if (directory) {
+                    // Check if it's an absolute path or relative
+                    if (path.isAbsolute(directory)) {
+                        assignmentPath = directory;
+                    } else {
+                        // If relative, join with workspace folder
+                        const workspaceFolders = vscode.workspace.workspaceFolders || [];
+                        if (workspaceFolders.length > 0 && workspaceFolders[0]) {
+                            assignmentPath = path.join(workspaceFolders[0].uri.fsPath, directory);
                         }
                     }
                 }
                 
-                // Repository not cloned - show clone option
-                return [new CloneRepositoryTreeItem(element)];
+                // If no directory field or path doesn't exist, try to compute using worktree manager
+                if (!assignmentPath || !fs.existsSync(assignmentPath)) {
+                    assignmentPath = element.getRepositoryPath();
+                }
+                
+                console.log('[StudentTree] Assignment path resolved to:', assignmentPath);
+                
+                if (assignmentPath && fs.existsSync(assignmentPath)) {
+                    // Repository is cloned - show actual files
+                    try {
+                        const readdir = promisify(fs.readdir);
+                        const stat = promisify(fs.stat);
+                        const files = await readdir(assignmentPath);
+                        const items: TreeItem[] = [];
+                        
+                        for (const file of files) {
+                            const filePath = path.join(assignmentPath, file);
+                            const stats = await stat(filePath);
+                            const isDirectory = stats.isDirectory();
+                            
+                            const fileItem = new FileSystemItem(
+                                file,
+                                vscode.Uri.file(filePath),
+                                isDirectory ? vscode.FileType.Directory : vscode.FileType.File
+                            );
+                            items.push(fileItem);
+                        }
+                        
+                        // Sort: directories first, then files, alphabetically
+                        items.sort((a, b) => {
+                            const aIsDir = (a as FileSystemItem).type === vscode.FileType.Directory;
+                            const bIsDir = (b as FileSystemItem).type === vscode.FileType.Directory;
+                            if (aIsDir && !bIsDir) return -1;
+                            if (!aIsDir && bIsDir) return 1;
+                            return a.label!.toString().localeCompare(b.label!.toString());
+                        });
+                        
+                        return items;
+                    } catch (error) {
+                        console.error('Error reading assignment directory:', error);
+                        return [new CloneRepositoryTreeItem(element)];
+                    }
+                } else {
+                    // Repository not cloned - show clone option
+                    console.log('[StudentTree] Directory does not exist, showing clone option');
+                    return [new CloneRepositoryTreeItem(element)];
+                }
             }
             return [];
         }
