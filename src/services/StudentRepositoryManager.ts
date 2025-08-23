@@ -148,13 +148,43 @@ export class StudentRepositoryManager {
     // Clone or update shared repository
     if (!sharedRepoExists) {
       console.log(`[StudentRepositoryManager] Cloning shared repository for course ${courseId}`);
-      const authenticatedUrl = firstRepo.cloneUrl.replace('https://', `https://oauth2:${token}@`);
-      await this.gitWorktreeManager.cloneSharedRepository(
-        this.workspaceRoot,
-        courseId,
-        firstRepo.cloneUrl,
-        authenticatedUrl
-      );
+      // Handle both http and https URLs
+      const authenticatedUrl = this.addTokenToUrl(firstRepo.cloneUrl, token);
+      console.log(`[StudentRepositoryManager] Using authenticated URL for clone`);
+      
+      try {
+        await this.gitWorktreeManager.cloneSharedRepository(
+          this.workspaceRoot,
+          courseId,
+          firstRepo.cloneUrl,
+          authenticatedUrl
+        );
+      } catch (error: any) {
+        console.error('[StudentRepositoryManager] Clone failed:', error);
+        
+        // If authentication failed, clear token and prompt for new one
+        if (this.isAuthenticationError(error)) {
+          console.log('[StudentRepositoryManager] Authentication failed, prompting for new token');
+          await this.gitLabTokenManager.removeToken(gitlabUrl);
+          
+          // Prompt for new token
+          const newToken = await this.gitLabTokenManager.ensureTokenForUrl(gitlabUrl);
+          if (newToken) {
+            // Retry with new token
+            const newAuthUrl = this.addTokenToUrl(firstRepo.cloneUrl, newToken);
+            await this.gitWorktreeManager.cloneSharedRepository(
+              this.workspaceRoot,
+              courseId,
+              firstRepo.cloneUrl,
+              newAuthUrl
+            );
+          } else {
+            throw new Error('GitLab authentication required');
+          }
+        } else {
+          throw error;
+        }
+      }
     } else {
       console.log(`[StudentRepositoryManager] Updating shared repository for course ${courseId}`);
       await this.updateRepository(sharedRepoPath);
@@ -185,7 +215,7 @@ export class StudentRepositoryManager {
     
     if (!worktreeExists) {
       console.log(`[StudentRepositoryManager] Creating worktree for ${repo.assignmentTitle}`);
-      const authenticatedUrl = repo.cloneUrl.replace('https://', `https://oauth2:${token}@`);
+      const authenticatedUrl = this.addTokenToUrl(repo.cloneUrl, token);
       
       await this.gitWorktreeManager.ensureAssignmentWorktree(
         this.workspaceRoot,
@@ -253,5 +283,30 @@ export class StudentRepositoryManager {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Add authentication token to Git URL
+   */
+  private addTokenToUrl(url: string, token: string): string {
+    // Handle both http and https URLs
+    if (url.startsWith('https://')) {
+      return url.replace('https://', `https://oauth2:${token}@`);
+    } else if (url.startsWith('http://')) {
+      return url.replace('http://', `http://oauth2:${token}@`);
+    }
+    return url;
+  }
+
+  /**
+   * Check if error is an authentication error
+   */
+  private isAuthenticationError(error: any): boolean {
+    const message = error?.message || error?.toString() || '';
+    return message.includes('Authentication failed') ||
+           message.includes('Access denied') ||
+           message.includes('HTTP Basic') ||
+           message.includes('401') ||
+           message.includes('403');
   }
 }
