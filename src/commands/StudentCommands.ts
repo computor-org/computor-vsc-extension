@@ -411,8 +411,16 @@ export class StudentCommands {
 
     // Sync all repositories for a course
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.student.syncAllRepositories', async (courseId?: string) => {
+      vscode.commands.registerCommand('computor.student.syncAllRepositories', async (item?: any) => {
         try {
+          // Extract course ID from tree item if provided
+          let courseId: string | undefined;
+          if (item?.course?.id) {
+            courseId = item.course.id;
+          } else if (typeof item === 'string') {
+            courseId = item;
+          }
+          
           // Get all submission groups
           const submissionGroups = await this.apiService.getStudentSubmissionGroups(
             courseId ? { course_id: courseId } : undefined
