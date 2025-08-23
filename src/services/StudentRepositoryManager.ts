@@ -152,9 +152,10 @@ export class StudentRepositoryManager {
       console.log('[StudentRepositoryManager] Course data:', JSON.stringify(course, null, 2));
       if (course?.repository) {
         // Construct upstream URL from provider_url and full_path
+        // The upstream is always the student-template repository in the course namespace
         const providerUrl = course.repository.provider_url.replace(/\/$/, ''); // Remove trailing slash if present
         const fullPath = course.repository.full_path.replace(/^\//, ''); // Remove leading slash if present
-        upstreamUrl = `${providerUrl}/${fullPath}.git`;
+        upstreamUrl = `${providerUrl}/${fullPath}/student-template.git`;
         console.log(`[StudentRepositoryManager] Upstream repository: ${upstreamUrl}`);
       } else {
         console.log('[StudentRepositoryManager] No repository field in course data');
