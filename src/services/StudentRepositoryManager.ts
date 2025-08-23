@@ -315,12 +315,26 @@ export class StudentRepositoryManager {
       });
       
       // Check if there are differences
-      const { stdout: diffCount } = await execAsync(
-        'git rev-list --count HEAD..upstream/main 2>/dev/null || git rev-list --count HEAD..upstream/master',
-        { cwd: repoPath }
-      );
+      let diffCount = '0';
+      try {
+        // Try main branch first
+        const result = await execAsync('git rev-list --count HEAD..upstream/main', { cwd: repoPath });
+        diffCount = result.stdout;
+        console.log('[StudentRepositoryManager] Checking against upstream/main, commits behind:', diffCount.trim());
+      } catch {
+        // If main doesn't exist, try master
+        try {
+          const result = await execAsync('git rev-list --count HEAD..upstream/master', { cwd: repoPath });
+          diffCount = result.stdout;
+          console.log('[StudentRepositoryManager] Checking against upstream/master, commits behind:', diffCount.trim());
+        } catch (error) {
+          console.error('[StudentRepositoryManager] Failed to check differences with upstream:', error);
+          return false;
+        }
+      }
       
       const needsUpdate = parseInt(diffCount.trim()) > 0;
+      console.log('[StudentRepositoryManager] Fork needs update:', needsUpdate);
       
       if (needsUpdate) {
         console.log('[StudentRepositoryManager] Fork needs update from upstream');
@@ -340,11 +354,16 @@ export class StudentRepositoryManager {
           if (currentBranch !== 'DETACHED') {
             try {
               // Try fast-forward merge first
+              console.log('[StudentRepositoryManager] Attempting fast-forward merge with upstream/main');
               await execAsync('git merge upstream/main --ff-only', { cwd: repoPath });
-            } catch {
+              console.log('[StudentRepositoryManager] Successfully merged upstream/main');
+            } catch (mainError) {
+              console.log('[StudentRepositoryManager] upstream/main merge failed, trying upstream/master');
               try {
                 await execAsync('git merge upstream/master --ff-only', { cwd: repoPath });
+                console.log('[StudentRepositoryManager] Successfully merged upstream/master');
               } catch (mergeError) {
+                console.log('[StudentRepositoryManager] Fast-forward merge failed:', mergeError);
                 // If fast-forward fails, we need a regular merge
                 const mergeChoice = await vscode.window.showWarningMessage(
                   'Cannot fast-forward merge. This will create a merge commit. Continue?',
