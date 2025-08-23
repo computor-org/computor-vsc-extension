@@ -4,7 +4,6 @@ import * as os from 'os';
 import * as fs from 'fs';
 import { ComputorApiService } from './ComputorApiService';
 import { GitLabTokenManager } from './GitLabTokenManager';
-import { GitWorktreeManager } from './GitWorktreeManager';
 import { execAsync } from '../utils/exec';
 
 interface RepositoryInfo {
@@ -21,7 +20,6 @@ interface RepositoryInfo {
 export class StudentRepositoryManager {
   private workspaceRoot: string;
   private gitLabTokenManager: GitLabTokenManager;
-  private gitWorktreeManager: GitWorktreeManager;
   private apiService: ComputorApiService;
 
   constructor(
@@ -30,7 +28,6 @@ export class StudentRepositoryManager {
   ) {
     this.apiService = apiService;
     this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
-    this.gitWorktreeManager = GitWorktreeManager.getInstance();
     this.workspaceRoot = path.join(os.homedir(), '.computor', 'workspace');
   }
 
@@ -110,11 +107,16 @@ export class StudentRepositoryManager {
             directory: content.directory,
             exampleIdentifier: content.submission_group?.example_identifier
           });
+          // Use directory field if available, otherwise use example_identifier
+          // The directory field should contain the path to the assignment files in the repo
+          const directoryPath = content.directory || content.submission_group?.example_identifier;
+          console.log(`[StudentRepositoryManager] Directory path for ${content.title}: "${directoryPath}"`);
+          
           repoMap.set(key, {
             cloneUrl: repo.clone_url,
             assignmentPath: content.path,
             assignmentTitle: content.title || content.path,
-            directory: content.directory || content.submission_group?.example_identifier
+            directory: directoryPath
           });
         }
       }
@@ -164,43 +166,61 @@ export class StudentRepositoryManager {
       console.warn('[StudentRepositoryManager] Could not get course information for upstream:', error);
     }
     
-    // Check if shared repository exists (use the same path as GitWorktreeManager)
-    const sharedRepoPath = this.gitWorktreeManager.getSharedRepoPath(this.workspaceRoot, courseId);
-    const sharedRepoExists = await this.directoryExists(sharedRepoPath);
+    // Process each repository (clone or update)
+    for (const repo of repositories) {
+      await this.setupAssignmentRepository(courseId, repo, token, courseContents, upstreamUrl);
+    }
+  }
+
+  /**
+   * Set up or update repository for an assignment
+   */
+  private async setupAssignmentRepository(
+    courseId: string,
+    repo: RepositoryInfo,
+    token: string,
+    courseContents: any[],
+    upstreamUrl?: string
+  ): Promise<void> {
+    // Create a unique directory name for this repository
+    const repoName = repo.assignmentPath.replace(/\./g, '-');
+    const repoPath = path.join(this.workspaceRoot, 'courses', courseId, repoName);
     
-    // Clone or update shared repository
-    if (!sharedRepoExists) {
-      console.log(`[StudentRepositoryManager] Cloning shared repository for course ${courseId}`);
-      // Handle both http and https URLs
-      const authenticatedUrl = this.addTokenToUrl(firstRepo.cloneUrl, token);
-      console.log(`[StudentRepositoryManager] Using authenticated URL for clone`);
+    const repoExists = await this.directoryExists(repoPath);
+    
+    if (!repoExists) {
+      console.log(`[StudentRepositoryManager] Cloning repository for ${repo.assignmentTitle}`);
+      const authenticatedUrl = this.addTokenToUrl(repo.cloneUrl, token);
       
       try {
-        await this.gitWorktreeManager.cloneSharedRepository(
-          this.workspaceRoot,
-          courseId,
-          firstRepo.cloneUrl,
-          authenticatedUrl
-        );
+        // Simple clone
+        await execAsync(`git clone "${authenticatedUrl}" "${repoPath}"`, {
+          env: {
+            ...process.env,
+            GIT_TERMINAL_PROMPT: '0'
+          }
+        });
+        console.log(`[StudentRepositoryManager] Successfully cloned to ${repoPath}`);
       } catch (error: any) {
         console.error('[StudentRepositoryManager] Clone failed:', error);
         
         // If authentication failed, clear token and prompt for new one
         if (this.isAuthenticationError(error)) {
           console.log('[StudentRepositoryManager] Authentication failed, prompting for new token');
+          const gitlabUrl = new URL(repo.cloneUrl).origin;
           await this.gitLabTokenManager.removeToken(gitlabUrl);
           
           // Prompt for new token
           const newToken = await this.gitLabTokenManager.ensureTokenForUrl(gitlabUrl);
           if (newToken) {
             // Retry with new token
-            const newAuthUrl = this.addTokenToUrl(firstRepo.cloneUrl, newToken);
-            await this.gitWorktreeManager.cloneSharedRepository(
-              this.workspaceRoot,
-              courseId,
-              firstRepo.cloneUrl,
-              newAuthUrl
-            );
+            const newAuthUrl = this.addTokenToUrl(repo.cloneUrl, newToken);
+            await execAsync(`git clone "${newAuthUrl}" "${repoPath}"`, {
+              env: {
+                ...process.env,
+                GIT_TERMINAL_PROMPT: '0'
+              }
+            });
           } else {
             throw new Error('GitLab authentication required');
           }
@@ -209,70 +229,41 @@ export class StudentRepositoryManager {
         }
       }
     } else {
-      console.log(`[StudentRepositoryManager] Updating shared repository for course ${courseId}`);
-      await this.updateRepository(sharedRepoPath);
+      console.log(`[StudentRepositoryManager] Repository exists for ${repo.assignmentTitle}, updating`);
+      await this.updateRepository(repoPath);
     }
     
     // Sync fork with upstream if available
     if (upstreamUrl) {
       console.log('[StudentRepositoryManager] Checking if fork needs update from upstream');
-      const updated = await this.syncForkWithUpstream(sharedRepoPath, upstreamUrl, token);
+      const updated = await this.syncForkWithUpstream(repoPath, upstreamUrl, token);
       
       if (updated) {
-        // If fork was updated, we need to update all worktrees
-        console.log('[StudentRepositoryManager] Fork was updated, updating worktrees');
-        // The worktrees will be updated when we process them below
+        console.log('[StudentRepositoryManager] Fork was updated');
+        // Push the update to origin
+        try {
+          await execAsync('git push origin', {
+            cwd: repoPath,
+            env: {
+              ...process.env,
+              GIT_TERMINAL_PROMPT: '0'
+            }
+          });
+          console.log('[StudentRepositoryManager] Pushed fork update to origin');
+        } catch (error) {
+          console.error('[StudentRepositoryManager] Failed to push fork update:', error);
+        }
       }
-    }
-    
-    // Set up worktrees for each assignment
-    for (const repo of repositories) {
-      await this.setupAssignmentWorktree(courseId, repo, token, courseContents);
-    }
-  }
-
-  /**
-   * Set up or update worktree for an assignment
-   */
-  private async setupAssignmentWorktree(
-    courseId: string,
-    repo: RepositoryInfo,
-    token: string,
-    courseContents: any[]
-  ): Promise<void> {
-    const worktreePath = this.gitWorktreeManager.getWorktreePath(
-      this.workspaceRoot,
-      courseId,
-      repo.assignmentPath
-    );
-    
-    const worktreeExists = await this.directoryExists(worktreePath);
-    
-    if (!worktreeExists) {
-      console.log(`[StudentRepositoryManager] Creating worktree for ${repo.assignmentTitle}`);
-      const authenticatedUrl = this.addTokenToUrl(repo.cloneUrl, token);
-      
-      await this.gitWorktreeManager.ensureAssignmentWorktree(
-        this.workspaceRoot,
-        courseId,
-        repo.assignmentPath,
-        repo.cloneUrl,
-        authenticatedUrl,
-        repo.directory  // Use directory field for sparse-checkout path
-      );
-    } else {
-      console.log(`[StudentRepositoryManager] Worktree exists for ${repo.assignmentTitle}, updating`);
-      await this.updateRepository(worktreePath);
     }
     
     // Update the directory field in memory (not persisted to API)
     // This allows the tree view to find the files
     const content = courseContents.find(c => c.path === repo.assignmentPath);
     if (content) {
-      // If we have a subdirectory specified, append it to the worktree path
-      let finalPath = worktreePath;
+      // If we have a subdirectory specified, append it to the repo path
+      let finalPath = repoPath;
       if (repo.directory) {
-        finalPath = path.join(worktreePath, repo.directory);
+        finalPath = path.join(repoPath, repo.directory);
       }
       // Set the absolute path to the assignment directory
       content.directory = finalPath;
