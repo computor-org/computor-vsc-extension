@@ -385,21 +385,6 @@ class ComputorExtension {
 
     // Create repository manager for auto-cloning
     const repoManager = new StudentRepositoryManager(this.context, this.apiService);
-    
-    // Auto-setup repositories in the background
-    vscode.window.withProgress({
-      location: vscode.ProgressLocation.Window,
-      title: 'Setting up student repositories...',
-      cancellable: false
-    }, async () => {
-      try {
-        await repoManager.autoSetupRepositories();
-        console.log('Student repositories setup completed');
-      } catch (error) {
-        console.error('Failed to auto-setup repositories:', error);
-        // Don't show error - users can still manually clone
-      }
-    });
 
     // Create a minimal course selection service for now
     // The full implementation would require StatusBarService which we're not using yet
@@ -432,19 +417,37 @@ class ComputorExtension {
     const commands = new StudentCommands(this.context, treeDataProvider, this.apiService);
     commands.registerCommands();
 
-    // Track tree expansion state
+    // Track tree expansion state and auto-clone repositories
     treeView.onDidExpandElement(async (e) => {
-      await treeDataProvider.onTreeItemExpanded(e.element as any);
+      const element = e.element as any;
+      await treeDataProvider.onTreeItemExpanded(element);
+      
+      // If a course node is expanded, setup repositories for that course
+      if (element.contextValue === 'studentCourse' && element.course) {
+        console.log('[Student] Course expanded, setting up repositories for:', element.course.id);
+        
+        // Setup repositories in background
+        vscode.window.withProgress({
+          location: vscode.ProgressLocation.Notification,
+          title: `Setting up repositories for ${element.course.title || element.course.path}...`,
+          cancellable: false
+        }, async () => {
+          try {
+            await repoManager.autoSetupRepositories(element.course.id);
+            // Refresh the tree to show the cloned files
+            setTimeout(() => {
+              treeDataProvider.refreshNode(element);
+            }, 500);
+          } catch (error) {
+            console.error('Failed to setup repositories:', error);
+          }
+        });
+      }
     });
 
     treeView.onDidCollapseElement(async (e) => {
       await treeDataProvider.onTreeItemCollapsed(e.element as any);
     });
-    
-    // Refresh tree after repos are set up
-    setTimeout(() => {
-      treeDataProvider.refresh();
-    }, 3000); // Give repos time to clone
   }
 
   private async activateTutorRole(disposables: vscode.Disposable[]): Promise<void> {

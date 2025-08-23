@@ -143,12 +143,12 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                         return items;
                     } catch (error) {
                         console.error('Error reading assignment directory:', error);
-                        return [new CloneRepositoryTreeItem(element)];
+                        return [new MessageItem('Error reading repository files', 'error')];
                     }
                 } else {
-                    // Repository not cloned - show clone option
-                    console.log('[StudentTree] Directory does not exist, showing clone option');
-                    return [new CloneRepositoryTreeItem(element)];
+                    // Repository not cloned yet - show loading message
+                    console.log('[StudentTree] Repository not yet cloned, showing empty state');
+                    return [new MessageItem('Repository is being set up...', 'info')];
                 }
             }
             return [];
@@ -725,24 +725,25 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
     }
 }
 
-// Clone repository item for showing when repository needs to be cloned
-class CloneRepositoryTreeItem extends TreeItem {
-    constructor(public readonly courseContentItem: CourseContentItem) {
-        super('📥 Click to clone repository', vscode.TreeItemCollapsibleState.None);
-        
-        this.id = `clone-${courseContentItem.courseContent.id}`;
-        this.contextValue = 'cloneRepository';
-        this.iconPath = new vscode.ThemeIcon('cloud-download', new vscode.ThemeColor('charts.blue'));
-        
-        this.command = {
-            command: 'computor.student.cloneRepository',
-            title: 'Clone Repository',
-            arguments: [courseContentItem]
-        };
-        
-        this.tooltip = 'Click to clone the assignment repository and start working';
-    }
-}
+// Clone repository item - DEPRECATED: Repositories are now cloned automatically
+// when the course node is expanded
+// class CloneRepositoryTreeItem extends TreeItem {
+//     constructor(public readonly courseContentItem: CourseContentItem) {
+//         super('📥 Click to clone repository', vscode.TreeItemCollapsibleState.None);
+//         
+//         this.id = `clone-${courseContentItem.courseContent.id}`;
+//         this.contextValue = 'cloneRepository';
+//         this.iconPath = new vscode.ThemeIcon('cloud-download', new vscode.ThemeColor('charts.blue'));
+//         
+//         this.command = {
+//             command: 'computor.student.cloneRepository',
+//             title: 'Clone Repository',
+//             arguments: [courseContentItem]
+//         };
+//         
+//         this.tooltip = 'Click to clone the assignment repository and start working';
+//     }
+// }
 
 // File system item for showing files and folders under assignments
 class FileSystemItem extends TreeItem {
