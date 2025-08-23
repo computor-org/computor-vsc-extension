@@ -92,64 +92,81 @@ export class StudentCommands {
       })
     );
 
-    // Clone course repository
+    // Clone course repository - collects all assignment repos
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.student.cloneCourseRepository', async (item: any) => {
-        if (!item || !item.course.repository) {
-          vscode.window.showErrorMessage('No repository available for this course');
+        if (!item || !item.course) {
+          vscode.window.showErrorMessage('No course selected');
           return;
         }
 
-        const repo = item.course.repository;
-        const repoUrl = `${repo.provider_url}/${repo.full_path}`;
+        const courseId = item.course.id;
+        const courseTitle = item.course.title || item.course.path;
         
-        // Get GitLab token if needed
-        const gitlabUrl = repo.provider_url;
-        const token = await this.gitLabTokenManager.ensureTokenForUrl(gitlabUrl);
-        
-        if (!token) {
-          vscode.window.showErrorMessage('GitLab authentication required');
-          return;
-        }
-
-        // Prompt for local directory
-        const folderUri = await vscode.window.showOpenDialog({
-          canSelectFolders: true,
-          canSelectFiles: false,
-          canSelectMany: false,
-          openLabel: 'Select Clone Location'
-        });
-
-        if (!folderUri || folderUri.length === 0 || !folderUri[0]) {
-          return;
-        }
-
-        const targetPath = folderUri[0].fsPath;
-        const repoName = repo.full_path.split('/').pop() || 'repository';
-        
-        // Clone with authentication
-        const authenticatedUrl = repoUrl.replace('https://', `https://oauth2:${token}@`);
-        
-        await vscode.window.withProgress({
-          location: vscode.ProgressLocation.Notification,
-          title: `Cloning ${repoName}...`,
-          cancellable: false
-        }, async (progress) => {
-          void progress; // Progress not needed for terminal operations
-          try {
-            const terminal = vscode.window.createTerminal({
-              name: `Clone: ${repoName}`,
-              cwd: targetPath
-            });
-            
-            terminal.sendText(`git clone ${authenticatedUrl} ${repoName}`);
-            terminal.show();
-            
-            vscode.window.showInformationMessage(`Repository cloned to ${targetPath}/${repoName}`);
-          } catch (error) {
-            vscode.window.showErrorMessage(`Failed to clone repository: ${error}`);
+        try {
+          // Fetch all course contents for this course
+          const courseContents = await this.apiService.getStudentCourseContents(courseId);
+          
+          if (!courseContents || courseContents.length === 0) {
+            vscode.window.showInformationMessage(`No course contents found for ${courseTitle}`);
+            return;
           }
-        });
+          
+          // Filter for assignments that have repositories
+          const assignmentsWithRepos = courseContents.filter(content => {
+            // Check if it's an assignment (has example_id or is marked as assignment)
+            const isAssignment = content.course_content_type?.course_content_kind_id === 'assignment' || 
+                                content.example_id;
+            // Check if it has a submission group with repository
+            const hasRepo = content.submission_group?.repository?.clone_url;
+            return isAssignment && hasRepo;
+          });
+          
+          if (assignmentsWithRepos.length === 0) {
+            vscode.window.showInformationMessage(`No assignment repositories found for ${courseTitle}`);
+            return;
+          }
+          
+          // Collect unique repository URLs
+          const repoMap = new Map<string, any>();
+          for (const assignment of assignmentsWithRepos) {
+            const repo = assignment.submission_group.repository;
+            const cloneUrl = repo.clone_url;
+            if (cloneUrl && !repoMap.has(cloneUrl)) {
+              repoMap.set(cloneUrl, {
+                url: cloneUrl,
+                name: repo.name || repo.path || 'repository',
+                fullPath: repo.full_path,
+                assignment: assignment.title || assignment.path,
+                contentPath: assignment.path
+              });
+            }
+          }
+          
+          const uniqueRepos = Array.from(repoMap.values());
+          
+          // Show the user what will be cloned
+          const repoList = uniqueRepos.map(repo => 
+            `• ${repo.name} (${repo.assignment})`
+          ).join('\n');
+          
+          const message = `Found ${uniqueRepos.length} repository${uniqueRepos.length > 1 ? 'ies' : ''} to clone for course "${courseTitle}":\n\n${repoList}`;
+          
+          await vscode.window.showInformationMessage(
+            message,
+            { modal: true },
+            'OK'
+          );
+          
+          // For now, just show the information
+          // TODO: Next step will be to actually clone these repositories
+          console.log('Repositories to clone:', uniqueRepos);
+          
+        } catch (error: any) {
+          console.error('Failed to fetch course contents:', error);
+          const errorMessage = error?.response?.data?.message || error?.message || 'Unknown error';
+          vscode.window.showErrorMessage(`Failed to fetch assignment repositories: ${errorMessage}`);
+        }
       })
     );
 
