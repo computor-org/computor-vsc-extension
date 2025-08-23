@@ -1,11 +1,9 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import * as os from 'os';
 import { promisify } from 'util';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { CourseSelectionService } from '../../../services/CourseSelectionService';
-import { GitWorktreeManager } from '../../../services/GitWorktreeManager';
 import { SubmissionGroupStudent, CourseContentList, CourseContentTypeList, CourseContentKindList, CourseList } from '../../../types/generated';
 import { IconGenerator } from '../../../utils/IconGenerator';
 
@@ -699,29 +697,17 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
     }
     
     getRepositoryPath(): string {
-        // First check if we have a directory field in courseContent (from student API)
+        // Always prefer the directory field from courseContent
+        // This is set by StudentRepositoryManager after cloning
         const directory = (this.courseContent as any).directory;
         if (directory) {
             // Use the directory field directly - it's the actual file path
             return directory;
         }
         
-        // Fallback to submission group based path
-        if (!this.submissionGroup) return '';
-        
-        const courseId = this.submissionGroup.course_id;
-        const contentPath = this.submissionGroup.course_content_path;
-        
-        // Ensure we have required data
-        if (!courseId || !contentPath) {
-            console.warn('Missing courseId or contentPath for repository path');
-            return '';
-        }
-        
-        // Use GitWorktreeManager to get the correct worktree path
-        const gitWorktreeManager = GitWorktreeManager.getInstance();
-        const workspaceRoot = path.join(os.homedir(), '.computor', 'workspace');
-        return gitWorktreeManager.getWorktreePath(workspaceRoot, courseId, contentPath);
+        // If no directory field, we can't determine the path
+        // The directory will be set after the repository is cloned
+        return '';
     }
 }
 
