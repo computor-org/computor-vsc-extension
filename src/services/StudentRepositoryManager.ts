@@ -166,31 +166,45 @@ export class StudentRepositoryManager {
       console.warn('[StudentRepositoryManager] Could not get course information for upstream:', error);
     }
     
-    // Process each repository (clone or update)
+    // Group repositories by unique clone URL
+    const uniqueRepos = new Map<string, RepositoryInfo[]>();
     for (const repo of repositories) {
-      await this.setupAssignmentRepository(courseId, repo, token, courseContents, upstreamUrl);
+      if (!uniqueRepos.has(repo.cloneUrl)) {
+        uniqueRepos.set(repo.cloneUrl, []);
+      }
+      uniqueRepos.get(repo.cloneUrl)!.push(repo);
+    }
+    
+    console.log(`[StudentRepositoryManager] Found ${uniqueRepos.size} unique repositories for course ${courseId}`);
+    
+    // Clone/update each unique repository only once
+    for (const [cloneUrl, repoInfos] of uniqueRepos) {
+      await this.setupUniqueRepository(courseId, cloneUrl, repoInfos, token, courseContents, upstreamUrl);
     }
   }
 
   /**
-   * Set up or update repository for an assignment
+   * Set up or update a unique repository and link assignments to it
    */
-  private async setupAssignmentRepository(
+  private async setupUniqueRepository(
     courseId: string,
-    repo: RepositoryInfo,
+    cloneUrl: string,
+    repoInfos: RepositoryInfo[],
     token: string,
     courseContents: any[],
     upstreamUrl?: string
   ): Promise<void> {
-    // Create a unique directory name for this repository
-    const repoName = repo.assignmentPath.replace(/\./g, '-');
+    // Create a unique directory name for this repository based on the URL
+    // Extract repository name from clone URL (e.g., "students/admin" from the URL)
+    const urlParts = cloneUrl.replace(/\.git$/, '').split('/');
+    const repoName = urlParts.slice(-2).join('-'); // e.g., "students-admin"
     const repoPath = path.join(this.workspaceRoot, 'courses', courseId, repoName);
     
     const repoExists = await this.directoryExists(repoPath);
     
     if (!repoExists) {
-      console.log(`[StudentRepositoryManager] Cloning repository for ${repo.assignmentTitle}`);
-      const authenticatedUrl = this.addTokenToUrl(repo.cloneUrl, token);
+      console.log(`[StudentRepositoryManager] Cloning repository ${cloneUrl}`);
+      const authenticatedUrl = this.addTokenToUrl(cloneUrl, token);
       
       try {
         // Simple clone
@@ -207,14 +221,14 @@ export class StudentRepositoryManager {
         // If authentication failed, clear token and prompt for new one
         if (this.isAuthenticationError(error)) {
           console.log('[StudentRepositoryManager] Authentication failed, prompting for new token');
-          const gitlabUrl = new URL(repo.cloneUrl).origin;
+          const gitlabUrl = new URL(cloneUrl).origin;
           await this.gitLabTokenManager.removeToken(gitlabUrl);
           
           // Prompt for new token
           const newToken = await this.gitLabTokenManager.ensureTokenForUrl(gitlabUrl);
           if (newToken) {
             // Retry with new token
-            const newAuthUrl = this.addTokenToUrl(repo.cloneUrl, newToken);
+            const newAuthUrl = this.addTokenToUrl(cloneUrl, newToken);
             await execAsync(`git clone "${newAuthUrl}" "${repoPath}"`, {
               env: {
                 ...process.env,
@@ -229,7 +243,7 @@ export class StudentRepositoryManager {
         }
       }
     } else {
-      console.log(`[StudentRepositoryManager] Repository exists for ${repo.assignmentTitle}, updating`);
+      console.log(`[StudentRepositoryManager] Repository exists at ${repoPath}, updating`);
       await this.updateRepository(repoPath);
     }
     
@@ -256,18 +270,19 @@ export class StudentRepositoryManager {
       }
     }
     
-    // Update the directory field in memory (not persisted to API)
-    // This allows the tree view to find the files
-    const content = courseContents.find(c => c.path === repo.assignmentPath);
-    if (content) {
-      // If we have a subdirectory specified, append it to the repo path
-      let finalPath = repoPath;
-      if (repo.directory) {
-        finalPath = path.join(repoPath, repo.directory);
+    // Now update the directory field for each assignment in this repository
+    for (const repo of repoInfos) {
+      const content = courseContents.find(c => c.path === repo.assignmentPath);
+      if (content) {
+        // If we have a subdirectory specified, append it to the repo path
+        let finalPath = repoPath;
+        if (repo.directory) {
+          finalPath = path.join(repoPath, repo.directory);
+        }
+        // Set the absolute path to the assignment directory
+        content.directory = finalPath;
+        console.log(`[StudentRepositoryManager] Set directory for ${repo.assignmentTitle} to ${finalPath}`);
       }
-      // Set the absolute path to the assignment directory
-      content.directory = finalPath;
-      console.log(`[StudentRepositoryManager] Set directory for ${repo.assignmentTitle} to ${finalPath}`);
     }
   }
 
