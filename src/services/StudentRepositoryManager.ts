@@ -279,6 +279,14 @@ export class StudentRepositoryManager {
         if (repo.directory) {
           finalPath = path.join(repoPath, repo.directory);
         }
+        
+        console.log(`[StudentRepositoryManager] Setting directory for ${repo.assignmentTitle}:`, {
+          repoPath,
+          subdirectory: repo.directory,
+          finalPath,
+          exists: fs.existsSync(finalPath)
+        });
+        
         // Set the absolute path to the assignment directory
         content.directory = finalPath;
         console.log(`[StudentRepositoryManager] Set directory for ${repo.assignmentTitle} to ${finalPath}`);
