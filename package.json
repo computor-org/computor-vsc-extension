@@ -262,12 +262,6 @@
         "category": "Computor Student"
       },
       {
-        "command": "computor.student.startWorkSession",
-        "title": "Start Work Session",
-        "icon": "$(rocket)",
-        "category": "Computor Student"
-      },
-      {
         "command": "computor.student.openAssignment",
         "title": "Open Assignment",
         "category": "Computor Student"
@@ -655,11 +649,6 @@
         },
         {
           "command": "computor.selectWorkspaceDirectory",
-          "when": "view == computor.student.courseContent",
-          "group": "navigation@2"
-        },
-        {
-          "command": "computor.selectWorkspaceDirectory",
           "when": "view == computor.tutor.courses",
           "group": "navigation@2"
         },
@@ -697,11 +686,6 @@
           "command": "computor.fileExplorer.refresh",
           "when": "view == computor.fileExplorerLecturer",
           "group": "navigation@2"
-        },
-        {
-          "command": "computor.selectWorkspaceDirectory",
-          "when": "view == computor.fileExplorerStudent",
-          "group": "navigation@1"
         },
         {
           "command": "computor.fileExplorer.refresh",

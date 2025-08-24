@@ -116,6 +116,11 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                         const files = await readdir(assignmentPath);
                         const items: TreeItem[] = [];
                         
+                        // If directory is empty, show a message
+                        if (files.length === 0) {
+                            return [new MessageItem('Empty directory', 'info')];
+                        }
+                        
                         for (const file of files) {
                             const filePath = path.join(assignmentPath, file);
                             const stats = await stat(filePath);
@@ -144,9 +149,13 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                         return [new MessageItem('Error reading repository files', 'error')];
                     }
                 } else {
-                    // Repository not cloned yet - show loading message
-                    console.log('[StudentTree] Repository not yet cloned, showing empty state');
-                    return [new MessageItem('Repository is being set up...', 'info')];
+                    // Repository not cloned yet or directory not set
+                    console.log('[StudentTree] Directory not available:', {
+                        directory,
+                        assignmentPath,
+                        exists: assignmentPath ? fs.existsSync(assignmentPath) : false
+                    });
+                    return [new MessageItem('Click course to clone repository', 'info')];
                 }
             }
             return [];
