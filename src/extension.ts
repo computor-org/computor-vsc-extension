@@ -1,4 +1,7 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
+import * as os from 'os';
+import * as fs from 'fs';
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
 import { ComputorApiService } from './services/ComputorApiService';
 import { BasicAuthHttpClient } from './http/BasicAuthHttpClient';
@@ -103,7 +106,81 @@ class ComputorExtension {
   }
 
   private async loginAndActivateStudent(): Promise<void> {
-    // First perform the login
+    // Check if we're in the correct workspace directory
+    const workspaceRoot = path.join(os.homedir(), '.computor', 'workspace');
+    const coursesPath = path.join(workspaceRoot, 'courses');
+    
+    // Ensure the directory exists
+    await fs.promises.mkdir(coursesPath, { recursive: true });
+    
+    // Check current workspace
+    const workspaceFolders = vscode.workspace.workspaceFolders || [];
+    const isInStudentWorkspace = workspaceFolders.some(folder => 
+      folder.uri.fsPath === coursesPath || 
+      folder.uri.fsPath.startsWith(coursesPath)
+    );
+    
+    // Check if in any Computor workspace (could be tutor or lecturer)
+    const isInComputorWorkspace = workspaceFolders.some(folder =>
+      folder.uri.fsPath.includes('.computor/workspace')
+    );
+    
+    if (isInStudentWorkspace) {
+      // Already in the correct workspace
+      vscode.window.showInformationMessage(
+        'Already in Computor student workspace. Proceeding with login...'
+      );
+    } else if (isInComputorWorkspace) {
+      // In a different Computor workspace
+      const switchWorkspace = await vscode.window.showInformationMessage(
+        'You are in a different Computor workspace. Switch to student workspace?',
+        'Yes',
+        'No'
+      );
+      
+      if (switchWorkspace !== 'Yes') {
+        return;
+      }
+      
+      // Open the courses folder as workspace
+      await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(coursesPath), false);
+      // Extension will reinitialize
+      return;
+    } else if (workspaceFolders.length > 0) {
+      // In a non-Computor workspace
+      const switchWorkspace = await vscode.window.showInformationMessage(
+        'Student login requires the Computor workspace. Switch to student workspace?',
+        'Switch Workspace',
+        'Cancel'
+      );
+      
+      if (switchWorkspace !== 'Switch Workspace') {
+        return;
+      }
+      
+      // Open the courses folder as workspace
+      await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(coursesPath), false);
+      // Extension will reinitialize
+      return;
+    } else {
+      // No workspace open
+      const openWorkspace = await vscode.window.showInformationMessage(
+        'No workspace open. Open Computor student workspace?',
+        'Open Workspace',
+        'Cancel'
+      );
+      
+      if (openWorkspace !== 'Open Workspace') {
+        return;
+      }
+      
+      // Open the courses folder as workspace
+      await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(coursesPath), false);
+      // Extension will reinitialize
+      return;
+    }
+    
+    // We're in the correct workspace, proceed with login
     const loginSuccess = await this.performLogin();
     if (!loginSuccess) return;
 
