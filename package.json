@@ -287,6 +287,12 @@
         "category": "Computor Student"
       },
       {
+        "command": "computor.student.commitAssignment",
+        "title": "Commit & Push Assignment",
+        "icon": "$(git-commit)",
+        "category": "Computor Student"
+      },
+      {
         "command": "computor.tutor.refresh",
         "title": "Refresh",
         "icon": "$(refresh)",
@@ -812,6 +818,16 @@
           "command": "computor.student.showPreview",
           "when": "view == computor.student.courses && viewItem =~ /studentCourseContent.*assignment/",
           "group": "inline"
+        },
+        {
+          "command": "computor.student.commitAssignment",
+          "when": "view == computor.student.courses && viewItem =~ /studentCourseContent.*assignment.*withRepository.*cloned/",
+          "group": "inline"
+        },
+        {
+          "command": "computor.student.commitAssignment",
+          "when": "view == computor.student.courses && viewItem =~ /studentCourseContent.*assignment.*withRepository.*cloned/",
+          "group": "2_actions@1"
         },
         {
           "command": "computor.student.submitAssignment",

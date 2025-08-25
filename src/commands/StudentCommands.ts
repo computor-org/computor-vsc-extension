@@ -20,7 +20,7 @@ export class StudentCommands {
   private context: vscode.ExtensionContext;
   private treeDataProvider: StudentCourseContentTreeProvider;
   private courseContentTreeProvider?: any; // Will be set after registration
-  private apiService: ComputorApiService;
+  private apiService: ComputorApiService; // Used for future API calls
   private workspaceManager: WorkspaceManager;
   private gitBranchManager: GitBranchManager;
 
@@ -36,6 +36,7 @@ export class StudentCommands {
     this.workspaceManager = WorkspaceManager.getInstance(context);
     this.gitBranchManager = GitBranchManager.getInstance();
     void this.courseContentTreeProvider; // Unused for now
+    void this.apiService; // Will be used for API calls
   }
   
   setCourseContentTreeProvider(provider: any): void {
@@ -285,6 +286,82 @@ export class StudentCommands {
         ].join('\n');
 
         vscode.window.showInformationMessage(info, { modal: true });
+      })
+    );
+
+    // Commit and push assignment changes
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.student.commitAssignment', async (item: any) => {
+        console.log('[CommitAssignment] Item received:', item);
+        
+        // The item is a CourseContentItem from StudentCourseContentTreeProvider
+        if (!item || !item.courseContent) {
+          vscode.window.showErrorMessage('No assignment selected');
+          return;
+        }
+
+        // Get the assignment directory
+        const directory = (item.courseContent as any).directory;
+        if (!directory || !fs.existsSync(directory)) {
+          vscode.window.showErrorMessage('Assignment directory not found. Please clone the repository first.');
+          return;
+        }
+
+        const assignmentPath = item.courseContent.path;
+        const assignmentTitle = item.courseContent.title || assignmentPath;
+
+        try {
+          // Check if there are any changes to commit
+          const hasChanges = await this.gitBranchManager.hasChanges(directory);
+          if (!hasChanges) {
+            vscode.window.showInformationMessage('No changes to commit in this assignment.');
+            return;
+          }
+
+          // Generate automatic commit message
+          const now = new Date();
+          const timestamp = now.toISOString().replace('T', ' ').split('.')[0];
+          const commitMessage = `Update ${assignmentTitle} - ${timestamp}`;
+
+          // Show progress while committing and pushing
+          await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `Committing and pushing ${assignmentTitle}...`,
+            cancellable: false
+          }, async (progress) => {
+            progress.report({ increment: 0, message: 'Checking branch...' });
+
+            // Ensure we're on the main branch
+            const currentBranch = await this.gitBranchManager.getCurrentBranch(directory);
+            const mainBranch = await this.gitBranchManager.getMainBranch(directory);
+            
+            if (currentBranch !== mainBranch) {
+              progress.report({ increment: 20, message: `Switching to ${mainBranch} branch...` });
+              await this.gitBranchManager.checkoutBranch(directory, mainBranch);
+            }
+
+            progress.report({ increment: 40, message: 'Committing changes...' });
+            // Stage all changes in the assignment directory
+            await this.gitBranchManager.stageAll(directory);
+            
+            // Commit the changes
+            await this.gitBranchManager.commitChanges(directory, commitMessage);
+
+            progress.report({ increment: 60, message: 'Pushing to remote...' });
+            // Push to main branch
+            await this.gitBranchManager.pushCurrentBranch(directory);
+
+            progress.report({ increment: 100, message: 'Complete!' });
+          });
+
+          vscode.window.showInformationMessage(`Assignment "${assignmentTitle}" committed and pushed successfully!`);
+
+          // Optionally refresh the tree to update any status indicators
+          this.treeDataProvider.refreshNode(item);
+        } catch (error: any) {
+          console.error('Failed to commit assignment:', error);
+          vscode.window.showErrorMessage(`Failed to commit assignment: ${error.message}`);
+        }
       })
     );
   }
