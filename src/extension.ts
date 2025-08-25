@@ -13,13 +13,6 @@ import { LecturerExampleCommands } from './commands/LecturerExampleCommands';
 import { IconGenerator } from './utils/IconGenerator';
 import { StudentRepositoryManager } from './services/StudentRepositoryManager';
 
-interface RoleConfiguration {
-  role: 'student' | 'tutor' | 'lecturer';
-  endpoint: string;
-  viewContainer: string;
-  commands: string[];
-}
-
 interface AuthenticationData {
   backendUrl: string;
   username: string;
@@ -31,8 +24,6 @@ class ComputorExtension {
   private settingsManager: ComputorSettingsManager;
   private apiService?: ComputorApiService;
   private statusBar: vscode.StatusBarItem;
-  private activeRoles: Set<string> = new Set();
-  private roleDisposables: Map<string, vscode.Disposable[]> = new Map();
   private authData?: AuthenticationData;
   private httpClient?: BasicAuthHttpClient;
 
@@ -42,6 +33,7 @@ class ComputorExtension {
     this.statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
     this.statusBar.show();
     this.context.subscriptions.push(this.statusBar);
+    void this.authData; // Used for storing authentication data
   }
 
   async activate(): Promise<void> {
@@ -56,7 +48,7 @@ class ComputorExtension {
     // Try to restore previous session silently
     const restored = await this.restoreSession();
     if (restored) {
-      await this.initializeRoles();
+      //await this.initializeRoles();
     } else {
       // Show status that user needs to login
       this.statusBar.text = '$(sign-in) Computor: Click to login';
@@ -67,10 +59,24 @@ class ComputorExtension {
   }
 
   private registerBaseCommands(): void {
-    // Login command
+    // Student login command
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.login', async () => {
-        await this.login();
+      vscode.commands.registerCommand('computor.student.login', async () => {
+        await this.loginAndActivateStudent();
+      })
+    );
+
+    // Tutor login command
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.tutor.login', async () => {
+        await this.loginAndActivateTutor();
+      })
+    );
+
+    // Lecturer login command
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.login', async () => {
+        await this.loginAndActivateLecturer();
       })
     );
 
@@ -94,9 +100,81 @@ class ComputorExtension {
         await this.openSettings();
       })
     );
+
+    // Reset/clear all stored data command (for debugging)
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.resetAll', async () => {
+        const confirm = await vscode.window.showWarningMessage(
+          'This will clear all Computor extension data. Continue?',
+          'Yes', 'No'
+        );
+        if (confirm === 'Yes') {
+          // Clear secrets
+          await this.context.secrets.delete('computor.username');
+          await this.context.secrets.delete('computor.password');
+          
+          // Clear global state
+          const keys = this.context.globalState.keys();
+          for (const key of keys) {
+            await this.context.globalState.update(key, undefined);
+          }
+          
+          // Clear workspace state
+          const workspaceKeys = this.context.workspaceState.keys();
+          for (const key of workspaceKeys) {
+            await this.context.workspaceState.update(key, undefined);
+          }
+          
+          // Clear auth data
+          this.authData = undefined;
+          this.httpClient = undefined;
+          
+          // Clear all roles
+          this.clearAllRoles();
+          
+          vscode.window.showInformationMessage('All Computor extension data has been cleared');
+        }
+      })
+    );
   }
 
-  private async login(): Promise<void> {
+  private async loginAndActivateStudent(): Promise<void> {
+    // First perform the login
+    const loginSuccess = await this.performLogin();
+    if (!loginSuccess) return;
+
+    // Then specifically activate student role
+    await this.activateStudentRole();
+    
+    // Update status bar
+    this.statusBar.text = '$(account) Active: student';
+  }
+
+  private async loginAndActivateTutor(): Promise<void> {
+    // First perform the login
+    const loginSuccess = await this.performLogin();
+    if (!loginSuccess) return;
+
+    // Then specifically activate tutor role
+    await this.activateTutorRole();
+    
+    // Update status bar
+    this.statusBar.text = '$(account) Active: tutor';
+  }
+
+  private async loginAndActivateLecturer(): Promise<void> {
+    // First perform the login
+    const loginSuccess = await this.performLogin();
+    if (!loginSuccess) return;
+
+    // Then specifically activate lecturer role
+    await this.activateLecturerRole();
+    
+    // Update status bar
+    this.statusBar.text = '$(account) Active: lecturer';
+  }
+
+  private async performLogin(): Promise<boolean> {
     try {
       // Prompt for backend URL
       const backendUrl = await vscode.window.showInputBox({
@@ -118,7 +196,7 @@ class ComputorExtension {
       });
 
       if (!backendUrl) {
-        return;
+        return false;
       }
 
       // Prompt for username
@@ -135,7 +213,7 @@ class ComputorExtension {
       });
 
       if (!username) {
-        return;
+        return false;
       }
 
       // Prompt for password
@@ -153,7 +231,7 @@ class ComputorExtension {
       });
 
       if (!password) {
-        return;
+        return false;
       }
 
       // Store authentication data
@@ -171,20 +249,26 @@ class ComputorExtension {
       await this.context.secrets.store('computor.username', username);
       await this.context.secrets.store('computor.password', password);
 
-      // Initialize roles based on available courses
-      await this.initializeRoles();
-
       vscode.window.showInformationMessage('Successfully logged in to Computor');
+      return true;
     } catch (error) {
       console.error('Login failed:', error);
       vscode.window.showErrorMessage(`Login failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return false;
     }
   }
 
   private async logout(): Promise<void> {
-    // Clear all role views
+    console.log('[Logout] Starting logout process...');
+    
+    // Clear all role views and hide view containers
     this.clearAllRoles();
 
+    // Clear context keys to hide view containers
+    await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
+    await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
+    await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
+    
     // Clear stored credentials
     await this.context.secrets.delete('computor.username');
     await this.context.secrets.delete('computor.password');
@@ -194,10 +278,13 @@ class ComputorExtension {
     this.httpClient = undefined;
     this.apiService = undefined;
 
-    // Update status bar
-    this.statusBar.text = '$(sign-out) Logged out';
+    // Update status bar to show login prompt
+    this.statusBar.text = '$(sign-in) Computor: Click to login';
+    this.statusBar.command = undefined; // Remove any command
+    this.statusBar.tooltip = 'Use role-specific login commands';
 
     vscode.window.showInformationMessage('Successfully logged out from Computor');
+    console.log('[Logout] Logout complete');
   }
 
   private async restoreSession(): Promise<boolean> {
@@ -223,110 +310,45 @@ class ComputorExtension {
     }
   }
 
-  private async initializeRoles(): Promise<void> {
-    if (!this.httpClient || !this.authData) {
-      vscode.window.showErrorMessage('Not authenticated. Please login first.');
-      return;
-    }
+  private async activateLecturerRole(): Promise<void> {
 
-    // Clear existing roles
-    this.clearAllRoles();
+    if (!this.httpClient) return;
 
-    const roleConfigurations: RoleConfiguration[] = [
-      {
-        role: 'student',
-        endpoint: '/students/courses',
-        viewContainer: 'computor-student',
-        commands: ['computor.student.refresh']
-      },
-      {
-        role: 'tutor',
-        endpoint: '/tutors/courses',
-        viewContainer: 'computor-tutor',
-        commands: ['computor.tutor.refresh']
-      },
-      {
-        role: 'lecturer',
-        endpoint: '/lecturers/courses',
-        viewContainer: 'computor-lecturer',
-        commands: ['computor.lecturer.refresh']
-      }
-    ];
-
-    // Check each role endpoint
-    for (const config of roleConfigurations) {
-      try {
-        const response = await this.httpClient.get<any[]>(config.endpoint);
-        const courses = response.data as any[];
-
-        if (courses && courses.length > 0) {
-          console.log(`User has ${courses.length} courses for role: ${config.role}`);
-          await this.activateRole(config);
-        } else {
-          console.log(`No courses found for role: ${config.role}`);
-        }
-      } catch (error) {
-        console.log(`Role ${config.role} not available:`, error);
+    if (!this.apiService) {
+      this.apiService = new ComputorApiService(this.context);
+      // Configure API service with auth data
+      if (this.httpClient) {
+        (this.apiService as any).httpClient = this.httpClient;
       }
     }
-
-    // Update status bar
-    const activeRolesText = Array.from(this.activeRoles).join(', ');
-    if (activeRolesText) {
-      this.statusBar.text = `$(account) Active: ${activeRolesText}`;
-    } else {
-      this.statusBar.text = '$(warning) No active roles';
-      vscode.window.showWarningMessage('No courses found for any role. Please check your enrollment status.');
-    }
-  }
-
-  private async activateRole(config: RoleConfiguration): Promise<void> {
-    if (this.activeRoles.has(config.role)) {
-      return;
-    }
-
-    console.log(`Activating role: ${config.role}`);
-    const disposables: vscode.Disposable[] = [];
 
     try {
-      // Create API service if not exists
-      if (!this.apiService) {
-        this.apiService = new ComputorApiService(this.context);
-        // Configure API service with auth data
-        if (this.httpClient) {
-          (this.apiService as any).httpClient = this.httpClient;
-        }
-      }
+      console.log('Checking lecturer role...');
+      const response = await this.httpClient.get<any[]>('/lecturers/courses');
+      const courses = response.data as any[];
 
-      switch (config.role) {
-        case 'lecturer':
-          await this.activateLecturerRole(disposables);
-          break;
-        case 'student':
-          await this.activateStudentRole(disposables);
-          break;
-        case 'tutor':
-          await this.activateTutorRole(disposables);
-          break;
+      if (courses && courses.length > 0) {
+        console.log(`User has ${courses.length} lecturer courses`);
+      } else {
+        console.log('No lecturer courses found');
+        return;
       }
-
-      this.activeRoles.add(config.role);
-      this.roleDisposables.set(config.role, disposables);
-      console.log(`Role ${config.role} activated successfully`);
     } catch (error) {
-      console.error(`Failed to activate role ${config.role}:`, error);
-      disposables.forEach(d => d.dispose());
-      vscode.window.showErrorMessage(`Failed to activate ${config.role} role: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.log('Lecturer role not available:', error);
+      return;
     }
-  }
 
-  private async activateLecturerRole(disposables: vscode.Disposable[]): Promise<void> {
     if (!this.apiService) {
       throw new Error('API service not initialized');
     }
     
     // Create tree data provider with shared API service
     const treeDataProvider = new LecturerTreeDataProvider(this.context, this.apiService);
+
+    this.context.subscriptions.push(vscode.window.registerTreeDataProvider(
+      "computor.lecturer.courses",
+      treeDataProvider
+    ));
     
     // Register tree view
     const treeView = vscode.window.createTreeView('computor.lecturer.courses', {
@@ -335,7 +357,7 @@ class ComputorExtension {
       canSelectMany: false,
       dragAndDropController: treeDataProvider
     });
-    disposables.push(treeView);
+    this.context.subscriptions.push(treeView);
 
     // Create example tree provider
     const exampleTreeProvider = new LecturerExampleTreeProvider(this.context, this.apiService);
@@ -347,7 +369,7 @@ class ComputorExtension {
       canSelectMany: true,
       dragAndDropController: exampleTreeProvider
     });
-    disposables.push(exampleTreeView);
+    this.context.subscriptions.push(exampleTreeView);
 
     // Register commands with shared API service
     const commands = new LecturerCommands(this.context, treeDataProvider, this.apiService);
@@ -359,7 +381,7 @@ class ComputorExtension {
     void exampleCommands; // Commands are registered in constructor
     
     // Register the refresh command here since it's simple and used by multiple places
-    disposables.push(
+    this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.refreshExamples', () => {
         exampleTreeProvider.refresh();
       })
@@ -379,9 +401,57 @@ class ComputorExtension {
         await treeDataProvider.setNodeExpanded(item.id, false);
       }
     });
+
+    // Show and focus the lecturer view
+    console.log('[Lecturer] Setting context and showing view...');
+    await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', true);
+    
+    // Small delay to ensure tree view is registered
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    try {
+      await vscode.commands.executeCommand('workbench.view.extension.computor-lecturer');
+      console.log('[Lecturer] View container shown');
+    } catch (error) {
+      console.error('[Lecturer] Failed to show view container:', error);
+    }
+    
+    try {
+      await vscode.commands.executeCommand('computor.lecturer.courses.focus');
+      console.log('[Lecturer] View focused');
+    } catch (error) {
+      console.error('[Lecturer] Failed to focus view:', error);
+    }
   }
 
-  private async activateStudentRole(disposables: vscode.Disposable[]): Promise<void> {
+  private async activateStudentRole(): Promise<void> {
+
+    if (!this.httpClient) return;
+
+    if (!this.apiService) {
+      this.apiService = new ComputorApiService(this.context);
+      // Configure API service with auth data
+      if (this.httpClient) {
+        (this.apiService as any).httpClient = this.httpClient;
+      }
+    }
+
+    try {
+      console.log('Checking student role...');
+      const response = await this.httpClient.get<any[]>('/students/courses');
+      const courses = response.data as any[];
+
+      if (courses && courses.length > 0) {
+        console.log(`User has ${courses.length} student courses`);
+      } else {
+        console.log('No student courses found');
+        return;
+      }
+    } catch (error) {
+      console.log('Student role not available:', error);
+      return;
+    }
+
     if (!this.apiService) {
       throw new Error('API service not initialized');
     }
@@ -407,14 +477,19 @@ class ComputorExtension {
     
     // Create tree data provider with repository manager
     const treeDataProvider = new StudentCourseContentTreeProvider(this.apiService, courseSelection, repoManager);
+
+    this.context.subscriptions.push(vscode.window.registerTreeDataProvider(
+      "computor.student.courses",
+      treeDataProvider
+    ));
     
     // Register tree view
-    const treeView = vscode.window.createTreeView('computor.student.courseContent', {
+    const treeView = vscode.window.createTreeView('computor.student.courses', {
       treeDataProvider,
       showCollapseAll: true,
       canSelectMany: false
     });
-    disposables.push(treeView);
+    this.context.subscriptions.push(treeView);
 
     // Register commands with shared API service
     const commands = new StudentCommands(this.context, treeDataProvider, this.apiService);
@@ -429,15 +504,68 @@ class ComputorExtension {
     treeView.onDidCollapseElement(async (e) => {
       await treeDataProvider.onTreeItemCollapsed(e.element as any);
     });
+
+    // Show and focus the student view
+    console.log('[Student] Setting context and showing view...');
+    await vscode.commands.executeCommand('setContext', 'computor.student.show', true);
+    
+    // Small delay to ensure tree view is registered
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    try {
+      await vscode.commands.executeCommand('workbench.view.extension.computor-student');
+      console.log('[Student] View container shown');
+    } catch (error) {
+      console.error('[Student] Failed to show view container:', error);
+    }
+    
+    try {
+      await vscode.commands.executeCommand('computor.student.courses.focus');
+      console.log('[Student] View focused');
+    } catch (error) {
+      console.error('[Student] Failed to focus view:', error);
+    }
   }
 
-  private async activateTutorRole(disposables: vscode.Disposable[]): Promise<void> {
+  private async activateTutorRole(): Promise<void> {
+
+    if (!this.httpClient) return;
+
+    if (!this.apiService) {
+      this.apiService = new ComputorApiService(this.context);
+      // Configure API service with auth data
+      if (this.httpClient) {
+        (this.apiService as any).httpClient = this.httpClient;
+      }
+    }
+
+    try {
+      console.log('Checking tutor role...');
+      const response = await this.httpClient.get<any[]>('/tutors/courses');
+      const courses = response.data as any[];
+
+      if (courses && courses.length > 0) {
+        console.log(`User has ${courses.length} tutor courses`);
+      } else {
+        console.log('No tutor courses found');
+        return;
+      }
+    } catch (error) {
+      console.log('Tutor role not available:', error);
+      return;
+    }
+
     if (!this.apiService) {
       throw new Error('API service not initialized');
     }
     
     // Create tree data provider with shared API service
     const treeDataProvider = new TutorTreeDataProvider(this.context, this.apiService);
+
+    this.context.subscriptions.push(vscode.window.registerTreeDataProvider(
+      "computor.tutor.courses",
+      treeDataProvider
+    ));
     
     // Register tree view
     const treeView = vscode.window.createTreeView('computor.tutor.courses', {
@@ -445,25 +573,50 @@ class ComputorExtension {
       showCollapseAll: true,
       canSelectMany: false
     });
-    disposables.push(treeView);
+    this.context.subscriptions.push(treeView);
 
     // Register commands with shared API service
     const commands = new TutorCommands(this.context, treeDataProvider, this.apiService);
     commands.registerCommands();
+
+    // Show and focus the tutor view
+    console.log('[Tutor] Setting context and showing view...');
+    await vscode.commands.executeCommand('setContext', 'computor.tutor.show', true);
+    
+    // Small delay to ensure tree view is registered
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    try {
+      await vscode.commands.executeCommand('workbench.view.extension.computor-tutor');
+      console.log('[Tutor] View container shown');
+    } catch (error) {
+      console.error('[Tutor] Failed to show view container:', error);
+    }
+    
+    try {
+      await vscode.commands.executeCommand('computor.tutor.courses.focus');
+      console.log('[Tutor] View focused');
+    } catch (error) {
+      console.error('[Tutor] Failed to focus view:', error);
+    }
   }
 
   private clearAllRoles(): void {
-    for (const [role, disposables] of this.roleDisposables) {
-      console.log(`Deactivating role: ${role}`);
-      disposables.forEach(d => d.dispose());
-    }
-    this.roleDisposables.clear();
-    this.activeRoles.clear();
+    console.log('[ClearRoles] Deactivating all roles...');
+    
+    // Note: Since we're not tracking disposables individually anymore,
+    // we'll rely on VSCode to clean up tree views when the extension deactivates.
+    // The context keys will be cleared in the logout method.
+    
+    // Clear any references
+    this.apiService = undefined;
+    
+    console.log('[ClearRoles] All roles cleared');
   }
 
   private async refresh(): Promise<void> {
     console.log('Refreshing all active roles...');
-    await this.initializeRoles();
+    //await this.initializeRoles();
     vscode.window.showInformationMessage('Computor views refreshed');
   }
 
