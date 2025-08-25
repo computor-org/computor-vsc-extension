@@ -288,8 +288,14 @@
       },
       {
         "command": "computor.student.commitAssignment",
-        "title": "Commit & Push Assignment",
+        "title": "Commit & Push",
         "icon": "$(git-commit)",
+        "category": "Computor Student"
+      },
+      {
+        "command": "computor.student.testAssignment",
+        "title": "Test Assignment",
+        "icon": "$(beaker)",
         "category": "Computor Student"
       },
       {
@@ -822,12 +828,22 @@
         {
           "command": "computor.student.commitAssignment",
           "when": "view == computor.student.courses && viewItem =~ /studentCourseContent.*assignment.*withRepository.*cloned/",
-          "group": "inline"
+          "group": "inline@1"
+        },
+        {
+          "command": "computor.student.testAssignment",
+          "when": "view == computor.student.courses && viewItem =~ /studentCourseContent.*assignment.*withRepository.*cloned/",
+          "group": "inline@2"
         },
         {
           "command": "computor.student.commitAssignment",
           "when": "view == computor.student.courses && viewItem =~ /studentCourseContent.*assignment.*withRepository.*cloned/",
           "group": "2_actions@1"
+        },
+        {
+          "command": "computor.student.testAssignment",
+          "when": "view == computor.student.courses && viewItem =~ /studentCourseContent.*assignment.*withRepository.*cloned/",
+          "group": "2_actions@2"
         },
         {
           "command": "computor.student.submitAssignment",
