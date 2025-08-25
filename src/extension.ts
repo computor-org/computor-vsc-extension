@@ -517,7 +517,7 @@ class ComputorExtension {
     } as any;
     
     // Create tree data provider with repository manager
-    const treeDataProvider = new StudentCourseContentTreeProvider(this.apiService, courseSelection, repoManager);
+    const treeDataProvider = new StudentCourseContentTreeProvider(this.apiService, courseSelection, repoManager, this.context);
 
     this.context.subscriptions.push(vscode.window.registerTreeDataProvider(
       "computor.student.courses",

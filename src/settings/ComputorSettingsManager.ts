@@ -155,7 +155,10 @@ export class ComputorSettingsManager {
   async setStudentNodeExpandedState(nodeId: string, expanded: boolean): Promise<void> {
     const settings = await this.settingsStorage.load();
     if (!settings.ui) {
-      settings.ui = { studentTree: { expandedStates: {} } };
+      settings.ui = { 
+        lecturerTree: { expandedStates: {} },
+        studentTree: { expandedStates: {} } 
+      };
     }
     if (!settings.ui.studentTree) {
       settings.ui.studentTree = { expandedStates: {} };

@@ -32,21 +32,29 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     private apiService: ComputorApiService;
     private courseSelection: CourseSelectionService;
     private repositoryManager?: StudentRepositoryManager;
-    private settingsManager: ComputorSettingsManager;
+    private settingsManager?: ComputorSettingsManager;
     private courses: CourseList[] = [];
     private courseContentsCache: Map<string, any[]> = new Map(); // Cache course contents per course
     private contentKinds: CourseContentKindList[] = [];
     private expandedStates: Record<string, boolean> = {};
     
-    constructor(apiService: ComputorApiService, courseSelection: CourseSelectionService, repositoryManager?: StudentRepositoryManager) {
+    constructor(
+        apiService: ComputorApiService, 
+        courseSelection: CourseSelectionService, 
+        repositoryManager?: StudentRepositoryManager,
+        context?: vscode.ExtensionContext
+    ) {
         this.apiService = apiService;
         this.courseSelection = courseSelection;
         this.repositoryManager = repositoryManager;
-        this.settingsManager = ComputorSettingsManager.getInstance();
-        this.loadExpandedStates();
+        if (context) {
+            this.settingsManager = new ComputorSettingsManager(context);
+            this.loadExpandedStates();
+        }
     }
     
     private async loadExpandedStates(): Promise<void> {
+        if (!this.settingsManager) return;
         try {
             this.expandedStates = await this.settingsManager.getStudentTreeExpandedStates();
             console.log('Loaded student tree expanded states:', Object.keys(this.expandedStates));
@@ -499,7 +507,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     private getExpandedState(nodeId: string): boolean {
         // Check if we have a saved state for this node
         if (nodeId in this.expandedStates) {
-            return this.expandedStates[nodeId];
+            return this.expandedStates[nodeId] || false;
         }
         // Default to expanded for units (better UX)
         return true;
@@ -514,12 +522,14 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
             delete this.expandedStates[nodeId];
         }
         
-        try {
-            await this.settingsManager.setStudentNodeExpandedState(nodeId, expanded);
-            console.log(`Saved student expanded state for ${nodeId}: ${expanded}`);
-            console.log('Current student expanded states:', Object.keys(this.expandedStates));
-        } catch (error) {
-            console.error('Failed to save student node expanded state:', error);
+        if (this.settingsManager) {
+            try {
+                await this.settingsManager.setStudentNodeExpandedState(nodeId, expanded);
+                console.log(`Saved student expanded state for ${nodeId}: ${expanded}`);
+                console.log('Current student expanded states:', Object.keys(this.expandedStates));
+            } catch (error) {
+                console.error('Failed to save student node expanded state:', error);
+            }
         }
     }
 }
