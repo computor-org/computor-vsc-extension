@@ -100,42 +100,6 @@ class ComputorExtension {
         await this.openSettings();
       })
     );
-
-    // Reset/clear all stored data command (for debugging)
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.resetAll', async () => {
-        const confirm = await vscode.window.showWarningMessage(
-          'This will clear all Computor extension data. Continue?',
-          'Yes', 'No'
-        );
-        if (confirm === 'Yes') {
-          // Clear secrets
-          await this.context.secrets.delete('computor.username');
-          await this.context.secrets.delete('computor.password');
-          
-          // Clear global state
-          const keys = this.context.globalState.keys();
-          for (const key of keys) {
-            await this.context.globalState.update(key, undefined);
-          }
-          
-          // Clear workspace state
-          const workspaceKeys = this.context.workspaceState.keys();
-          for (const key of workspaceKeys) {
-            await this.context.workspaceState.update(key, undefined);
-          }
-          
-          // Clear auth data
-          this.authData = undefined;
-          this.httpClient = undefined;
-          
-          // Clear all roles
-          this.clearAllRoles();
-          
-          vscode.window.showInformationMessage('All Computor extension data has been cleared');
-        }
-      })
-    );
   }
 
   private async loginAndActivateStudent(): Promise<void> {
