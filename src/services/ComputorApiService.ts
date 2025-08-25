@@ -35,7 +35,8 @@ import {
   CourseMemberList,
   CourseMemberGet,
   TaskResponse,
-  SubmissionGroupStudent
+  SubmissionGroupStudent,
+  TestCreate
 } from '../types/generated';
 
 // Query interface for examples (not generated yet)
@@ -1057,6 +1058,27 @@ export class ComputorApiService {
     } catch (error) {
       console.error('Failed to get tutor courses:', error);
       return [];
+    }
+  }
+
+  /**
+   * Submit a test for an assignment
+   * @param testData The test submission data
+   * @returns The test run response with result ID
+   */
+  async submitTest(testData: TestCreate): Promise<{ id: string } | undefined> {
+    try {
+      if (!this.httpClient) {
+        throw new Error('HTTP client not initialized');
+      }
+      const response = await this.httpClient.post<{ id: string }>('/tests', testData);
+      return response.data;
+    } catch (error: any) {
+      console.error('Failed to submit test:', error);
+      // Show user-friendly error message
+      const message = error?.response?.data?.detail || error?.message || 'Failed to submit test';
+      vscode.window.showErrorMessage(`Test submission failed: ${message}`);
+      return undefined;
     }
   }
 

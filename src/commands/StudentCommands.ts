@@ -351,7 +351,27 @@ export class StudentCommands {
             // Push to main branch
             await this.gitBranchManager.pushCurrentBranch(directory);
 
-            progress.report({ increment: 100, message: 'Successfully committed and pushed!' });
+            progress.report({ increment: 80, message: 'Getting commit hash...' });
+            // Get the latest commit hash for test submission
+            const commitHash = await this.gitBranchManager.getLatestCommitHash(directory);
+            
+            if (commitHash && item.courseContent.id) {
+              progress.report({ increment: 90, message: 'Submitting test...' });
+              // Submit test with the commit hash
+              const testResult = await this.apiService.submitTest({
+                course_content_id: item.courseContent.id,
+                version_identifier: commitHash,
+                submit: false // Don't auto-submit, just test
+              });
+              
+              if (testResult) {
+                progress.report({ increment: 100, message: 'Test submitted successfully!' });
+              } else {
+                progress.report({ increment: 100, message: 'Pushed successfully (test submission failed)' });
+              }
+            } else {
+              progress.report({ increment: 100, message: 'Successfully committed and pushed!' });
+            }
           });
 
           // Optionally refresh the tree to update any status indicators

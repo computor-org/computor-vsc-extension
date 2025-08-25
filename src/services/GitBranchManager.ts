@@ -279,6 +279,22 @@ export class GitBranchManager {
   }
 
   /**
+   * Get the latest commit hash from the repository
+   */
+  async getLatestCommitHash(repoPath: string): Promise<string | null> {
+    try {
+      const log = await this.gitWrapper.getLog(repoPath, { maxCount: 1 });
+      if (log && log.length > 0 && log[0]) {
+        return log[0].hash;
+      }
+      return null;
+    } catch (error) {
+      console.error(`Failed to get latest commit hash: ${error}`);
+      return null;
+    }
+  }
+
+  /**
    * Create merge request for assignment submission
    */
   async createMergeRequest(
