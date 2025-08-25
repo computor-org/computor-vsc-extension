@@ -529,9 +529,6 @@ class CourseTreeItem extends TreeItem {
         if (course.path) {
             tooltipParts.push(`Path: ${course.path}`);
         }
-        tooltipParts.push('');
-        tooltipParts.push('💡 Tip: Use "Start Work Session" button (🚀) in the toolbar');
-        tooltipParts.push('to set up your workspace for this course');
         this.tooltip = tooltipParts.join('\n');
     }
 }
