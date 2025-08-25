@@ -53,14 +53,17 @@ class ComputorExtension {
     // Register base commands that are always available
     this.registerBaseCommands();
 
-    // Try to restore previous session
+    // Try to restore previous session silently
     const restored = await this.restoreSession();
     if (restored) {
       await this.initializeRoles();
     } else {
-      // Show login prompt if no previous session
-      await vscode.commands.executeCommand('computor.login');
+      // Show status that user needs to login
+      this.statusBar.text = '$(sign-in) Computor: Click to login';
+      this.statusBar.command = 'computor.login';
+      this.statusBar.tooltip = 'Click to sign in to Computor';
     }
+    // Don't prompt for login automatically - user must run the login command manually
   }
 
   private registerBaseCommands(): void {
