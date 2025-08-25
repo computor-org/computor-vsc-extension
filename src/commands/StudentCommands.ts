@@ -3,10 +3,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { StudentCourseContentTreeProvider } from '../ui/tree/student/StudentCourseContentTreeProvider';
 import { ComputorApiService } from '../services/ComputorApiService';
-import { GitLabTokenManager } from '../services/GitLabTokenManager';
 import { WorkspaceManager } from '../services/WorkspaceManager';
 import { GitBranchManager } from '../services/GitBranchManager';
-import { GitWorktreeManager } from '../services/GitWorktreeManager';
 import { CourseSelectionService } from '../services/CourseSelectionService';
 import { SubmissionGroupStudent } from '../types/generated';
 
@@ -23,7 +21,6 @@ export class StudentCommands {
   private treeDataProvider: StudentCourseContentTreeProvider;
   private courseContentTreeProvider?: any; // Will be set after registration
   private apiService: ComputorApiService;
-  private gitLabTokenManager: GitLabTokenManager;
   private workspaceManager: WorkspaceManager;
   private gitBranchManager: GitBranchManager;
 
@@ -36,7 +33,6 @@ export class StudentCommands {
     this.treeDataProvider = treeDataProvider;
     // Use provided apiService or create a new one
     this.apiService = apiService || new ComputorApiService(context);
-    this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
     this.workspaceManager = WorkspaceManager.getInstance(context);
     this.gitBranchManager = GitBranchManager.getInstance();
     void this.courseContentTreeProvider; // Unused for now
@@ -47,13 +43,6 @@ export class StudentCommands {
   }
 
   registerCommands(): void {
-    // Start work session - prompt for course and setup workspace
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.student.startWorkSession', async () => {
-        await this.startWorkSession();
-      })
-    );
-    
     // Refresh student view
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.student.refresh', () => {
@@ -642,153 +631,6 @@ export class StudentCommands {
       return (stat.type & vscode.FileType.File) !== 0;
     } catch {
       return false;
-    }
-  }
-  
-  /**
-   * Start a new work session by selecting a course and setting up the workspace
-   */
-  private async startWorkSession(): Promise<void> {
-    try {
-      // Fetch available courses for the student
-      const courses = await this.apiService.getStudentCourses();
-      
-      if (!courses || courses.length === 0) {
-        vscode.window.showInformationMessage('No courses available');
-        return;
-      }
-      
-      // Prepare quick pick items
-      const quickPickItems = courses.map(course => ({
-        label: course.title,
-        description: course.path,
-        detail: `Organization: ${course.organization_id}`,
-        course
-      }));
-      
-      // Show course selection dropdown
-      const selected = await vscode.window.showQuickPick(quickPickItems, {
-        placeHolder: 'Select a course to work on',
-        title: 'Course Selection',
-        ignoreFocusOut: true
-      });
-      
-      if (!selected) {
-        return;
-      }
-      
-      const course = selected.course;
-      
-      // Clone the student's repository
-      await vscode.window.withProgress({
-        location: vscode.ProgressLocation.Notification,
-        title: `Setting up workspace for ${course.title}...`,
-        cancellable: false
-      }, async (progress) => {
-        progress.report({ increment: 10, message: 'Fetching course contents...' });
-        
-        // Fetch the student's course contents to get their repository information
-        const courseContents = await this.apiService.getStudentCourseContents(course.id);
-        
-        if (!courseContents || courseContents.length === 0) {
-          vscode.window.showErrorMessage('No course contents available');
-          return;
-        }
-        
-        progress.report({ increment: 10, message: 'Checking repository...' });
-        
-        // Find unique student repositories from submission groups
-        const studentRepositories = new Map<string, any>();
-        
-        for (const content of courseContents) {
-          if (content.submission_group?.repository) {
-            const repo = content.submission_group.repository;
-            if (repo.full_path) {
-              // Use full_path as unique key to avoid duplicates
-              studentRepositories.set(repo.full_path, repo);
-            }
-          }
-        }
-        
-        if (studentRepositories.size === 0) {
-          vscode.window.showErrorMessage('No student repository available. Please contact your instructor.');
-          return;
-        }
-        
-        // For now, use the first repository (later we might handle multiple repositories)
-        const studentRepo = Array.from(studentRepositories.values())[0];
-        
-        if (studentRepositories.size > 1) {
-          // Log a warning if there are multiple repositories
-          console.warn(`Found ${studentRepositories.size} different student repositories for course ${course.id}. Using: ${studentRepo.full_path}`);
-        }
-        
-        // Use the student's repository clone URL
-        const cloneUrl = studentRepo.clone_url || 
-          (studentRepo.full_path && studentRepo.url 
-            ? `${studentRepo.url}/${studentRepo.full_path}.git`
-            : undefined);
-        
-        if (!cloneUrl) {
-          vscode.window.showErrorMessage('Student repository URL is incomplete');
-          return;
-        }
-        
-        // Get GitLab token
-        const gitlabUrl = studentRepo.url || studentRepo.provider_url;
-        const token = await this.gitLabTokenManager.ensureTokenForUrl(gitlabUrl);
-        
-        if (!token) {
-          vscode.window.showErrorMessage('GitLab authentication required');
-          return;
-        }
-        
-        progress.report({ increment: 30, message: 'Cloning student repository...' });
-        
-        // Build authenticated URL
-        const authenticatedUrl = this.gitLabTokenManager.buildAuthenticatedCloneUrl(cloneUrl, token);
-        
-        // Create workspace path
-        const workspaceRoot = await this.workspaceManager.getWorkspaceRoot();
-        
-        // Check if repository already exists
-        const gitWorktreeManager = GitWorktreeManager.getInstance();
-        const repoExists = await gitWorktreeManager.sharedRepoExists(workspaceRoot, course.id);
-        
-        if (!repoExists) {
-          // Clone the student's repository
-          await gitWorktreeManager.cloneSharedRepository(
-            workspaceRoot,
-            course.id,
-            cloneUrl,
-            authenticatedUrl
-          );
-        }
-        
-        progress.report({ increment: 40, message: 'Setting up workspace...' });
-        
-        // Store current course info
-        await this.context.globalState.update('selectedCourseId', course.id);
-        await this.context.globalState.update('selectedCourseInfo', {
-          id: course.id,
-          title: course.title,
-          path: course.path,
-          organizationId: course.organization_id,
-          courseFamilyId: course.course_family_id
-        });
-        
-        progress.report({ increment: 10, message: 'Workspace ready!' });
-        
-        // Refresh the student tree view to show the new course content
-        await vscode.commands.executeCommand('computor.student.refresh');
-        
-        // Show success message
-        vscode.window.showInformationMessage(`Workspace ready for ${course.title}. Check the Student View to see your assignments.`);
-      });
-    } catch (error: any) {
-      console.error('Failed to start work session:', error);
-      const message = error?.message || 'Unknown error';
-      vscode.window.showErrorMessage(`Failed to start work session: ${message}`);
     }
   }
 }

@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import { promisify } from 'util';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { CourseSelectionService } from '../../../services/CourseSelectionService';
+import { StudentRepositoryManager } from '../../../services/StudentRepositoryManager';
 import { SubmissionGroupStudent, CourseContentList, CourseContentTypeList, CourseContentKindList, CourseList } from '../../../types/generated';
 import { IconGenerator } from '../../../utils/IconGenerator';
 
@@ -29,14 +30,16 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     
     private apiService: ComputorApiService;
     private courseSelection: CourseSelectionService;
+    private repositoryManager?: StudentRepositoryManager;
     private courses: CourseList[] = [];
     private courseContentsCache: Map<string, any[]> = new Map(); // Cache course contents per course
     private contentKinds: CourseContentKindList[] = [];
     private expandedStates: Map<string, boolean> = new Map();
     
-    constructor(apiService: ComputorApiService, courseSelection: CourseSelectionService) {
+    constructor(apiService: ComputorApiService, courseSelection: CourseSelectionService, repositoryManager?: StudentRepositoryManager) {
         this.apiService = apiService;
         this.courseSelection = courseSelection;
+        this.repositoryManager = repositoryManager;
     }
     
     refresh(): void {
@@ -90,23 +93,52 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
             if (isAssignment && hasRepository) {
                 let assignmentPath: string | undefined;
                 
-                // The directory field should now contain the absolute worktree path
-                // set by StudentRepositoryManager after cloning
-                if (directory) {
-                    assignmentPath = directory;
-                    console.log('[StudentTree] Using directory from course content:', assignmentPath);
-                }
-                
-                // Fallback: compute using worktree manager if directory not set
-                if (!assignmentPath || !fs.existsSync(assignmentPath)) {
-                    const fallbackPath = element.getRepositoryPath();
-                    console.log('[StudentTree] Directory not found, trying worktree path:', fallbackPath);
-                    if (fallbackPath && fs.existsSync(fallbackPath)) {
-                        assignmentPath = fallbackPath;
+                // First, check if we need to setup the repository
+                if (!directory || !fs.existsSync(directory)) {
+                    // Repository not set up yet - find the course ID and set it up
+                    const courseId = await this.findCourseIdForContent(element.courseContent);
+                    if (courseId && this.repositoryManager) {
+                        console.log('[StudentTree] Setting up repository for assignment:', element.courseContent.title);
+                        
+                        // Show progress while setting up
+                        await vscode.window.withProgress({
+                            location: vscode.ProgressLocation.Notification,
+                            title: `Setting up repository for ${element.courseContent.title}...`,
+                            cancellable: false
+                        }, async () => {
+                            await this.repositoryManager!.autoSetupRepositories(courseId);
+                            
+                            // Re-fetch course contents to get updated directory paths
+                            const courseContents = await this.apiService.getStudentCourseContents(courseId) || [];
+                            this.courseContentsCache.set(courseId, courseContents);
+                            
+                            // Update directory paths for existing repositories
+                            this.repositoryManager!.updateExistingRepositoryPaths(courseId, courseContents);
+                            
+                            // Update the directory on the current element directly
+                            const updatedContent = courseContents.find(c => c.id === element.courseContent.id);
+                            if (updatedContent && updatedContent.directory) {
+                                (element.courseContent as any).directory = updatedContent.directory;
+                            }
+                        });
+                        
+                        // Now that directory is updated, continue to show files
+                        // Re-check the directory after setup
+                        const updatedDirectory = (element.courseContent as any).directory;
+                        if (updatedDirectory && fs.existsSync(updatedDirectory)) {
+                            assignmentPath = updatedDirectory;
+                            console.log('[StudentTree] Repository setup complete, showing files from:', assignmentPath);
+                        } else {
+                            return [new MessageItem('Repository setup complete. Please refresh to see files.', 'info')];
+                        }
+                    } else {
+                        return [new MessageItem('Unable to setup repository', 'error')];
                     }
+                } else {
+                    // Directory exists, use it
+                    assignmentPath = directory;
+                    console.log('[StudentTree] Using existing directory:', assignmentPath);
                 }
-                
-                console.log('[StudentTree] Final assignment path:', assignmentPath);
                 
                 if (assignmentPath && fs.existsSync(assignmentPath)) {
                     // Repository is cloned - show actual files
@@ -216,6 +248,11 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                     if (!courseContents) {
                         courseContents = await this.apiService.getStudentCourseContents(selectedCourseId) || [];
                         this.courseContentsCache.set(selectedCourseId, courseContents);
+                        
+                        // Update directory paths for existing repositories
+                        if (this.repositoryManager) {
+                            this.repositoryManager.updateExistingRepositoryPaths(selectedCourseId, courseContents);
+                        }
                     }
                     
                     if (courseContents.length === 0) {
@@ -271,6 +308,11 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                     // Fetch course contents for this specific course
                     courseContents = await this.apiService.getStudentCourseContents(element.course.id) || [];
                     this.courseContentsCache.set(element.course.id, courseContents);
+                    
+                    // Update directory paths for existing repositories
+                    if (this.repositoryManager) {
+                        this.repositoryManager.updateExistingRepositoryPaths(element.course.id, courseContents);
+                    }
                 }
                 
                 if (courseContents.length === 0) {
@@ -293,6 +335,27 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         }
         
         return [];
+    }
+    
+    /**
+     * Find the course ID for a given content item
+     */
+    private async findCourseIdForContent(content: CourseContentList): Promise<string | undefined> {
+        // Check if content has course_id directly
+        if ((content as any).course_id) {
+            return (content as any).course_id;
+        }
+        
+        // Search through cached course contents
+        for (const [courseId, contents] of this.courseContentsCache.entries()) {
+            if (contents.some(c => c.id === content.id)) {
+                return courseId;
+            }
+        }
+        
+        // If not found in cache, we might need to refresh courses
+        // This shouldn't happen in normal flow but handle it gracefully
+        return undefined;
     }
     
     private buildContentTree(

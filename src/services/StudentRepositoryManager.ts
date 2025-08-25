@@ -181,6 +181,10 @@ export class StudentRepositoryManager {
     for (const [cloneUrl, repoInfos] of uniqueRepos) {
       await this.setupUniqueRepository(courseId, cloneUrl, repoInfos, token, courseContents, upstreamUrl);
     }
+    
+    // Also check for any existing repositories that might not have their directory field set
+    // This handles the case where repositories were cloned in a previous session
+    this.updateExistingRepositoryPaths(courseId, courseContents);
   }
 
   /**
@@ -195,9 +199,10 @@ export class StudentRepositoryManager {
     upstreamUrl?: string
   ): Promise<void> {
     // Create a unique directory name for this repository based on the URL
-    // Extract repository name from clone URL (e.g., "students/admin" from the URL)
+    // Extract repository name from clone URL
     const urlParts = cloneUrl.replace(/\.git$/, '').split('/');
-    const repoName = urlParts.slice(-2).join('-'); // e.g., "students-admin"
+    // Use just the last part of the URL as the repo name (e.g., "admin" from "students/admin")
+    const repoName = urlParts[urlParts.length - 1] || 'repository';
     const repoPath = path.join(this.workspaceRoot, 'courses', courseId, repoName);
     
     const repoExists = await this.directoryExists(repoPath);
@@ -291,6 +296,65 @@ export class StudentRepositoryManager {
         content.directory = finalPath;
         console.log(`[StudentRepositoryManager] Set directory for ${repo.assignmentTitle} to ${finalPath}`);
       }
+    }
+  }
+
+  /**
+   * Update directory paths for existing repositories
+   */
+  public updateExistingRepositoryPaths(courseId: string, courseContents: any[]): void {
+    const coursePath = path.join(this.workspaceRoot, 'courses', courseId);
+    
+    // Check if course directory exists
+    if (!fs.existsSync(coursePath)) {
+      return;
+    }
+    
+    // List all directories in the course folder
+    try {
+      const dirs = fs.readdirSync(coursePath).filter(file => {
+        const filePath = path.join(coursePath, file);
+        return fs.statSync(filePath).isDirectory() && fs.existsSync(path.join(filePath, '.git'));
+      });
+      
+      console.log(`[StudentRepositoryManager] Found existing repositories: ${dirs.join(', ')}`);
+      
+      // For each content item, check if its directory exists
+      for (const content of courseContents) {
+        // Skip if directory is already set and exists
+        if (content.directory && fs.existsSync(content.directory)) {
+          continue;
+        }
+        
+        // Try to find the repository for this content
+        const isAssignment = content.course_content_type?.course_content_kind_id === 'assignment' || 
+                            content.example_id;
+        
+        if (isAssignment && content.submission_group?.repository) {
+          // Look for a matching repository directory
+          for (const dir of dirs) {
+            const repoPath = path.join(coursePath, dir);
+            
+            // Check if this content's directory exists within this repository
+            if (content.directory || content.submission_group?.example_identifier) {
+              const subdirectory = content.directory || content.submission_group?.example_identifier;
+              const fullPath = path.join(repoPath, subdirectory);
+              
+              if (fs.existsSync(fullPath)) {
+                content.directory = fullPath;
+                console.log(`[StudentRepositoryManager] Found existing directory for ${content.title}: ${fullPath}`);
+                break;
+              }
+            } else {
+              // No subdirectory specified, use the repository root
+              content.directory = repoPath;
+              console.log(`[StudentRepositoryManager] Set directory for ${content.title} to repository root: ${repoPath}`);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[StudentRepositoryManager] Error updating existing repository paths:', error);
     }
   }
 

@@ -234,7 +234,7 @@ class ComputorExtension {
         role: 'student',
         endpoint: '/students/courses',
         viewContainer: 'computor-student',
-        commands: ['computor.student.refresh', 'computor.student.startWorkSession']
+        commands: ['computor.student.refresh']
       },
       {
         role: 'tutor',
@@ -402,8 +402,8 @@ class ComputorExtension {
       clearSelection: async () => { console.log('Cleared course selection'); }
     } as any;
     
-    // Create tree data provider
-    const treeDataProvider = new StudentCourseContentTreeProvider(this.apiService, courseSelection);
+    // Create tree data provider with repository manager
+    const treeDataProvider = new StudentCourseContentTreeProvider(this.apiService, courseSelection, repoManager);
     
     // Register tree view
     const treeView = vscode.window.createTreeView('computor.student.courseContent', {
@@ -417,32 +417,10 @@ class ComputorExtension {
     const commands = new StudentCommands(this.context, treeDataProvider, this.apiService);
     commands.registerCommands();
 
-    // Track tree expansion state and auto-clone repositories
+    // Track tree expansion state
     treeView.onDidExpandElement(async (e) => {
       const element = e.element as any;
       await treeDataProvider.onTreeItemExpanded(element);
-      
-      // If a course node is expanded, setup repositories for that course
-      if (element.contextValue === 'studentCourse' && element.course) {
-        console.log('[Student] Course expanded, setting up repositories for:', element.course.id);
-        
-        // Setup repositories in background
-        vscode.window.withProgress({
-          location: vscode.ProgressLocation.Notification,
-          title: `Setting up repositories for ${element.course.title || element.course.path}...`,
-          cancellable: false
-        }, async () => {
-          try {
-            await repoManager.autoSetupRepositories(element.course.id);
-            // Refresh the tree to show the cloned files
-            setTimeout(() => {
-              treeDataProvider.refreshNode(element);
-            }, 500);
-          } catch (error) {
-            console.error('Failed to setup repositories:', error);
-          }
-        });
-      }
     });
 
     treeView.onDidCollapseElement(async (e) => {
