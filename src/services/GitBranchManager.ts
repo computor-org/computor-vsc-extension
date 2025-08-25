@@ -271,7 +271,7 @@ export class GitBranchManager {
         throw new Error('Could not determine current branch');
       }
       await this.gitWrapper.push(repoPath, 'origin', currentBranch);
-      vscode.window.showInformationMessage(`Pushed branch ${currentBranch} to remote`);
+      // Removed notification - handled by caller
     } catch (error) {
       console.error(`Failed to push current branch: ${error}`);
       throw error;

@@ -351,10 +351,8 @@ export class StudentCommands {
             // Push to main branch
             await this.gitBranchManager.pushCurrentBranch(directory);
 
-            progress.report({ increment: 100, message: 'Complete!' });
+            progress.report({ increment: 100, message: 'Successfully committed and pushed!' });
           });
-
-          vscode.window.showInformationMessage(`Assignment "${assignmentTitle}" committed and pushed successfully!`);
 
           // Optionally refresh the tree to update any status indicators
           this.treeDataProvider.refreshNode(item);
