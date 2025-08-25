@@ -317,7 +317,10 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                     const items: TreeItem[] = [];
                     
                     // Add course items
-                    items.push(...this.courses.map(course => new CourseTreeItem(course)));
+                    items.push(...this.courses.map(course => {
+                        const courseId = `course-${course.id}`;
+                        return new CourseTreeItem(course, this.getExpandedState(courseId));
+                    }));
                     return items;
                 } catch (error: any) {
                     console.error('Failed to load student courses:', error);
@@ -509,8 +512,8 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         if (nodeId in this.expandedStates) {
             return this.expandedStates[nodeId] || false;
         }
-        // Default to expanded for units (better UX)
-        return true;
+        // Default to collapsed for better performance
+        return false;
     }
     
     async setNodeExpanded(nodeId: string, expanded: boolean): Promise<void> {
@@ -545,11 +548,12 @@ abstract class TreeItem extends vscode.TreeItem {
 
 class CourseTreeItem extends TreeItem {
     constructor(
-        public readonly course: CourseList
+        public readonly course: CourseList,
+        expanded: boolean = false
     ) {
         super(
             course.title || course.path, 
-            vscode.TreeItemCollapsibleState.Collapsed
+            expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed
         );
         
         this.id = `course-${course.id}`;
@@ -642,7 +646,6 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         expanded: boolean = false
     ) {
         void courseSelection; // Not used but required for type consistency
-        void expanded; // Not used but required for type consistency
         const label = courseContent.title || courseContent.path;
         
         // Make assignments with repositories always expandable
@@ -659,7 +662,10 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         
         // Always make assignments with repositories expandable, regardless of clone status
         const shouldBeExpandable = isAssignment && hasRepository;
-        super(label, shouldBeExpandable ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
+        const collapsibleState = shouldBeExpandable 
+            ? (expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
+            : vscode.TreeItemCollapsibleState.None;
+        super(label, collapsibleState);
         
         this.id = courseContent.id;
         this.setupIcon();
