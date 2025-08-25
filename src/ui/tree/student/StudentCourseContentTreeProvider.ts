@@ -154,6 +154,13 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                         }
                         
                         for (const file of files) {
+                            // Filter out README files and mediaFiles directory
+                            if (file === 'mediaFiles' || 
+                                file === 'README.md' || 
+                                file.startsWith('README_') && file.endsWith('.md')) {
+                                continue;
+                            }
+                            
                             const filePath = path.join(assignmentPath, file);
                             const stats = await stat(filePath);
                             const isDirectory = stats.isDirectory();
@@ -779,26 +786,6 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         return '';
     }
 }
-
-// Clone repository item - DEPRECATED: Repositories are now cloned automatically
-// when the course node is expanded
-// class CloneRepositoryTreeItem extends TreeItem {
-//     constructor(public readonly courseContentItem: CourseContentItem) {
-//         super('📥 Click to clone repository', vscode.TreeItemCollapsibleState.None);
-//         
-//         this.id = `clone-${courseContentItem.courseContent.id}`;
-//         this.contextValue = 'cloneRepository';
-//         this.iconPath = new vscode.ThemeIcon('cloud-download', new vscode.ThemeColor('charts.blue'));
-//         
-//         this.command = {
-//             command: 'computor.student.cloneRepository',
-//             title: 'Clone Repository',
-//             arguments: [courseContentItem]
-//         };
-//         
-//         this.tooltip = 'Click to clone the assignment repository and start working';
-//     }
-// }
 
 // File system item for showing files and folders under assignments
 class FileSystemItem extends TreeItem {

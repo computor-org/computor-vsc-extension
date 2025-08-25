@@ -81,7 +81,9 @@ export class StudentCommands {
       })
     );
 
-    // Clone course repository - collects all assignment repos
+    // Clone course repository - DEPRECATED - handled automatically by the system
+    // Keeping for backward compatibility but not exposing in UI
+    /*
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.student.cloneCourseRepository', async (item: any) => {
         if (!item || !item.course) {
@@ -159,6 +161,40 @@ export class StudentCommands {
           console.error('Failed to fetch course contents:', error);
           const errorMessage = error?.response?.data?.message || error?.message || 'Unknown error';
           vscode.window.showErrorMessage(`Failed to fetch assignment repositories: ${errorMessage}`);
+        }
+      })
+    );
+    */
+
+    // Show README preview for assignments
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.student.showPreview', async (item: any) => {
+        if (!item || !item.courseContent) {
+          vscode.window.showErrorMessage('No assignment selected');
+          return;
+        }
+
+        try {
+          // Get the assignment directory path
+          const directory = (item.courseContent as any).directory;
+          if (!directory) {
+            vscode.window.showErrorMessage('Assignment directory not found. Please wait for repository to be cloned.');
+            return;
+          }
+
+          // Look for README.md in the assignment directory
+          const readmePath = path.join(directory, 'README.md');
+          
+          if (fs.existsSync(readmePath)) {
+            // Open the markdown preview
+            const readmeUri = vscode.Uri.file(readmePath);
+            await vscode.commands.executeCommand('markdown.showPreview', readmeUri, vscode.ViewColumn.Two, { sideBySide: true });
+          } else {
+            vscode.window.showInformationMessage('No README.md file found in this assignment');
+          }
+        } catch (error: any) {
+          console.error('Failed to show README preview:', error);
+          vscode.window.showErrorMessage(`Failed to show README preview: ${error.message}`);
         }
       })
     );
@@ -398,7 +434,8 @@ export class StudentCommands {
       })
     );
 
-    // Sync all repositories for a course
+    // Sync all repositories for a course - DEPRECATED - uses git worktrees which we don't use anymore
+    /*
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.student.syncAllRepositories', async (item?: any) => {
         try {
@@ -522,6 +559,7 @@ export class StudentCommands {
         }
       })
     );
+    */
 
     // Submit assignment
     this.context.subscriptions.push(
@@ -625,6 +663,8 @@ export class StudentCommands {
     }
   }
 
+  // Utility method - currently unused but may be needed in the future
+  /*
   private async fileExists(filePath: string): Promise<boolean> {
     try {
       const stat = await vscode.workspace.fs.stat(vscode.Uri.file(filePath));
@@ -633,4 +673,5 @@ export class StudentCommands {
       return false;
     }
   }
+  */
 }
