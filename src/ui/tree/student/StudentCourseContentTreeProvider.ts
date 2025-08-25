@@ -5,6 +5,7 @@ import { promisify } from 'util';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { CourseSelectionService } from '../../../services/CourseSelectionService';
 import { StudentRepositoryManager } from '../../../services/StudentRepositoryManager';
+import { ComputorSettingsManager } from '../../../settings/ComputorSettingsManager';
 import { SubmissionGroupStudent, CourseContentList, CourseContentTypeList, CourseContentKindList, CourseList } from '../../../types/generated';
 import { IconGenerator } from '../../../utils/IconGenerator';
 
@@ -31,21 +32,35 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     private apiService: ComputorApiService;
     private courseSelection: CourseSelectionService;
     private repositoryManager?: StudentRepositoryManager;
+    private settingsManager: ComputorSettingsManager;
     private courses: CourseList[] = [];
     private courseContentsCache: Map<string, any[]> = new Map(); // Cache course contents per course
     private contentKinds: CourseContentKindList[] = [];
-    private expandedStates: Map<string, boolean> = new Map();
+    private expandedStates: Record<string, boolean> = {};
     
     constructor(apiService: ComputorApiService, courseSelection: CourseSelectionService, repositoryManager?: StudentRepositoryManager) {
         this.apiService = apiService;
         this.courseSelection = courseSelection;
         this.repositoryManager = repositoryManager;
+        this.settingsManager = ComputorSettingsManager.getInstance();
+        this.loadExpandedStates();
+    }
+    
+    private async loadExpandedStates(): Promise<void> {
+        try {
+            this.expandedStates = await this.settingsManager.getStudentTreeExpandedStates();
+            console.log('Loaded student tree expanded states:', Object.keys(this.expandedStates));
+        } catch (error) {
+            console.error('Failed to load student tree expanded states:', error);
+            this.expandedStates = {};
+        }
     }
     
     refresh(): void {
         this.courses = [];
         this.courseContentsCache.clear();
         this.contentKinds = [];
+        // Don't clear expanded states on refresh - preserve them
         this._onDidChangeTreeData.fire(undefined);
     }
     
@@ -68,13 +83,13 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
      */
     async onTreeItemExpanded(element: TreeItem): Promise<void> {
         if (element.id) {
-            this.setNodeExpanded(element.id, true);
+            await this.setNodeExpanded(element.id, true);
         }
     }
     
     async onTreeItemCollapsed(element: TreeItem): Promise<void> {
         if (element.id) {
-            this.setNodeExpanded(element.id, false);
+            await this.setNodeExpanded(element.id, false);
         }
     }
     
@@ -483,18 +498,28 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     
     private getExpandedState(nodeId: string): boolean {
         // Check if we have a saved state for this node
-        if (this.expandedStates.has(nodeId)) {
-            return this.expandedStates.get(nodeId) || false;
+        if (nodeId in this.expandedStates) {
+            return this.expandedStates[nodeId];
         }
         // Default to expanded for units (better UX)
         return true;
     }
     
-    setNodeExpanded(nodeId: string, expanded: boolean): void {
+    async setNodeExpanded(nodeId: string, expanded: boolean): Promise<void> {
+        console.log(`Setting student node ${nodeId} expanded state to: ${expanded}`);
+        
         if (expanded) {
-            this.expandedStates.set(nodeId, true);
+            this.expandedStates[nodeId] = true;
         } else {
-            this.expandedStates.delete(nodeId);
+            delete this.expandedStates[nodeId];
+        }
+        
+        try {
+            await this.settingsManager.setStudentNodeExpandedState(nodeId, expanded);
+            console.log(`Saved student expanded state for ${nodeId}: ${expanded}`);
+            console.log('Current student expanded states:', Object.keys(this.expandedStates));
+        } catch (error) {
+            console.error('Failed to save student node expanded state:', error);
         }
     }
 }

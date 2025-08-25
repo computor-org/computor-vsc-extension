@@ -145,6 +145,31 @@ export class ComputorSettingsManager {
     }
     await this.settingsStorage.save(settings);
   }
+
+  // Student tree expanded states
+  async getStudentTreeExpandedStates(): Promise<Record<string, boolean>> {
+    const settings = await this.settingsStorage.load();
+    return settings.ui?.studentTree?.expandedStates || {};
+  }
+
+  async setStudentNodeExpandedState(nodeId: string, expanded: boolean): Promise<void> {
+    const settings = await this.settingsStorage.load();
+    if (!settings.ui) {
+      settings.ui = { studentTree: { expandedStates: {} } };
+    }
+    if (!settings.ui.studentTree) {
+      settings.ui.studentTree = { expandedStates: {} };
+    }
+    if (!settings.ui.studentTree.expandedStates) {
+      settings.ui.studentTree.expandedStates = {};
+    }
+    if (expanded) {
+      settings.ui.studentTree.expandedStates[nodeId] = true;
+    } else {
+      delete settings.ui.studentTree.expandedStates[nodeId];
+    }
+    await this.settingsStorage.save(settings);
+  }
   
   async clearSettings(): Promise<void> {
     await this.settingsStorage.clear();
