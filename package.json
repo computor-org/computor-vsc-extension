@@ -510,17 +510,17 @@
     "viewsWelcome": [
       {
         "view": "computor.lecturer.courses",
-        "contents": "Welcome to Computor Lecturer!\n\n[Sign In as Lecturer](command:computor.lecturer.signIn)\n\nSign in to access lecturer features and manage your courses.",
+        "contents": "Welcome to Computor!\n\n[Sign In](command:computor.login)\n\nSign in to access your courses and features.",
         "when": "!computor.lecturer.authenticated"
       },
       {
         "view": "computor.tutor.courses",
-        "contents": "Welcome to Computor Tutor!\n\n[Sign In as Tutor](command:computor.tutor.signIn)\n\nSign in to access tutor features and review student submissions.",
+        "contents": "Welcome to Computor!\n\n[Sign In](command:computor.login)\n\nSign in to access your courses and features.",
         "when": "!computor.tutor.authenticated"
       },
       {
         "view": "computor.student.courseContent",
-        "contents": "Welcome to Computor Student!\n\n[Sign In as Student](command:computor.student.signIn)\n\nSign in to access your courses and assignments.",
+        "contents": "Welcome to Computor!\n\n[Sign In](command:computor.login)\n\nSign in to access your courses and features.",
         "when": "!computor.student.authenticated"
       }
     ],
