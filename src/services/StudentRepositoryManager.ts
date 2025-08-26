@@ -107,16 +107,16 @@ export class StudentRepositoryManager {
             directory: content.directory,
             exampleIdentifier: content.submission_group?.example_identifier
           });
-          // Use directory field if available, otherwise use example_identifier
-          // The directory field should contain the path to the assignment files in the repo
-          const directoryPath = content.directory || content.submission_group?.example_identifier;
-          console.log(`[StudentRepositoryManager] Directory path for ${content.title}: "${directoryPath}"`);
+          // Use example_identifier as the subdirectory within the repo
+          // Do NOT use content.directory here as it might already be a full path
+          const subdirectory = content.submission_group?.example_identifier;
+          console.log(`[StudentRepositoryManager] Subdirectory for ${content.title}: "${subdirectory}"`);
           
           repoMap.set(key, {
             cloneUrl: repo.clone_url,
             assignmentPath: content.path,
             assignmentTitle: content.title || content.path,
-            directory: directoryPath
+            directory: subdirectory  // This should be just the subdirectory, not a full path
           });
         }
       }
@@ -335,9 +335,10 @@ export class StudentRepositoryManager {
           for (const dir of dirs) {
             const repoPath = path.join(coursePath, dir);
             
-            // Check if this content's directory exists within this repository
-            if (content.directory || content.submission_group?.example_identifier) {
-              const subdirectory = content.directory || content.submission_group?.example_identifier;
+            // Check if this content's subdirectory exists within this repository
+            // Use only example_identifier as the subdirectory, not content.directory which might be a full path
+            if (content.submission_group?.example_identifier) {
+              const subdirectory = content.submission_group.example_identifier;
               const fullPath = path.join(repoPath, subdirectory);
               
               if (fs.existsSync(fullPath)) {
