@@ -7,21 +7,28 @@ import { TestResultTreeDataProvider } from '../ui/tree/TestResultTreeDataProvide
  */
 export class TestResultService {
   private static instance: TestResultService;
-  private apiService: ComputorApiService;
+  private apiService?: ComputorApiService;
   private testResultsProvider?: TestResultTreeDataProvider;
   private pollingIntervals: Map<string, NodeJS.Timer> = new Map();
   private readonly POLL_INTERVAL = 2000; // 2 seconds
   private readonly MAX_POLL_DURATION = 300000; // 5 minutes
 
-  private constructor(context: vscode.ExtensionContext) {
-    this.apiService = new ComputorApiService(context);
+  private constructor() {
+    // API service will be set via setApiService
   }
 
-  static getInstance(context: vscode.ExtensionContext): TestResultService {
+  static getInstance(): TestResultService {
     if (!TestResultService.instance) {
-      TestResultService.instance = new TestResultService(context);
+      TestResultService.instance = new TestResultService();
     }
     return TestResultService.instance;
+  }
+
+  /**
+   * Set the API service to use
+   */
+  setApiService(apiService: ComputorApiService): void {
+    this.apiService = apiService;
   }
 
   /**
@@ -40,6 +47,11 @@ export class TestResultService {
     assignmentTitle: string,
     submit: boolean = false
   ): Promise<void> {
+    if (!this.apiService) {
+      vscode.window.showErrorMessage('Test service not properly initialized');
+      return;
+    }
+
     try {
       // Submit the test
       const testResult = await this.apiService.submitTest({
@@ -95,7 +107,7 @@ export class TestResultService {
             });
 
             // Check status
-            const status = await this.apiService.getResultStatus(resultId);
+            const status = await this.apiService!.getResultStatus(resultId);
             console.log(`[TestResultService] Poll ${pollCount}: Status = ${status}`);
 
             if (!status) {
@@ -108,7 +120,7 @@ export class TestResultService {
               this.stopPolling(resultId);
 
               // Get full result
-              const fullResult = await this.apiService.getResult(resultId);
+              const fullResult = await this.apiService!.getResult(resultId);
               
               if (fullResult) {
                 console.log('[TestResultService] Test complete, full result:', fullResult);

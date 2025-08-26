@@ -37,9 +37,10 @@ export class StudentCommands {
     this.apiService = apiService || new ComputorApiService(context);
     this.workspaceManager = WorkspaceManager.getInstance(context);
     this.gitBranchManager = GitBranchManager.getInstance();
-    this.testResultService = TestResultService.getInstance(context);
+    this.testResultService = TestResultService.getInstance();
+    // Make sure TestResultService has the API service
+    this.testResultService.setApiService(this.apiService);
     void this.courseContentTreeProvider; // Unused for now
-    void this.apiService; // Will be used for API calls
   }
   
   setCourseContentTreeProvider(provider: any): void {

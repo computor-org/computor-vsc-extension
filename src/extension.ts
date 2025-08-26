@@ -550,7 +550,8 @@ class ComputorExtension {
     ));
 
     // Connect test results provider to TestResultService
-    const testResultService = TestResultService.getInstance(this.context);
+    const testResultService = TestResultService.getInstance();
+    testResultService.setApiService(this.apiService);
     testResultService.setTestResultsProvider(testResultsProvider);
 
     // Track tree expansion state
