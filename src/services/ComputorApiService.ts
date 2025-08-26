@@ -1066,12 +1066,12 @@ export class ComputorApiService {
    * @param testData The test submission data
    * @returns The test run response with result ID
    */
-  async submitTest(testData: TestCreate): Promise<{ id: string } | undefined> {
+  async submitTest(testData: TestCreate): Promise<any> {
     try {
       if (!this.httpClient) {
         throw new Error('HTTP client not initialized');
       }
-      const response = await this.httpClient.post<{ id: string }>('/tests', testData);
+      const response = await this.httpClient.post<any>('/tests', testData);
       return response.data;
     } catch (error: any) {
       console.error('Failed to submit test:', error);

@@ -39,7 +39,7 @@ export class TestResultService {
   }
 
   /**
-   * Submit a test and start polling for results
+   * Submit a test and display results
    */
   async submitTestAndAwaitResults(
     courseContentId: string,
@@ -53,99 +53,137 @@ export class TestResultService {
     }
 
     try {
-      // Submit the test
-      const testResult = await this.apiService.submitTest({
-        course_content_id: courseContentId,
-        version_identifier: versionIdentifier,
-        submit
-      });
-
-      if (!testResult || !testResult.id) {
-        vscode.window.showErrorMessage('Failed to submit test - no result ID returned');
-        return;
-      }
-
-      const resultId = testResult.id;
-      console.log(`[TestResultService] Test submitted with result ID: ${resultId}`);
-
-      // Show progress notification
-      vscode.window.withProgress({
+      // Show progress while submitting test
+      await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: `Running tests for ${assignmentTitle}...`,
-        cancellable: true
-      }, async (progress, token) => {
-        return new Promise<void>((resolve, reject) => {
-          const startTime = Date.now();
-          let pollCount = 0;
-
-          // Clear any existing polling for this result
-          this.stopPolling(resultId);
-
-          // Start polling for results
-          const interval = setInterval(async () => {
-            pollCount++;
-
-            // Check if cancelled
-            if (token.isCancellationRequested) {
-              this.stopPolling(resultId);
-              resolve();
-              return;
-            }
-
-            // Check timeout
-            if (Date.now() - startTime > this.MAX_POLL_DURATION) {
-              this.stopPolling(resultId);
-              vscode.window.showWarningMessage(`Test for ${assignmentTitle} timed out after 5 minutes`);
-              resolve();
-              return;
-            }
-
-            // Update progress
-            const elapsed = Math.floor((Date.now() - startTime) / 1000);
-            progress.report({ 
-              message: `Waiting for results... (${elapsed}s)` 
-            });
-
-            // Check status
-            const status = await this.apiService!.getResultStatus(resultId);
-            console.log(`[TestResultService] Poll ${pollCount}: Status = ${status}`);
-
-            if (!status) {
-              // API error, continue polling
-              return;
-            }
-
-            // Check if test is complete
-            if (status === 'COMPLETED' || status === 'FAILED' || status === 'CRASHED') {
-              this.stopPolling(resultId);
-
-              // Get full result
-              const fullResult = await this.apiService!.getResult(resultId);
-              
-              if (fullResult) {
-                console.log('[TestResultService] Test complete, full result:', fullResult);
-                
-                // Display results
-                await this.displayTestResults(fullResult, assignmentTitle);
-                
-                // Show completion message
-                if (status === 'COMPLETED') {
-                  vscode.window.showInformationMessage(
-                    `✅ Tests completed for ${assignmentTitle}`
-                  );
-                } else {
-                  vscode.window.showErrorMessage(
-                    `❌ Tests failed for ${assignmentTitle}`
-                  );
-                }
-              }
-
-              resolve();
-            }
-          }, this.POLL_INTERVAL);
-
-          this.pollingIntervals.set(resultId, interval);
+        title: `Submitting test for ${assignmentTitle}...`,
+        cancellable: false
+      }, async (progress) => {
+        progress.report({ message: 'Sending test request...' });
+        
+        // Submit the test
+        const testResult = await this.apiService!.submitTest({
+          course_content_id: courseContentId,
+          version_identifier: versionIdentifier,
+          submit
         });
+
+        console.log("[Debug] " + JSON.stringify(testResult,null,2));
+
+        if (!testResult) {
+          vscode.window.showErrorMessage('Failed to submit test - no response received');
+          return;
+        }
+
+        // Check if we have the full result already
+        if (testResult.result_json) {
+          console.log(`[TestResultService] Test completed immediately with status: ${testResult.status}`);
+          
+          // Display the results
+          await this.displayTestResults(testResult, assignmentTitle);
+          
+          // Show completion message based on status
+          if (testResult.status === 0) {
+            // Status 0 = completed successfully
+            const score = testResult.result || 0;
+            const percentage = (score * 100).toFixed(1);
+            vscode.window.showInformationMessage(
+              `✅ Tests completed for ${assignmentTitle}: ${percentage}% passed`
+            );
+          } else {
+            // Status 1 = failed
+            vscode.window.showErrorMessage(
+              `❌ Test execution failed for ${assignmentTitle}`
+            );
+          }
+          return;
+        }
+
+        // If we only got an ID, we need to poll (keeping old polling logic as fallback)
+        if (testResult.id) {
+          const resultId = testResult.id;
+          console.log(`[TestResultService] Test submitted with result ID: ${resultId}, starting polling...`);
+
+          // Show progress notification
+          await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `Running tests for ${assignmentTitle}...`,
+            cancellable: true
+          }, async (progress, token) => {
+            return new Promise<void>((resolve) => {
+              const startTime = Date.now();
+              let pollCount = 0;
+
+              // Clear any existing polling for this result
+              this.stopPolling(resultId);
+
+              // Start polling for results
+              const interval = setInterval(async () => {
+                pollCount++;
+
+                // Check if cancelled
+                if (token.isCancellationRequested) {
+                  this.stopPolling(resultId);
+                  resolve();
+                  return;
+                }
+
+                // Check timeout
+                if (Date.now() - startTime > this.MAX_POLL_DURATION) {
+                  this.stopPolling(resultId);
+                  vscode.window.showWarningMessage(`Test for ${assignmentTitle} timed out after 5 minutes`);
+                  resolve();
+                  return;
+                }
+
+                // Update progress
+                const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                progress.report({ 
+                  message: `Waiting for results... (${elapsed}s)` 
+                });
+
+                // Check status
+                const status = await this.apiService!.getResultStatus(resultId);
+                console.log(`[TestResultService] Poll ${pollCount}: Status = ${status}`);
+
+                if (!status) {
+                  // API error, continue polling
+                  return;
+                }
+
+                // Check if test is complete
+                if (status === 'COMPLETED' || status === 'FAILED' || status === 'CRASHED') {
+                  this.stopPolling(resultId);
+
+                  // Get full result
+                  const fullResult = await this.apiService!.getResult(resultId);
+                  
+                  if (fullResult) {
+                    console.log('[TestResultService] Test complete, full result:', fullResult);
+                    
+                    // Display results
+                    await this.displayTestResults(fullResult, assignmentTitle);
+                    
+                    // Show completion message
+                    if (status === 'COMPLETED') {
+                      vscode.window.showInformationMessage(
+                        `✅ Tests completed for ${assignmentTitle}`
+                      );
+                    } else {
+                      vscode.window.showErrorMessage(
+                        `❌ Tests failed for ${assignmentTitle}`
+                      );
+                    }
+                  }
+
+                  resolve();
+                }
+              }, this.POLL_INTERVAL);
+
+              this.pollingIntervals.set(resultId, interval);
+            });
+          });
+        }
       });
     } catch (error: any) {
       console.error('[TestResultService] Error in submitTestAndAwaitResults:', error);
