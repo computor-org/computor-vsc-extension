@@ -1082,4 +1082,40 @@ export class ComputorApiService {
     }
   }
 
+  /**
+   * Get the status of a test result
+   * @param resultId The result ID to check
+   * @returns The status string or undefined
+   */
+  async getResultStatus(resultId: string): Promise<string | undefined> {
+    try {
+      if (!this.httpClient) {
+        throw new Error('HTTP client not initialized');
+      }
+      const response = await this.httpClient.get<string>(`/results/${resultId}/status`);
+      return response.data;
+    } catch (error: any) {
+      console.error('Failed to get result status:', error);
+      return undefined;
+    }
+  }
+
+  /**
+   * Get full test result details
+   * @param resultId The result ID to fetch
+   * @returns The full result data or undefined
+   */
+  async getResult(resultId: string): Promise<any> {
+    try {
+      if (!this.httpClient) {
+        throw new Error('HTTP client not initialized');
+      }
+      const response = await this.httpClient.get<any>(`/results/${resultId}`);
+      return response.data;
+    } catch (error: any) {
+      console.error('Failed to get result:', error);
+      return undefined;
+    }
+  }
+
 }

@@ -6,6 +6,7 @@ import { ComputorApiService } from '../services/ComputorApiService';
 import { WorkspaceManager } from '../services/WorkspaceManager';
 import { GitBranchManager } from '../services/GitBranchManager';
 import { CourseSelectionService } from '../services/CourseSelectionService';
+import { TestResultService } from '../services/TestResultService';
 import { SubmissionGroupStudent } from '../types/generated';
 
 // Interface for course data used in commands
@@ -23,6 +24,7 @@ export class StudentCommands {
   private apiService: ComputorApiService; // Used for future API calls
   private workspaceManager: WorkspaceManager;
   private gitBranchManager: GitBranchManager;
+  private testResultService: TestResultService;
 
   constructor(
     context: vscode.ExtensionContext, 
@@ -35,6 +37,7 @@ export class StudentCommands {
     this.apiService = apiService || new ComputorApiService(context);
     this.workspaceManager = WorkspaceManager.getInstance(context);
     this.gitBranchManager = GitBranchManager.getInstance();
+    this.testResultService = TestResultService.getInstance(context);
     void this.courseContentTreeProvider; // Unused for now
     void this.apiService; // Will be used for API calls
   }
@@ -391,26 +394,13 @@ export class StudentCommands {
             // No changes to commit, but we can still test with the current commit
             const currentCommitHash = await this.gitBranchManager.getLatestCommitHash(directory);
             if (currentCommitHash && item.courseContent.id) {
-              await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: `Testing ${assignmentTitle}...`,
-                cancellable: false
-              }, async (progress) => {
-                progress.report({ increment: 50, message: 'Submitting test...' });
-                
-                const testResult = await this.apiService.submitTest({
-                  course_content_id: item.courseContent.id,
-                  version_identifier: currentCommitHash,
-                  submit: false // Don't auto-submit, just test
-                });
-                
-                if (testResult) {
-                  progress.report({ increment: 100, message: 'Test submitted successfully!' });
-                  vscode.window.showInformationMessage(`Test submitted for "${assignmentTitle}" with commit ${currentCommitHash.substring(0, 8)}`);
-                } else {
-                  progress.report({ increment: 100, message: 'Test submission failed' });
-                }
-              });
+              // Use TestResultService for polling and displaying results
+              await this.testResultService.submitTestAndAwaitResults(
+                item.courseContent.id,
+                currentCommitHash,
+                assignmentTitle,
+                false // Don't auto-submit, just test
+              );
             } else {
               vscode.window.showWarningMessage('Could not determine commit hash for testing');
             }
@@ -421,6 +411,9 @@ export class StudentCommands {
           const now = new Date();
           const timestamp = now.toISOString().replace('T', ' ').split('.')[0];
           const commitMessage = `Update ${assignmentTitle} - ${timestamp}`;
+
+          // Variable to hold commit hash
+          let commitHash: string | null = null;
 
           // Show progress while committing, pushing, and testing
           await vscode.window.withProgress({
@@ -452,27 +445,22 @@ export class StudentCommands {
 
             progress.report({ increment: 60, message: 'Getting commit hash...' });
             // Get the latest commit hash for test submission
-            const commitHash = await this.gitBranchManager.getLatestCommitHash(directory);
+            commitHash = await this.gitBranchManager.getLatestCommitHash(directory);
             
-            if (commitHash && item.courseContent.id) {
-              progress.report({ increment: 80, message: 'Submitting test...' });
-              // Submit test with the commit hash
-              const testResult = await this.apiService.submitTest({
-                course_content_id: item.courseContent.id,
-                version_identifier: commitHash,
-                submit: false // Don't auto-submit, just test
-              });
-              
-              if (testResult) {
-                progress.report({ increment: 100, message: 'Test submitted successfully!' });
-                vscode.window.showInformationMessage(`Test submitted for "${assignmentTitle}" with commit ${commitHash.substring(0, 8)}`);
-              } else {
-                progress.report({ increment: 100, message: 'Pushed successfully but test submission failed' });
-              }
-            } else {
-              progress.report({ increment: 100, message: 'Pushed successfully but could not submit test' });
-            }
+            progress.report({ increment: 100, message: 'Code pushed successfully!' });
           });
+          
+          // Now submit test and await results with polling
+          if (commitHash && item.courseContent.id) {
+            await this.testResultService.submitTestAndAwaitResults(
+              item.courseContent.id,
+              commitHash,
+              assignmentTitle,
+              false // Don't auto-submit, just test
+            );
+          } else {
+            vscode.window.showWarningMessage('Could not submit test: missing commit hash or content ID');
+          }
 
           // Optionally refresh the tree to update any status indicators
           this.treeDataProvider.refreshNode(item);

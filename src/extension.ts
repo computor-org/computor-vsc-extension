@@ -15,6 +15,8 @@ import { TutorCommands } from './commands/TutorCommands';
 import { LecturerExampleCommands } from './commands/LecturerExampleCommands';
 import { IconGenerator } from './utils/IconGenerator';
 import { StudentRepositoryManager } from './services/StudentRepositoryManager';
+import { TestResultTreeDataProvider } from './ui/tree/TestResultTreeDataProvider';
+import { TestResultService } from './services/TestResultService';
 
 interface AuthenticationData {
   backendUrl: string;
@@ -535,6 +537,21 @@ class ComputorExtension {
     // Register commands with shared API service
     const commands = new StudentCommands(this.context, treeDataProvider, this.apiService);
     commands.registerCommands();
+
+    // Register Test Results View
+    const testResultsProvider = new TestResultTreeDataProvider(this.context, [], {
+      expandAll: true,
+      showIcons: true
+    });
+    
+    this.context.subscriptions.push(vscode.window.registerTreeDataProvider(
+      'computor.testResultsView',
+      testResultsProvider
+    ));
+
+    // Connect test results provider to TestResultService
+    const testResultService = TestResultService.getInstance(this.context);
+    testResultService.setTestResultsProvider(testResultsProvider);
 
     // Track tree expansion state
     treeView.onDidExpandElement(async (e) => {
