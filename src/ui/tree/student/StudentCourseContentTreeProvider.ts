@@ -148,11 +148,26 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                         // Now that directory is updated, continue to show files
                         // Re-check the directory after setup
                         const updatedDirectory = (element.courseContent as any).directory;
-                        if (updatedDirectory && fs.existsSync(updatedDirectory)) {
+                        if (updatedDirectory) {
                             assignmentPath = updatedDirectory;
-                            console.log('[StudentTree] Repository setup complete, showing files from:', assignmentPath);
-                        } else {
-                            return [new MessageItem('Repository setup complete. Please refresh to see files.', 'info')];
+                            console.log('[StudentTree] Repository setup complete, directory path:', assignmentPath);
+                            
+                            // If the directory still doesn't exist, it might be a subdirectory issue
+                            // Try the parent directory (repository root)
+                            if (assignmentPath && !fs.existsSync(assignmentPath)) {
+                                const parentDir = path.dirname(assignmentPath);
+                                if (fs.existsSync(parentDir) && fs.existsSync(path.join(parentDir, '.git'))) {
+                                    console.log('[StudentTree] Using repository root instead:', parentDir);
+                                    assignmentPath = parentDir;
+                                    // Update the element's directory for future use
+                                    (element.courseContent as any).directory = parentDir;
+                                }
+                            }
+                        }
+                        
+                        if (!assignmentPath || !fs.existsSync(assignmentPath)) {
+                            console.log('[StudentTree] Directory not available after setup:', assignmentPath);
+                            return [new MessageItem('Repository cloned but directory not found', 'warning')];
                         }
                     } else {
                         return [new MessageItem('Unable to setup repository', 'error')];
@@ -171,11 +186,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                         const files = await readdir(assignmentPath);
                         const items: TreeItem[] = [];
                         
-                        // If directory is empty, show a message
-                        if (files.length === 0) {
-                            return [new MessageItem('Empty directory', 'info')];
-                        }
-                        
+                        // First, populate items from existing files
                         for (const file of files) {
                             // Filter out README files and mediaFiles directory
                             if (file === 'mediaFiles' || 
@@ -194,6 +205,58 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                                 isDirectory ? vscode.FileType.Directory : vscode.FileType.File
                             );
                             items.push(fileItem);
+                        }
+                        
+                        // If directory is empty or only contains filtered files, trigger fork update
+                        if (items.length === 0) {
+                            console.log('[StudentTree] Assignment directory appears empty, triggering fork update...');
+                            
+                            // Get course ID and trigger repository update
+                            const courseId = await this.findCourseIdForContent(element.courseContent);
+                            if (courseId && this.repositoryManager) {
+                                try {
+                                    await vscode.window.withProgress({
+                                        location: vscode.ProgressLocation.Notification,
+                                        title: `Updating ${element.courseContent.title} from template...`,
+                                        cancellable: false
+                                    }, async () => {
+                                        // Call the repository manager's auto-setup which includes fork sync
+                                        await this.repositoryManager!.autoSetupRepositories(courseId);
+                                    });
+                                    
+                                    // Re-read the directory after update
+                                    const updatedFiles = await readdir(assignmentPath);
+                                    for (const file of updatedFiles) {
+                                        // Filter out README files and mediaFiles directory
+                                        if (file === 'mediaFiles' || 
+                                            file === 'README.md' || 
+                                            file.startsWith('README_') && file.endsWith('.md')) {
+                                            continue;
+                                        }
+                                        
+                                        const filePath = path.join(assignmentPath, file);
+                                        const stats = await stat(filePath);
+                                        const isDirectory = stats.isDirectory();
+                                        
+                                        const fileItem = new FileSystemItem(
+                                            file,
+                                            vscode.Uri.file(filePath),
+                                            isDirectory ? vscode.FileType.Directory : vscode.FileType.File
+                                        );
+                                        items.push(fileItem);
+                                    }
+                                    
+                                    // If still empty after update
+                                    if (items.length === 0) {
+                                        return [new MessageItem('Empty assignment - no files available', 'info')];
+                                    }
+                                } catch (error) {
+                                    console.error('[StudentTree] Failed to update from template:', error);
+                                    return [new MessageItem('Empty directory - update failed', 'warning')];
+                                }
+                            } else {
+                                return [new MessageItem('Empty directory', 'info')];
+                            }
                         }
                         
                         // Sort: directories first, then files, alphabetically
