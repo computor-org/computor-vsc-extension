@@ -41,18 +41,18 @@ Version: `YYYY.MM.DD[.N]` where N is optional build number for same-day releases
 ### Creating a Release
 
 ```bash
-# First release of the day
+# Automatic CalVer bump (handles same-day builds)
+npm run bump
+git push origin main --follow-tags
+
+# Or one command to bump and push
+npm run release:bump
+
+# Manual version (if needed)
 npm version 2024.08.27 --no-git-tag-version
 git add package.json package-lock.json
 git commit -m "chore: bump version to 2024.08.27"
 git tag v2024.08.27
-git push origin main --follow-tags
-
-# Same-day update
-npm version 2024.08.27.1 --no-git-tag-version
-git add package.json package-lock.json
-git commit -m "chore: bump version to 2024.08.27.1"
-git tag v2024.08.27.1
 git push origin main --follow-tags
 ```
 

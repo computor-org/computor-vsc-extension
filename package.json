@@ -1034,6 +1034,8 @@
     "package:version": "vsce package --no-yarn --out computor-vsc-extension-$(node -p \"require('./package.json').version\").vsix",
     "prerelease": "npm run compile && npm run lint && npm run test",
     "release:prepare": "npm run prerelease && npm run package:version",
+    "bump": "node scripts/bump-version.js",
+    "release:bump": "node scripts/bump-version.js && git push origin main --follow-tags",
     "release:tag": "node -e \"const v=require('./package.json').version; require('child_process').execSync('git tag v'+v+' && git push origin v'+v, {stdio:'inherit'})\"",
     "release": "npm run release:prepare && npm run release:tag"
   },

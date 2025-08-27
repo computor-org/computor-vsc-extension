@@ -10,6 +10,9 @@ dist/
 !webview-ui/**/*.js
 !webview-ui/**/*.css
 
+# Exception for scripts
+!scripts/**/*.js
+
 # Dependencies
 node_modules/
 
