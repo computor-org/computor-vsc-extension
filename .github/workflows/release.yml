@@ -1,0 +1,123 @@
+# Automated VSIX Release Workflow
+name: Release VSIX Package
+
+on:
+  push:
+    tags:
+      - 'v20[0-9][0-9].[0-9][0-9].[0-9][0-9]'        # v2024.08.27
+      - 'v20[0-9][0-9].[0-9][0-9].[0-9][0-9].[0-9]+'  # v2024.08.27.1, v2024.08.27.2
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+          cache: 'npm'
+      
+      - run: npm ci
+        env:
+          NODE_ENV: production
+      
+      - run: npm install -g @vscode/vsce
+      
+      - run: npm run compile
+      
+      - run: npm run lint
+      
+      - run: npm run test
+      
+      - name: Extract Version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          if [[ "$VERSION" == *"-"* ]]; then
+            echo "prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Validate Version Match
+        run: |
+          TAG_VERSION=${GITHUB_REF#refs/tags/v}
+          PACKAGE_VERSION="${{ steps.version.outputs.version }}"
+          
+          if [[ "$TAG_VERSION" != "$PACKAGE_VERSION" ]]; then
+            echo "Error: Tag version ($TAG_VERSION) does not match package.json version ($PACKAGE_VERSION)"
+            exit 1
+          fi
+      
+      - name: Package VSIX
+        run: |
+          vsce package --no-yarn --out "computor-vsc-extension-${{ steps.version.outputs.version }}.vsix"
+          VSIX_FILE="computor-vsc-extension-${{ steps.version.outputs.version }}.vsix"
+          
+          if [[ ! -f "$VSIX_FILE" ]]; then
+            echo "Error: VSIX file was not created: $VSIX_FILE"
+            exit 1
+          fi
+          
+          if ! unzip -l "$VSIX_FILE" | grep -q "extension.js"; then
+            echo "Error: extension.js not found in VSIX package"
+            exit 1
+          fi
+          
+          if ! unzip -l "$VSIX_FILE" | grep -q "package.json"; then
+            echo "Error: package.json not found in VSIX package"
+            exit 1
+          fi
+      
+      - name: Generate Release Notes
+        id: release_notes
+        run: |
+          PREVIOUS_TAG=$(git tag --sort=-version:refname | grep "^v" | head -2 | tail -1)
+          CURRENT_TAG=${GITHUB_REF#refs/tags/}
+          
+          echo "release_notes<<EOF" >> $GITHUB_OUTPUT
+          echo "## Release $CURRENT_TAG" >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
+          
+          if [[ -n "$PREVIOUS_TAG" ]]; then
+            echo "### Changes since $PREVIOUS_TAG" >> $GITHUB_OUTPUT
+            echo "" >> $GITHUB_OUTPUT
+            git log --pretty=format:"- %s (%an)" "$PREVIOUS_TAG..$CURRENT_TAG" >> $GITHUB_OUTPUT
+          else
+            echo "### Initial Release" >> $GITHUB_OUTPUT
+            echo "" >> $GITHUB_OUTPUT
+            echo "- Initial release of Computor VS Code Extension" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "" >> $GITHUB_OUTPUT
+          echo "### Installation" >> $GITHUB_OUTPUT
+          echo "Download the VSIX file and install via:" >> $GITHUB_OUTPUT
+          echo "\`\`\`" >> $GITHUB_OUTPUT
+          echo "code --install-extension computor-vsc-extension-${{ steps.version.outputs.version }}.vsix" >> $GITHUB_OUTPUT
+          echo "\`\`\`" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+      
+      - name: Create GitHub Release
+        uses: ncipollo/create-release@v1
+        with:
+          tag: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: ${{ steps.release_notes.outputs.release_notes }}
+          prerelease: ${{ steps.version.outputs.prerelease }}
+          artifacts: "computor-vsc-extension-${{ steps.version.outputs.version }}.vsix"
+          artifactContentType: application/zip
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Summary
+        run: |
+          echo "VSIX package: computor-vsc-extension-${{ steps.version.outputs.version }}.vsix"
+          echo "GitHub release: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"

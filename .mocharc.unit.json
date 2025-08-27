@@ -1,5 +1,5 @@
 {
-  "require": ["ts-node/register"],
+  "require": ["ts-node/register", "./test/setup.ts"],
   "extension": ["ts"],
   "spec": [
     "test/authentication/TokenManager.test.ts",
