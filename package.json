@@ -3,11 +3,28 @@
   "displayName": "Computor VS Code Extension",
   "description": "VS Code extension for computor teaching software",
   "version": "0.0.1",
+  "publisher": "computor",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/krystophny/computor-vsc-extension.git"
+  },
+  "bugs": {
+    "url": "https://github.com/krystophny/computor-vsc-extension/issues"
+  },
+  "homepage": "https://github.com/krystophny/computor-vsc-extension#readme",
   "engines": {
     "vscode": "^1.74.0"
   },
   "categories": [
-    "Other"
+    "Education"
+  ],
+  "keywords": [
+    "education",
+    "teaching",
+    "programming",
+    "course",
+    "git",
+    "assignment"
   ],
   "activationEvents": [
     "onCommand:computor.activate",
@@ -1012,7 +1029,13 @@
     "test:all": "npm run test && npm run test:integration",
     "test:git-basic": "ts-node test/integration/manual/test-git-basic.ts",
     "test:gitlab": "ts-node test/integration/manual/test-gitlab-integration.ts",
-    "test:gitlab-auto": "ts-node test/integration/manual/test-gitlab-auto.ts"
+    "test:gitlab-auto": "ts-node test/integration/manual/test-gitlab-auto.ts",
+    "package": "vsce package --no-yarn",
+    "package:version": "vsce package --no-yarn --out computor-vsc-extension-$(node -p \"require('./package.json').version\").vsix",
+    "prerelease": "npm run compile && npm run lint && npm run test",
+    "release:prepare": "npm run prerelease && npm run package:version",
+    "release:tag": "node -e \"const v=require('./package.json').version; require('child_process').execSync('git tag v'+v+' && git push origin v'+v, {stdio:'inherit'})\"",
+    "release": "npm run release:prepare && npm run release:tag"
   },
   "devDependencies": {
     "@types/chai": "^4.3.4",
@@ -1025,6 +1048,7 @@
     "@types/vscode": "^1.74.0",
     "@typescript-eslint/eslint-plugin": "^5.45.0",
     "@typescript-eslint/parser": "^5.45.0",
+    "@vscode/vsce": "^3.2.0",
     "chai": "^4.3.7",
     "eslint": "^8.28.0",
     "mocha": "^10.1.0",
