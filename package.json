@@ -2,7 +2,7 @@
   "name": "computor-vsc-extension",
   "displayName": "Computor VS Code Extension",
   "description": "VS Code extension for computor teaching software",
-  "version": "0.0.1",
+  "version": "2024.08.27",
   "publisher": "computor",
   "repository": {
     "type": "git",

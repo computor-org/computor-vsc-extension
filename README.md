@@ -83,19 +83,29 @@ git push origin main --follow-tags
 npm run release
 ```
 
-#### Version Tag Format
+#### CalVer Tag Format
 
-- **Stable releases**: `v1.0.0`, `v1.2.3`
-- **Pre-releases**: `v1.0.0-alpha`, `v2.1.0-beta.1`, `v1.5.0-rc.2`
+- **Stable releases**: `v2024.08.27`, `v2025.01.15`
+- **Pre-releases**: `v2024.08.27-alpha`, `v2025.01.15-beta.1`, `v2024.12.01-rc.2`
 
-#### Release Types
+The extension uses **Calendar Versioning (CalVer)** with format `v20xx.xx.xx`:
+- `20xx` - Year (e.g., 2024, 2025)
+- `xx` - Month (01-12, zero-padded)
+- `xx` - Day (01-31, zero-padded)
 
-| Command | Version Change | Example |
-|---------|----------------|---------|
-| `npm version patch` | Bug fixes | 1.0.0 → 1.0.1 |
-| `npm version minor` | New features | 1.0.1 → 1.1.0 |
-| `npm version major` | Breaking changes | 1.1.0 → 2.0.0 |
-| `npm version prerelease` | Pre-release | 1.1.0 → 1.1.1-0 |
+#### CalVer Release Process
+
+| Release Type | Version Format | Example |
+|--------------|----------------|----------|
+| **Stable** | `v20xx.mm.dd` | v2024.08.27 |
+| **Hotfix** | `v20xx.mm.dd` (same day) | v2024.08.27 → v2024.08.28 |
+| **Pre-release** | `v20xx.mm.dd-suffix` | v2024.08.27-alpha |
+| **Release Candidate** | `v20xx.mm.dd-rc.N` | v2024.08.27-rc.1 |
+
+**CalVer Benefits**:
+- Immediately shows release date
+- Easier to track when features were released
+- Natural chronological ordering
 
 ### Manual Release (Local Development)
 
@@ -118,7 +128,7 @@ The automated workflow includes comprehensive validation:
 
 - **Code Quality**: ESLint validation and TypeScript compilation
 - **Testing**: Full unit test suite execution
-- **Version Validation**: Ensures git tag matches package.json version
+- **CalVer Validation**: Ensures git tag matches CalVer format (v20xx.xx.xx) and package.json version
 - **Package Integrity**: Validates VSIX structure and required files
 - **Release Notes**: Automatically generates changelog from commit history
 
@@ -128,15 +138,21 @@ If a release fails or needs to be rolled back:
 
 1. **Delete the problematic tag**:
    ```bash
-   git tag -d v1.0.0
-   git push origin --delete v1.0.0
+   git tag -d v2024.08.27
+   git push origin --delete v2024.08.27
    ```
 
 2. **Delete the GitHub release** (if created)
 3. **Fix the issues** in the codebase
-4. **Create a new patch release**:
+4. **Create a new CalVer release**:
    ```bash
-   npm version patch
+   # Update package.json with new CalVer version
+   npm version 2024.08.28 --no-git-tag-version
+   
+   # Create and push CalVer tag
+   git add package.json package-lock.json
+   git commit -m "chore: bump version to 2024.08.28"
+   git tag v2024.08.28
    git push origin main --follow-tags
    ```
 
@@ -162,23 +178,29 @@ Note: `GITHUB_TOKEN` is automatically provided by GitHub Actions and doesn't nee
 
 #### Common Issues
 
-**1. Version Tag Mismatch**
+**1. CalVer Tag Format Error**
 ```
-Error: Tag version (1.0.1) does not match package.json version (1.0.0)
+Error: Tag (1.0.1) does not match CalVer format v20xx.xx.xx
+```
+**Solution**: Use CalVer format like `v2024.08.27` instead of semantic versioning
+
+**2. Version Tag Mismatch**
+```
+Error: Tag version (2024.08.27) does not match package.json version (2024.08.26)
 ```
 **Solution**: Ensure the git tag exactly matches the version in package.json
 
-**2. VSIX Package Validation Failed**
+**3. VSIX Package Validation Failed**
 ```
 Error: extension.js not found in VSIX package
 ```
 **Solution**: Run `npm run compile` before creating the package
 
-**3. Release Workflow Not Triggered**
+**4. Release Workflow Not Triggered**
 ```
 Workflow doesn't run when tag is pushed
 ```
-**Solution**: Verify tag format matches `v*.*.*` pattern (e.g., `v1.0.0`, not `1.0.0`)
+**Solution**: Verify tag format matches CalVer pattern `v20xx.xx.xx` (e.g., `v2024.08.27`, not `2024.08.27` or `v1.0.0`)
 
 #### Workflow Logs
 
