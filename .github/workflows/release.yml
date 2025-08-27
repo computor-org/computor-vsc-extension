@@ -92,7 +92,7 @@ jobs:
       - name: Package VSIX
         run: |
           echo "📦 Creating VSIX package..."
-          vsce package --out "computor-vsc-extension-${{ steps.version.outputs.version }}.vsix"
+          vsce package --no-yarn --out "computor-vsc-extension-${{ steps.version.outputs.version }}.vsix"
           
           # Verify the VSIX file was created
           VSIX_FILE="computor-vsc-extension-${{ steps.version.outputs.version }}.vsix"
