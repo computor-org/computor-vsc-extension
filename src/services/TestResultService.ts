@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { ComputorApiService } from './ComputorApiService';
-import { TestResultTreeDataProvider } from '../ui/tree/TestResultTreeDataProvider';
+import { TestResultsPanelProvider, TestResultsTreeDataProvider } from '../ui/panels/TestResultsPanel';
 
 /**
  * Service for managing test results polling and display
@@ -8,7 +8,8 @@ import { TestResultTreeDataProvider } from '../ui/tree/TestResultTreeDataProvide
 export class TestResultService {
   private static instance: TestResultService;
   private apiService?: ComputorApiService;
-  private testResultsProvider?: TestResultTreeDataProvider;
+  private testResultsPanelProvider?: TestResultsPanelProvider;
+  private testResultsTreeProvider?: TestResultsTreeDataProvider;
   private pollingIntervals: Map<string, NodeJS.Timer> = new Map();
   private readonly POLL_INTERVAL = 2000; // 2 seconds
   private readonly MAX_POLL_DURATION = 300000; // 5 minutes
@@ -32,10 +33,21 @@ export class TestResultService {
   }
 
   /**
-   * Set the test results tree provider
+   * Set the test results panel provider
    */
-  setTestResultsProvider(provider: TestResultTreeDataProvider): void {
-    this.testResultsProvider = provider;
+  setTestResultsPanelProvider(provider: TestResultsPanelProvider): void {
+    this.testResultsPanelProvider = provider;
+  }
+
+  /**
+   * Set the test results tree provider (for the tree view in panel)
+   */
+  setTestResultsTreeProvider(provider: TestResultsTreeDataProvider): void {
+    this.testResultsTreeProvider = provider;
+    // Link tree provider to panel
+    if (this.testResultsPanelProvider) {
+      this.testResultsPanelProvider.setTreeProvider(provider);
+    }
   }
 
   /**
@@ -143,29 +155,29 @@ export class TestResultService {
                 });
 
                 // Check status
-                const status = await this.apiService!.getResultStatus(resultId);
+                const status = await this.apiService!.getResultStatus(resultId) as unknown as number;
                 console.log(`[TestResultService] Poll ${pollCount}: Status = ${status}`);
 
-                if (!status) {
+                if (status === undefined) {
                   // API error, continue polling
                   return;
                 }
-
+                console.log("->");
                 // Check if test is complete
-                if (status === 'COMPLETED' || status === 'FAILED' || status === 'CRASHED') {
+                if (status === 0 || status === 1 || status === 6) {
                   this.stopPolling(resultId);
-
+                  console.log("-->");
                   // Get full result
                   const fullResult = await this.apiService!.getResult(resultId);
                   
                   if (fullResult) {
                     console.log('[TestResultService] Test complete, full result:', fullResult);
-                    
+                    console.log("-->");
                     // Display results
                     await this.displayTestResults(fullResult, assignmentTitle);
                     
                     // Show completion message
-                    if (status === 'COMPLETED') {
+                    if (status === 0) {
                       vscode.window.showInformationMessage(
                         `✅ Tests completed for ${assignmentTitle}`
                       );
@@ -215,24 +227,30 @@ export class TestResultService {
   }
 
   /**
-   * Display test results in the tree view
+   * Display test results in the panel view
    */
   private async displayTestResults(result: any, assignmentTitle: string): Promise<void> {
     try {
       // Parse the result_json if it exists
       const resultJson = result.result_json || result;
       
-      // Convert to test result format expected by the tree provider
-      const testResults = this.parseTestResults(resultJson, assignmentTitle);
-      
-      if (this.testResultsProvider) {
-        // Update the test results tree
-        await this.testResultsProvider.updateTestResults(testResults);
+      // Update panel provider
+      if (this.testResultsPanelProvider) {
+        // Update the test results panel
+        this.testResultsPanelProvider.updateTestResults(result);
         
-        // Show the test results view
-        await vscode.commands.executeCommand('computor.testResultsView.focus');
-      } else {
-        // Fallback: show results in output channel
+        // Show the test results panel
+        await vscode.commands.executeCommand('computor.testResultsPanel.focus');
+      }
+      
+      // Also update tree provider if available
+      if (this.testResultsTreeProvider) {
+        const testResults = this.parseTestResults(resultJson, assignmentTitle);
+        this.testResultsTreeProvider.refresh(testResults);
+      }
+      
+      // Fallback: show results in output channel if no panel
+      if (!this.testResultsPanelProvider) {
         const outputChannel = vscode.window.createOutputChannel('Computor Test Results');
         outputChannel.clear();
         outputChannel.appendLine(`Test Results for ${assignmentTitle}`);

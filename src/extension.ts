@@ -15,7 +15,7 @@ import { TutorCommands } from './commands/TutorCommands';
 import { LecturerExampleCommands } from './commands/LecturerExampleCommands';
 import { IconGenerator } from './utils/IconGenerator';
 import { StudentRepositoryManager } from './services/StudentRepositoryManager';
-import { TestResultTreeDataProvider } from './ui/tree/TestResultTreeDataProvider';
+import { TestResultsPanelProvider, TestResultsTreeDataProvider } from './ui/panels/TestResultsPanel';
 import { TestResultService } from './services/TestResultService';
 
 interface AuthenticationData {
@@ -538,21 +538,38 @@ class ComputorExtension {
     const commands = new StudentCommands(this.context, treeDataProvider, this.apiService);
     commands.registerCommands();
 
-    // Register Test Results View
-    const testResultsProvider = new TestResultTreeDataProvider(this.context, [], {
-      expandAll: true,
-      showIcons: true
-    });
+    // Register Test Results Panel Provider
+    const testResultsPanelProvider = new TestResultsPanelProvider(this.context.extensionUri);
     
+    // Register the webview panel provider
+    this.context.subscriptions.push(
+      vscode.window.registerWebviewViewProvider(
+        TestResultsPanelProvider.viewType,
+        testResultsPanelProvider
+      )
+    );
+    
+    // Create test results tree provider for the panel
+    const testResultsTreeProvider = new TestResultsTreeDataProvider([]);
+    
+    // Register the tree provider (for use in panel)
     this.context.subscriptions.push(vscode.window.registerTreeDataProvider(
       'computor.testResultsView',
-      testResultsProvider
+      testResultsTreeProvider
     ));
 
-    // Connect test results provider to TestResultService
+    // Connect providers to TestResultService
     const testResultService = TestResultService.getInstance();
     testResultService.setApiService(this.apiService);
-    testResultService.setTestResultsProvider(testResultsProvider);
+    testResultService.setTestResultsPanelProvider(testResultsPanelProvider);
+    testResultService.setTestResultsTreeProvider(testResultsTreeProvider);
+    
+    // Register command to update panel details
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.results.panel.update', (item: any) => {
+        testResultsPanelProvider.updateTestResults(item);
+      })
+    );
 
     // Track tree expansion state
     treeView.onDidExpandElement(async (e) => {

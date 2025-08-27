@@ -508,6 +508,13 @@
           "icon": "$(person)",
           "when": "ctutor.lecturer.treeview.show"
         }
+      ],
+      "panel": [
+        {
+          "id": "computor-test-results",
+          "title": "Test Results",
+          "icon": "$(beaker)"
+        }
       ]
     },
     "views": {
@@ -553,6 +560,15 @@
           "name": "Test Results",
           "icon": "$(beaker)",
           "contextualTitle": "Test Results Explorer"
+        }
+      ],
+      "computor-test-results": [
+        {
+          "id": "computor.testResultsPanel",
+          "type": "webview",
+          "name": "Test Results",
+          "icon": "$(beaker)",
+          "contextualTitle": "Test Results"
         }
       ]
     },
