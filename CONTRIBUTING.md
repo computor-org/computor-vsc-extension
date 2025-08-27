@@ -1,4 +1,4 @@
-# Developer Guide
+# Contributing Guide
 
 ## Quick Start
 

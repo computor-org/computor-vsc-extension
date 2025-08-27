@@ -43,7 +43,7 @@ code --install-extension computor.vsix
 
 ## Development
 
-See [Developer Guide](docs/DEVELOPER.md) for build instructions, architecture, and contribution guidelines.
+See [Contributing Guide](CONTRIBUTING.md) for development setup, build instructions, and contribution guidelines.
 
 ### Quick Start
 
