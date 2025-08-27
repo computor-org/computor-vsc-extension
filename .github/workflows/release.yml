@@ -1,146 +1,90 @@
-# GitHub Actions Workflow for Automated VSIX Release
-# This workflow creates VS Code extension packages and GitHub releases
-# when CalVer tags (v20xx.xx.xx) are pushed to the repository
+# Automated VSIX Release Workflow
 name: Release VSIX Package
 
-# Trigger workflow on version tags and manual dispatch
 on:
   push:
     tags:
       - 'v20[0-9][0-9].[0-9][0-9].[0-9][0-9]'  # Matches v2024.08.27, v2025.01.15, etc.
-  workflow_dispatch:  # Allow manual trigger for testing
+  workflow_dispatch:
 
-# Set required permissions for creating releases
 permissions:
-  contents: write  # Required to create releases and upload assets
-  actions: read    # Required to access workflow information
+  contents: write
+  actions: read
 
 jobs:
-  # Job to build and release the VSIX package
   release:
-    name: Build and Release VSIX
     runs-on: ubuntu-latest
-    
     steps:
-      # Checkout the repository code
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Fetch full history for release notes
+          fetch-depth: 0
       
-      # Setup Node.js environment with caching
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: '18.x'  # Use stable LTS version
-          cache: 'npm'  # Cache npm dependencies
+          node-version: '18.x'
+          cache: 'npm'
       
-      # Install project dependencies
-      - name: Install Dependencies
-        run: npm ci
+      - run: npm ci
         env:
           NODE_ENV: production
       
-      # Install Visual Studio Code Extension Manager globally
-      - name: Install VSCE
-        run: npm install -g @vscode/vsce
+      - run: npm install -g @vscode/vsce
       
-      # Compile TypeScript and prepare extension
-      - name: Compile Extension
-        run: npm run compile
+      - run: npm run compile
       
-      # Run linting to ensure code quality
-      - name: Lint Code
-        run: npm run lint
+      - run: npm run lint
       
-      # Run unit tests to validate functionality
-      - name: Run Tests
-        run: npm run test
+      - run: npm run test
       
-      # Extract version information from package.json
-      - name: Extract Version Info
+      - name: Extract Version
         id: version
         run: |
           VERSION=$(node -p "require('./package.json').version")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Extension version: $VERSION"
-          
-          # Check if this is a pre-release version
           if [[ "$VERSION" == *"-"* ]]; then
             echo "prerelease=true" >> $GITHUB_OUTPUT
-            echo "This is a pre-release version"
           else
             echo "prerelease=false" >> $GITHUB_OUTPUT
-            echo "This is a stable release version"
           fi
       
-      # Validate CalVer tag format and extract version
-      - name: Validate CalVer Tag
+      - name: Validate CalVer
         run: |
           TAG_VERSION=${GITHUB_REF#refs/tags/v}
           PACKAGE_VERSION="${{ steps.version.outputs.version }}"
           
-          # Validate CalVer format: 20xx.xx.xx
           if [[ ! "$TAG_VERSION" =~ ^20[0-9]{2}\.[0-9]{2}\.[0-9]{2}$ ]]; then
-            echo "❌ Error: Tag ($TAG_VERSION) does not match CalVer format v20xx.xx.xx"
-            echo "Example: v2024.08.27, v2025.01.15"
+            echo "Error: Tag ($TAG_VERSION) does not match CalVer format v20xx.xx.xx"
             exit 1
           fi
           
           if [[ "$TAG_VERSION" != "$PACKAGE_VERSION" ]]; then
-            echo "❌ Error: Tag version ($TAG_VERSION) does not match package.json version ($PACKAGE_VERSION)"
-            echo "Please ensure the git tag matches the version in package.json"
+            echo "Error: Tag version ($TAG_VERSION) does not match package.json version ($PACKAGE_VERSION)"
             exit 1
           fi
-          
-          echo "✅ CalVer validation successful: $PACKAGE_VERSION"
       
-      # Generate VSIX package
       - name: Package VSIX
         run: |
-          echo "📦 Creating VSIX package..."
           vsce package --no-yarn --out "computor-vsc-extension-${{ steps.version.outputs.version }}.vsix"
-          
-          # Verify the VSIX file was created
           VSIX_FILE="computor-vsc-extension-${{ steps.version.outputs.version }}.vsix"
+          
           if [[ ! -f "$VSIX_FILE" ]]; then
-            echo "❌ Error: VSIX file was not created: $VSIX_FILE"
+            echo "Error: VSIX file was not created: $VSIX_FILE"
             exit 1
           fi
           
-          # Display file information
-          ls -la "$VSIX_FILE"
-          echo "✅ VSIX package created successfully: $VSIX_FILE"
-      
-      # Validate VSIX package integrity
-      - name: Validate VSIX Package
-        run: |
-          VSIX_FILE="computor-vsc-extension-${{ steps.version.outputs.version }}.vsix"
-          echo "🔍 Validating VSIX package structure..."
-          
-          # List contents of VSIX (which is a ZIP file)
-          unzip -l "$VSIX_FILE" | head -20
-          
-          # Check for required files in the package
           if ! unzip -l "$VSIX_FILE" | grep -q "extension.js"; then
-            echo "❌ Error: extension.js not found in VSIX package"
+            echo "Error: extension.js not found in VSIX package"
             exit 1
           fi
           
           if ! unzip -l "$VSIX_FILE" | grep -q "package.json"; then
-            echo "❌ Error: package.json not found in VSIX package"
+            echo "Error: package.json not found in VSIX package"
             exit 1
           fi
-          
-          echo "✅ VSIX package validation successful"
       
-      # Generate release notes from commit history
       - name: Generate Release Notes
         id: release_notes
         run: |
-          echo "📝 Generating release notes..."
-          
-          # Get the previous tag for changelog generation
           PREVIOUS_TAG=$(git tag --sort=-version:refname | grep "^v" | head -2 | tail -1)
           CURRENT_TAG=${GITHUB_REF#refs/tags/}
           
@@ -151,44 +95,33 @@ jobs:
           if [[ -n "$PREVIOUS_TAG" ]]; then
             echo "### Changes since $PREVIOUS_TAG" >> $GITHUB_OUTPUT
             echo "" >> $GITHUB_OUTPUT
-            
-            # Generate changelog from commits between tags
             git log --pretty=format:"- %s (%an)" "$PREVIOUS_TAG..$CURRENT_TAG" >> $GITHUB_OUTPUT
           else
             echo "### Initial Release" >> $GITHUB_OUTPUT
             echo "" >> $GITHUB_OUTPUT
-            echo "- Initial release of the Computor VS Code Extension" >> $GITHUB_OUTPUT
+            echo "- Initial release of Computor VS Code Extension" >> $GITHUB_OUTPUT
           fi
           
           echo "" >> $GITHUB_OUTPUT
           echo "### Installation" >> $GITHUB_OUTPUT
-          echo "1. Download the VSIX file from this release" >> $GITHUB_OUTPUT
-          echo "2. Open VS Code" >> $GITHUB_OUTPUT
-          echo "3. Go to Extensions view (Ctrl+Shift+X)" >> $GITHUB_OUTPUT
-          echo "4. Click the three dots menu (...) and select 'Install from VSIX...'" >> $GITHUB_OUTPUT
-          echo "5. Choose the downloaded VSIX file" >> $GITHUB_OUTPUT
+          echo "Download the VSIX file and install via:" >> $GITHUB_OUTPUT
+          echo "\`\`\`" >> $GITHUB_OUTPUT
+          echo "code --install-extension computor-vsc-extension-${{ steps.version.outputs.version }}.vsix" >> $GITHUB_OUTPUT
+          echo "\`\`\`" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
       
-      # Create GitHub release with VSIX asset
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: ncipollo/create-release@v1
         with:
-          name: "Computor VS Code Extension v${{ steps.version.outputs.version }}"
-          tag_name: ${{ github.ref_name }}
+          tag: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
           body: ${{ steps.release_notes.outputs.release_notes }}
           prerelease: ${{ steps.version.outputs.prerelease }}
-          files: |
-            computor-vsc-extension-${{ steps.version.outputs.version }}.vsix
-          generate_release_notes: false  # We're providing custom release notes
-          draft: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          artifacts: "computor-vsc-extension-${{ steps.version.outputs.version }}.vsix"
+          artifactContentType: application/zip
+          token: ${{ secrets.GITHUB_TOKEN }}
       
-      # Log successful completion
-      - name: Release Complete
+      - name: Summary
         run: |
-          echo "🎉 Release workflow completed successfully!"
-          echo "📦 VSIX package: computor-vsc-extension-${{ steps.version.outputs.version }}.vsix"
-          echo "🚀 GitHub release: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
-          echo ""
-          echo "The extension is now ready for distribution!"
+          echo "VSIX package: computor-vsc-extension-${{ steps.version.outputs.version }}.vsix"
+          echo "GitHub release: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"

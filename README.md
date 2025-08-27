@@ -162,8 +162,8 @@ The release workflow requires the following repository secrets:
 
 | Secret | Description | Required |
 |--------|-------------|----------|
-| `GITHUB_TOKEN` | Automatic GitHub token | ✅ (Auto-configured) |
-| `VSCE_PAT` | Visual Studio Marketplace Personal Access Token | ⚠️ (Future enhancement) |
+| `GITHUB_TOKEN` | Automatic GitHub token | Yes (Auto-configured) |
+| `VSCE_PAT` | Visual Studio Marketplace Personal Access Token | Optional (Future enhancement) |
 
 #### Setting up Repository Secrets
 
