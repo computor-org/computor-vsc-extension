@@ -6,12 +6,12 @@
   "publisher": "computor",
   "repository": {
     "type": "git",
-    "url": "https://github.com/krystophny/computor-vsc-extension.git"
+    "url": "https://github.com/computor-org/computor-vsc-extension.git"
   },
   "bugs": {
-    "url": "https://github.com/krystophny/computor-vsc-extension/issues"
+    "url": "https://github.com/computor-org/computor-vsc-extension/issues"
   },
-  "homepage": "https://github.com/krystophny/computor-vsc-extension#readme",
+  "homepage": "https://github.com/computor-org/computor-vsc-extension#readme",
   "engines": {
     "vscode": "^1.74.0"
   },
