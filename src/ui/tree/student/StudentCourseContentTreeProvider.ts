@@ -762,6 +762,12 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
     private isAssignment(): boolean {
         if (!this.contentType) return !!this.courseContent.example_id;
         
+        // First check the explicit kind_id
+        if (this.contentType.course_content_kind_id === 'assignment') {
+            return true;
+        }
+        
+        // Fall back to checking slug for assignment-related keywords
         const assignmentTypes = ['assignment', 'exercise', 'homework', 'task', 'lab', 'quiz', 'exam'];
         const slug = this.contentType.slug?.toLowerCase() || '';
         return assignmentTypes.some(type => slug.includes(type));

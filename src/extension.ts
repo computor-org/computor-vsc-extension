@@ -108,12 +108,15 @@ class ComputorExtension {
   }
 
   private async loginAndActivateStudent(): Promise<void> {
-    // Check if we're in the correct workspace directory
-    const workspaceRoot = path.join(os.homedir(), '.computor', 'workspace');
-    const coursesPath = path.join(workspaceRoot, 'courses');
-    
-    // Ensure the directory exists
-    await fs.promises.mkdir(coursesPath, { recursive: true });
+    try {
+      // Check if we're in the correct workspace directory
+      const workspaceRoot = path.join(os.homedir(), '.computor', 'workspace');
+      const coursesPath = path.join(workspaceRoot, 'courses');
+      
+      // Ensure the directory exists
+      if (!fs.existsSync(coursesPath)) {
+        fs.mkdirSync(coursesPath, { recursive: true });
+      }
     
     // Check current workspace
     const workspaceFolders = vscode.workspace.workspaceFolders || [];
@@ -191,6 +194,10 @@ class ComputorExtension {
     
     // Update status bar
     this.statusBar.text = '$(account) Active: student';
+    } catch (error) {
+      console.error('Error during student login:', error);
+      vscode.window.showErrorMessage(`Failed to login as student: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   private async loginAndActivateTutor(): Promise<void> {
@@ -280,6 +287,11 @@ class ComputorExtension {
       // Store authentication data
       this.authData = { backendUrl, username, password };
 
+      // Clear any cached HTTP client in the API service before creating a new one
+      if (this.apiService) {
+        this.apiService.clearHttpClient();
+      }
+
       // Create HTTP client with basic auth
       this.httpClient = new BasicAuthHttpClient(backendUrl, username, password, 5000);
 
@@ -319,6 +331,10 @@ class ComputorExtension {
     // Clear authentication data
     this.authData = undefined;
     this.httpClient = undefined;
+    // Clear the cached HTTP client in the API service before clearing the service
+    if (this.apiService) {
+      this.apiService.clearHttpClient();
+    }
     this.apiService = undefined;
 
     // Update status bar to show login prompt

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { JwtHttpClient } from '../http/JwtHttpClient';
+import { BasicAuthHttpClient } from '../http/BasicAuthHttpClient';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { errorRecoveryService } from './ErrorRecoveryService';
 import { requestBatchingService } from './RequestBatchingService';
@@ -51,7 +51,7 @@ interface ExampleQuery {
 }
 
 export class ComputorApiService {
-  private httpClient?: JwtHttpClient;
+  private httpClient?: BasicAuthHttpClient;
   private settingsManager: ComputorSettingsManager;
   private context: vscode.ExtensionContext;
   
@@ -77,7 +77,7 @@ export class ComputorApiService {
     );
   }
 
-  private async getHttpClient(): Promise<JwtHttpClient> {
+  private async getHttpClient(): Promise<BasicAuthHttpClient> {
     if (!this.httpClient) {
       const settings = await this.settingsManager.getSettings();
       
@@ -89,27 +89,22 @@ export class ComputorApiService {
         throw new Error('Not authenticated. Please login first using the Computor: Login command.');
       }
       
-      // For now, we'll use JwtHttpClient with basic auth headers
-      // In future, we should refactor to use BasicAuthHttpClient directly
-      const keycloakConfig = {
-        serverUrl: '',
-        realm: '',
-        clientId: '',
-        redirectUri: ''
-      };
-      
-      this.httpClient = new JwtHttpClient(
+      // Use BasicAuthHttpClient for proper Basic authentication handling
+      this.httpClient = new BasicAuthHttpClient(
         settings.authentication.baseUrl,
-        keycloakConfig,
+        username,
+        password,
         5000
       );
       
-      // Set basic auth headers
-      const authHeaders = {
-        'Authorization': `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`,
-        'Content-Type': 'application/json; charset=utf-8'
-      };
-      this.httpClient.setDefaultHeaders(authHeaders);
+      // Authenticate to verify credentials
+      try {
+        await this.httpClient.authenticate();
+      } catch (error) {
+        // Clear invalid client
+        this.httpClient = undefined;
+        throw error;
+      }
     }
     return this.httpClient;
   }
@@ -1116,6 +1111,21 @@ export class ComputorApiService {
       console.error('Failed to get result:', error);
       return undefined;
     }
+  }
+
+  /**
+   * Clear the cached HTTP client instance.
+   * This should be called when credentials change or on logout.
+   */
+  public clearHttpClient(): void {
+    this.httpClient = undefined;
+  }
+
+  /**
+   * Check if the service is authenticated
+   */
+  public isAuthenticated(): boolean {
+    return !!this.httpClient && this.httpClient.isAuthenticated();
   }
 
 }
