@@ -73,15 +73,12 @@ export class LecturerCommands {
       vscode.window.showInformationMessage('✅ Lecturer tree refreshed successfully!');
     };
     
-    // Register with both command names for backward compatibility
+    // Register refresh commands with proper naming convention
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.refreshLecturerTree', refreshHandler)
+      vscode.commands.registerCommand('computor.lecturer.refresh', refreshHandler)
     );
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.refreshCourses', refreshHandler)
-    );
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.refresh', refreshHandler)
     );
 
     // Course management commands
