@@ -791,7 +791,7 @@
         },
         {
           "command": "computor.lecturer.showCourseContentDetails",
-          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent/",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/",
           "group": "5_details@1"
         },
         {
