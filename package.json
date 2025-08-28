@@ -50,12 +50,6 @@
         "category": "Computor"
       },
       {
-        "command": "computor.refresh",
-        "title": "Computor: Refresh All",
-        "category": "Computor",
-        "icon": "$(refresh)"
-      },
-      {
         "command": "computor.showGitStatus",
         "title": "Computor: Show Git Status",
         "category": "Git"
@@ -182,7 +176,7 @@
         "category": "Computor Examples"
       },
       {
-        "command": "computor.refreshExamples",
+        "command": "computor.lecturer.refreshExamples",
         "title": "Refresh Examples",
         "icon": "$(refresh)",
         "category": "Computor Examples"
@@ -224,7 +218,7 @@
         "category": "Computor Examples"
       },
       {
-        "command": "computor.refreshLecturerTree",
+        "command": "computor.lecturer.refresh",
         "title": "Refresh",
         "icon": "$(refresh)",
         "category": "Computor Lecturer"
@@ -495,19 +489,19 @@
           "id": "computor-lecturer",
           "title": "Lecturer",
           "icon": "$(mortar-board)",
-          "when": "ctutor.lecturer.treeview.show"
+          "when": "computor.lecturer.show"
         },
         {
           "id": "computor-student",
           "title": "Student",
           "icon": "$(book)",
-          "when": "ctutor.student.treeview.show"
+          "when": "computor.student.show"
         },
         {
           "id": "computor-tutor",
           "title": "Tutor",
           "icon": "$(person)",
-          "when": "ctutor.lecturer.treeview.show"
+          "when": "computor.tutor.show"
         }
       ],
       "panel": [
@@ -576,7 +570,7 @@
     "menus": {
       "view/title": [
         {
-          "command": "computor.refreshExamples",
+          "command": "computor.lecturer.refreshExamples",
           "when": "view == computor.lecturer.examples",
           "group": "navigation@1"
         },
@@ -626,7 +620,7 @@
           "group": "navigation@4"
         },
         {
-          "command": "computor.refreshLecturerTree",
+          "command": "computor.lecturer.refresh",
           "when": "view == computor.lecturer.courses",
           "group": "navigation@1"
         },
@@ -656,7 +650,7 @@
           "group": "navigation@3"
         },
         {
-          "command": "computor.refreshExamples",
+          "command": "computor.lecturer.refreshExamples",
           "when": "view == computor.lecturer.examples",
           "group": "navigation@1"
         },
