@@ -1155,10 +1155,13 @@ export class LecturerCommands {
   }
 
   private async showCourseDetails(item: CourseTreeItem): Promise<void> {
+    // Fetch fresh data from API
+    const freshCourse = await this.apiService.getCourse(item.course.id) || item.course;
+    
     await this.courseWebviewProvider.show(
-      `Course: ${item.course.title || item.course.path}`,
+      `Course: ${freshCourse.title || freshCourse.path}`,
       {
-        course: item.course,
+        course: freshCourse,
         courseFamily: item.courseFamily,
         organization: item.organization
       }
@@ -1166,20 +1169,24 @@ export class LecturerCommands {
   }
 
   private async showCourseContentDetails(item: CourseContentTreeItem): Promise<void> {
+    // Fetch fresh course content data from API
+    const freshContents = await this.apiService.getCourseContents(item.course.id, true); // true = skip cache
+    const freshContent = freshContents.find(c => c.id === item.courseContent.id) || item.courseContent;
+    
     // Fetch example info if the content has an example_id
     let exampleInfo = item.exampleInfo;
-    if (item.courseContent.example_id && !exampleInfo) {
+    if (freshContent.example_id && !exampleInfo) {
       try {
-        exampleInfo = await this.apiService.getExample(item.courseContent.example_id);
+        exampleInfo = await this.apiService.getExample(freshContent.example_id);
       } catch (error) {
-        console.error(`Failed to fetch example ${item.courseContent.example_id}:`, error);
+        console.error(`Failed to fetch example ${freshContent.example_id}:`, error);
       }
     }
     
     await this.courseContentWebviewProvider.show(
-      `Content: ${item.courseContent.title || item.courseContent.path}`,
+      `Content: ${freshContent.title || freshContent.path}`,
       {
-        courseContent: item.courseContent,
+        courseContent: freshContent,
         course: item.course,
         contentType: item.contentType,
         exampleInfo: exampleInfo,
@@ -1208,19 +1215,23 @@ export class LecturerCommands {
   }
 
   private async showCourseContentTypeDetails(item: CourseContentTypeTreeItem): Promise<void> {
+    // Fetch fresh content type data from API
+    const freshContentTypes = await this.apiService.getCourseContentTypes(item.course.id);
+    const freshContentType = freshContentTypes.find(t => t.id === item.contentType.id) || item.contentType;
+    
     // Get content kind info
     let contentKind;
     try {
       const kinds = await this.apiService.getCourseContentKinds();
-      contentKind = kinds.find(k => k.id === item.contentType.course_content_kind_id);
+      contentKind = kinds.find(k => k.id === freshContentType.course_content_kind_id);
     } catch (error) {
       console.error('Failed to get content kind:', error);
     }
 
     await this.courseContentTypeWebviewProvider.show(
-      `Content Type: ${item.contentType.title || item.contentType.slug}`,
+      `Content Type: ${freshContentType.title || freshContentType.slug}`,
       {
-        contentType: item.contentType,
+        contentType: freshContentType,
         course: item.course,
         contentKind
       }
