@@ -605,7 +605,7 @@ let extensionClasses: Array<{id: string, extensionClass: ComputorExtensionConstr
 let extensions: Array<ComputorExtension> = [];
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  console.log('Computor extension is now active [ASdf 2]');
+  console.log('Computor extension is now active');
 
   IconGenerator.initialize(context);
 
