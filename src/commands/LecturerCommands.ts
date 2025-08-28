@@ -1169,9 +1169,8 @@ export class LecturerCommands {
   }
 
   private async showCourseContentDetails(item: CourseContentTreeItem): Promise<void> {
-    // Fetch fresh course content data from API
-    const freshContents = await this.apiService.getCourseContents(item.course.id, true); // true = skip cache
-    const freshContent = freshContents.find(c => c.id === item.courseContent.id) || item.courseContent;
+    // Fetch full course content data from API (individual GET has all fields)
+    const freshContent = await this.apiService.getCourseContent(item.courseContent.id) || item.courseContent;
     
     // Fetch example info if the content has an example_id
     let exampleInfo = item.exampleInfo;
@@ -1215,9 +1214,8 @@ export class LecturerCommands {
   }
 
   private async showCourseContentTypeDetails(item: CourseContentTypeTreeItem): Promise<void> {
-    // Fetch fresh content type data from API
-    const freshContentTypes = await this.apiService.getCourseContentTypes(item.course.id);
-    const freshContentType = freshContentTypes.find(t => t.id === item.contentType.id) || item.contentType;
+    // Fetch full content type data from API (individual GET has all fields)
+    const freshContentType = await this.apiService.getCourseContentType(item.contentType.id) || item.contentType;
     
     // Get content kind info
     let contentKind;

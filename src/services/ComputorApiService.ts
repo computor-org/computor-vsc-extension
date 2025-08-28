@@ -287,6 +287,34 @@ export class ComputorApiService {
   }
 
 
+  async getCourseContent(contentId: string): Promise<CourseContentGet | undefined> {
+    const cacheKey = `courseContent-${contentId}`;
+    
+    // Check cache first
+    const cached = multiTierCache.get<CourseContentGet>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const response = await client.get<CourseContentGet>(`/course-contents/${contentId}`);
+        return response.data;
+      }, {
+        maxRetries: 2,
+        exponentialBackoff: true
+      });
+      
+      // Cache in warm tier
+      multiTierCache.set(cacheKey, result, 'warm');
+      return result;
+    } catch (error) {
+      console.error('Failed to get course content:', error);
+      return undefined;
+    }
+  }
+
   async createCourseContent(courseId: string, content: CourseContentCreate): Promise<CourseContentGet> {
     const client = await this.getHttpClient();
     const response = await client.post<CourseContentGet>('/course-contents', content);
@@ -301,8 +329,9 @@ export class ComputorApiService {
     const client = await this.getHttpClient();
     const response = await client.patch<CourseContentGet>(`/course-contents/${contentId}`, content);
     
-    // Invalidate course contents cache
+    // Invalidate both list and individual caches
     this.invalidateCachePattern(`courseContents-${courseId}`);
+    this.invalidateCachePattern(`courseContent-${contentId}`);
     
     return response.data;
   }
@@ -366,6 +395,34 @@ export class ComputorApiService {
     return result;
   }
 
+  async getCourseContentType(typeId: string): Promise<CourseContentTypeGet | undefined> {
+    const cacheKey = `courseContentType-${typeId}`;
+    
+    // Check cache first
+    const cached = multiTierCache.get<CourseContentTypeGet>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const response = await client.get<CourseContentTypeGet>(`/course-content-types/${typeId}`);
+        return response.data;
+      }, {
+        maxRetries: 2,
+        exponentialBackoff: true
+      });
+      
+      // Cache in warm tier
+      multiTierCache.set(cacheKey, result, 'warm');
+      return result;
+    } catch (error) {
+      console.error('Failed to get course content type:', error);
+      return undefined;
+    }
+  }
+
   async createCourseContentType(contentType: CourseContentTypeCreate): Promise<CourseContentTypeGet> {
     const client = await this.getHttpClient();
     const response = await client.post<CourseContentTypeGet>('/course-content-types', contentType);
@@ -382,8 +439,9 @@ export class ComputorApiService {
     const client = await this.getHttpClient();
     const response = await client.patch<CourseContentTypeGet>(`/course-content-types/${typeId}`, contentType);
     
-    // Invalidate content types cache
+    // Invalidate both list and individual caches
     this.invalidateCachePattern('courseContentTypes-');
+    this.invalidateCachePattern(`courseContentType-${typeId}`);
     
     return response.data;
   }
