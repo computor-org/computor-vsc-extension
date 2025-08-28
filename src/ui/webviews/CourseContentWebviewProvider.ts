@@ -214,11 +214,11 @@ export class CourseContentWebviewProvider extends BaseWebviewProvider {
         break;
 
       case 'assignExample':
-        vscode.commands.executeCommand('computor.assignExample', message.data);
+        vscode.commands.executeCommand('computor.lecturer.assignExample', message.data);
         break;
 
       case 'unassignExample':
-        vscode.commands.executeCommand('computor.unassignExample', message.data);
+        vscode.commands.executeCommand('computor.lecturer.unassignExample', message.data);
         break;
 
       case 'updateExample':
@@ -226,7 +226,7 @@ export class CourseContentWebviewProvider extends BaseWebviewProvider {
         break;
 
       case 'createChild':
-        vscode.commands.executeCommand('computor.createCourseContent', message.data);
+        vscode.commands.executeCommand('computor.lecturer.createCourseContent', message.data);
         break;
 
       case 'moveContent':

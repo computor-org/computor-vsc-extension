@@ -96,65 +96,65 @@ export class LecturerCommands {
 
     // Course content management
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.createCourseContent', async (item: CourseFolderTreeItem | CourseContentTreeItem) => {
+      vscode.commands.registerCommand('computor.lecturer.createCourseContent', async (item: CourseFolderTreeItem | CourseContentTreeItem) => {
         await this.createCourseContent(item);
       })
     );
 
     // Course content type management
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.createCourseContentType', async (item: CourseFolderTreeItem) => {
+      vscode.commands.registerCommand('computor.lecturer.createCourseContentType', async (item: CourseFolderTreeItem) => {
         await this.createCourseContentType(item);
       })
     );
 
     // Course group management
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.createCourseGroup', async (item: CourseFolderTreeItem) => {
+      vscode.commands.registerCommand('computor.lecturer.createCourseGroup', async (item: CourseFolderTreeItem) => {
         await this.courseGroupCommands.createCourseGroup(item);
       })
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.editCourseContentType', async (item: CourseContentTypeTreeItem) => {
+      vscode.commands.registerCommand('computor.lecturer.editCourseContentType', async (item: CourseContentTypeTreeItem) => {
         await this.editCourseContentType(item);
       })
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.deleteCourseContentType', async (item: CourseContentTypeTreeItem) => {
+      vscode.commands.registerCommand('computor.lecturer.deleteCourseContentType', async (item: CourseContentTypeTreeItem) => {
         await this.deleteCourseContentType(item);
       })
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.renameCourseContent', async (item: CourseContentTreeItem) => {
+      vscode.commands.registerCommand('computor.lecturer.renameCourseContent', async (item: CourseContentTreeItem) => {
         await this.renameCourseContent(item);
       })
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.deleteCourseContent', async (item: CourseContentTreeItem) => {
+      vscode.commands.registerCommand('computor.lecturer.deleteCourseContent', async (item: CourseContentTreeItem) => {
         await this.deleteCourseContent(item);
       })
     );
 
     // Example management
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.assignExample', async (item: CourseContentTreeItem) => {
+      vscode.commands.registerCommand('computor.lecturer.assignExample', async (item: CourseContentTreeItem) => {
         await this.assignExample(item);
       })
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.unassignExample', async (item: CourseContentTreeItem) => {
+      vscode.commands.registerCommand('computor.lecturer.unassignExample', async (item: CourseContentTreeItem) => {
         await this.unassignExample(item);
       })
     );
 
     // GitLab repository opening
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.openGitLabRepo', async (item: CourseTreeItem) => {
+      vscode.commands.registerCommand('computor.lecturer.openGitLabRepo', async (item: CourseTreeItem) => {
         await this.openGitLabRepository(item);
       })
     );
@@ -168,44 +168,44 @@ export class LecturerCommands {
 
     // Release/deployment commands
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.releaseCourseContent', async (item: CourseTreeItem) => {
+      vscode.commands.registerCommand('computor.lecturer.releaseCourseContent', async (item: CourseTreeItem) => {
         await this.releaseCourseContent(item);
       })
     );
 
     // Webview commands
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.showCourseDetails', async (item: CourseTreeItem) => {
+      vscode.commands.registerCommand('computor.lecturer.showCourseDetails', async (item: CourseTreeItem) => {
         await this.showCourseDetails(item);
       })
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.showCourseContentDetails', async (item: CourseContentTreeItem) => {
+      vscode.commands.registerCommand('computor.lecturer.showCourseContentDetails', async (item: CourseContentTreeItem) => {
         await this.showCourseContentDetails(item);
       })
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.showOrganizationDetails', async (item: OrganizationTreeItem) => {
+      vscode.commands.registerCommand('computor.lecturer.showOrganizationDetails', async (item: OrganizationTreeItem) => {
         await this.showOrganizationDetails(item);
       })
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.showCourseFamilyDetails', async (item: CourseFamilyTreeItem) => {
+      vscode.commands.registerCommand('computor.lecturer.showCourseFamilyDetails', async (item: CourseFamilyTreeItem) => {
         await this.showCourseFamilyDetails(item);
       })
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.showCourseContentTypeDetails', async (item: CourseContentTypeTreeItem) => {
+      vscode.commands.registerCommand('computor.lecturer.showCourseContentTypeDetails', async (item: CourseContentTypeTreeItem) => {
         await this.showCourseContentTypeDetails(item);
       })
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.showCourseGroupDetails', async (item: CourseGroupTreeItem) => {
+      vscode.commands.registerCommand('computor.lecturer.showCourseGroupDetails', async (item: CourseGroupTreeItem) => {
         await this.showCourseGroupDetails(item);
       })
     );

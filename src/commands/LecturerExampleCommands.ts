@@ -22,7 +22,7 @@ export class LecturerExampleCommands {
   private registerCommands(): void {
     // Search examples - already registered in extension.ts but we'll override with better implementation
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.searchExamples', async () => {
+      vscode.commands.registerCommand('computor.lecturer.searchExamples', async () => {
         const query = await vscode.window.showInputBox({
           prompt: 'Search examples by title, identifier, or tags',
           placeHolder: 'Enter search query',
@@ -42,7 +42,7 @@ export class LecturerExampleCommands {
 
     // Clear search
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.clearExampleSearch', () => {
+      vscode.commands.registerCommand('computor.lecturer.clearExampleSearch', () => {
         this.treeProvider.clearSearch();
         vscode.window.showInformationMessage('Search cleared');
       })
@@ -50,7 +50,7 @@ export class LecturerExampleCommands {
 
     // Filter by category
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.filterExamplesByCategory', async () => {
+      vscode.commands.registerCommand('computor.lecturer.filterExamplesByCategory', async () => {
         // For now, show input box. Later we can get categories from API
         const category = await vscode.window.showInputBox({
           prompt: 'Enter category to filter by',
@@ -71,7 +71,7 @@ export class LecturerExampleCommands {
 
     // Filter by tags
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.filterExamplesByTags', async () => {
+      vscode.commands.registerCommand('computor.lecturer.filterExamplesByTags', async () => {
         const tagsInput = await vscode.window.showInputBox({
           prompt: 'Enter tags to filter by (comma-separated)',
           placeHolder: 'e.g., beginner, loops, functions',
@@ -92,49 +92,49 @@ export class LecturerExampleCommands {
 
     // Checkout example
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.checkoutExample', async (item: ExampleTreeItem) => {
+      vscode.commands.registerCommand('computor.lecturer.checkoutExample', async (item: ExampleTreeItem) => {
         await this.checkoutExample(item);
       })
     );
 
     // Upload example
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.uploadExample', async (item?: ExampleTreeItem) => {
+      vscode.commands.registerCommand('computor.lecturer.uploadExample', async (item?: ExampleTreeItem) => {
         await this.uploadExample(item);
       })
     );
 
     // Create new example
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.createNewExample', async () => {
+      vscode.commands.registerCommand('computor.lecturer.createNewExample', async () => {
         await this.createNewExample();
       })
     );
 
     // Upload new example
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.uploadNewExample', async () => {
+      vscode.commands.registerCommand('computor.lecturer.uploadNewExample', async () => {
         await this.uploadNewExample();
       })
     );
 
     // Checkout multiple examples
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.checkoutMultipleExamples', async () => {
+      vscode.commands.registerCommand('computor.lecturer.checkoutMultipleExamples', async () => {
         vscode.window.showInformationMessage('Checkout multiple examples - not yet implemented');
       })
     );
 
     // Upload examples from ZIP
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.uploadExamplesFromZip', async (item?: ExampleRepositoryTreeItem) => {
+      vscode.commands.registerCommand('computor.lecturer.uploadExamplesFromZip', async (item?: ExampleRepositoryTreeItem) => {
         await this.uploadExamplesFromZip(item);
       })
     );
 
     // Scan workspace
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.scanWorkspace', async () => {
+      vscode.commands.registerCommand('computor.lecturer.scanWorkspace', async () => {
         vscode.window.showInformationMessage('Scan workspace for examples - not yet implemented');
       })
     );
