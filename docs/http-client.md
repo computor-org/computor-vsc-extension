@@ -98,7 +98,7 @@ class BasicAuthHttpClient extends HttpClient {
   async authenticate(): Promise<void> {
     // Validate credentials with a test request
     try {
-      await this.get('/auth/validate');
+      await this.get('/user);
       this.isAuth = true;
     } catch (error) {
       this.isAuth = false;
@@ -151,7 +151,7 @@ class ApiKeyHttpClient extends HttpClient {
   async authenticate(): Promise<void> {
     // Validate API key with a test request
     try {
-      await this.get('/auth/validate');
+      await this.get('/user');
     } catch (error) {
       throw new AuthenticationError('Invalid API key');
     }

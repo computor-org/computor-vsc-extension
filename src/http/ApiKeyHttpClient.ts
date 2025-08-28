@@ -32,7 +32,7 @@ export class ApiKeyHttpClient extends HttpClient {
     }
 
     try {
-      await this.get('/auth/validate');
+      await this.get('/user');
       this.isAuth = true;
     } catch (error) {
       this.isAuth = false;
