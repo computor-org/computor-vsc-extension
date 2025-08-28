@@ -297,6 +297,7 @@ class ComputorLecturerExtension extends ComputorExtension {
 
     console.log('[Lecturer] Setting context and showing view...');
     await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', true);
+    await vscode.commands.executeCommand('workbench.view.extension.computor-lecturer');
     
     await new Promise(resolve => setTimeout(resolve, 100));
     
@@ -598,28 +599,32 @@ class ComputorStudentExtension extends ComputorExtension {
   }
 }
 
-let extensions: Array<{id: string, extension: ComputorExtension}> = [];
+type ComputorExtensionConstructor = new (context: any) => ComputorExtension;
+
+let extensionClasses: Array<{id: string, extensionClass: ComputorExtensionConstructor}> = [];
+let extensions: Array<ComputorExtension> = [];
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  console.log('Computor extension is now active');
+  console.log('Computor extension is now active [ASdf 2]');
 
   IconGenerator.initialize(context);
 
-  extensions.push({id: "computor.lecturer.login", extension: new ComputorLecturerExtension(context)});
-  extensions.push({id: "computor.tutor.login", extension: new ComputorTutorExtension(context)});
-  extensions.push({id: "computor.student.login", extension: new ComputorStudentExtension(context)});
+  extensionClasses.push({id: "computor.lecturer.login", extensionClass: ComputorLecturerExtension});
+  extensionClasses.push({id: "computor.tutor.login", extensionClass: ComputorTutorExtension});
+  extensionClasses.push({id: "computor.student.login", extensionClass: ComputorStudentExtension});
 
-  for (const { id, extension } of extensions) {
-    await extension.initialize();
-    
+  for (const { id, extensionClass } of extensionClasses) {
     context.subscriptions.push(vscode.commands.registerCommand(id, async () => {
+      const extension = new extensionClass(context);
+      await extension.initialize();
       await extension.activate();
+      extensions.push(extension);
     }));
   }
 
   context.subscriptions.push(
     vscode.commands.registerCommand('computor.logout', async () => {
-      for (const { extension } of extensions) {
+      for (const extension of extensions) {
         await extension.deactivate();
       }
       vscode.window.showInformationMessage('Logged out from all Computor roles');
@@ -635,7 +640,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 export function deactivate(): void {
 
-  for (const { extension } of extensions) {
+  for (const extension of extensions) {
     extension.deactivate();
   }
 
