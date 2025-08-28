@@ -119,7 +119,7 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
           if (this.treeDataProvider) {
             this.treeDataProvider.updateNode('organization', message.data.organizationId, message.data.updates);
           } else {
-            vscode.commands.executeCommand('computor.refreshLecturerTree');
+            vscode.commands.executeCommand('computor.lecturer.refresh');
           }
         } catch (error) {
           vscode.window.showErrorMessage(`Failed to update organization: ${error}`);
@@ -127,7 +127,7 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
         break;
 
       case 'refresh':
-        vscode.commands.executeCommand('computor.refreshLecturerTree');
+        vscode.commands.executeCommand('computor.lecturer.refresh');
         break;
 
       case 'createCourseFamily':

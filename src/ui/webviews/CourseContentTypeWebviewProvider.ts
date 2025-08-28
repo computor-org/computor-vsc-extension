@@ -189,7 +189,7 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
               course_id: courseData?.course.id
             });
           } else {
-            vscode.commands.executeCommand('computor.refreshLecturerTree');
+            vscode.commands.executeCommand('computor.lecturer.refresh');
           }
         } catch (error) {
           vscode.window.showErrorMessage(`Failed to update content type: ${error}`);
@@ -197,7 +197,7 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
         break;
 
       case 'refresh':
-        vscode.commands.executeCommand('computor.refreshLecturerTree');
+        vscode.commands.executeCommand('computor.lecturer.refresh');
         break;
 
       case 'findUsage':

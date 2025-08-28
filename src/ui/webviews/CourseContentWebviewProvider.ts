@@ -210,7 +210,7 @@ export class CourseContentWebviewProvider extends BaseWebviewProvider {
 
       case 'refresh':
         // Trigger tree refresh
-        vscode.commands.executeCommand('computor.refreshLecturerTree');
+        vscode.commands.executeCommand('computor.lecturer.refresh');
         break;
 
       case 'assignExample':

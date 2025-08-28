@@ -132,7 +132,7 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
           if (this.treeDataProvider) {
             this.treeDataProvider.updateNode('courseFamily', message.data.familyId, message.data.updates);
           } else {
-            vscode.commands.executeCommand('computor.refreshLecturerTree');
+            vscode.commands.executeCommand('computor.lecturer.refresh');
           }
         } catch (error) {
           vscode.window.showErrorMessage(`Failed to update course family: ${error}`);
@@ -140,7 +140,7 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
         break;
 
       case 'refresh':
-        vscode.commands.executeCommand('computor.refreshLecturerTree');
+        vscode.commands.executeCommand('computor.lecturer.refresh');
         break;
 
       case 'createCourse':
