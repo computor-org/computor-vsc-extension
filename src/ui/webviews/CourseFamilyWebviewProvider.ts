@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
-import { CourseFamilyList, OrganizationList } from '../../types/generated';
+import { CourseFamilyGet, OrganizationList } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
 
@@ -15,7 +15,7 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
   }
 
   protected async getWebviewContent(data?: {
-    courseFamily: CourseFamilyList;
+    courseFamily: CourseFamilyGet;
     organization: OrganizationList;
   }): Promise<string> {
     if (!data) {
@@ -54,7 +54,7 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
           
           <div class="form-group">
             <label for="description">Description</label>
-            <textarea id="description" name="description" rows="4"></textarea>
+            <textarea id="description" name="description" rows="4">${courseFamily.description || ''}</textarea>
           </div>
           
           <div class="form-group">

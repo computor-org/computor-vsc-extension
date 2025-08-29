@@ -244,6 +244,62 @@ export class ComputorApiService {
     }
   }
 
+  async getCourseFamily(familyId: string): Promise<CourseFamilyGet | undefined> {
+    const cacheKey = `courseFamily-${familyId}`;
+    
+    // Check cache first
+    const cached = multiTierCache.get<CourseFamilyGet>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const response = await client.get<CourseFamilyGet>(`/course-families/${familyId}`);
+        return response.data;
+      }, {
+        maxRetries: 2,
+        exponentialBackoff: true
+      });
+      
+      // Cache in warm tier
+      multiTierCache.set(cacheKey, result, 'warm');
+      return result;
+    } catch (error) {
+      console.error('Failed to get course family:', error);
+      return undefined;
+    }
+  }
+
+  async getOrganization(organizationId: string): Promise<OrganizationGet | undefined> {
+    const cacheKey = `organization-${organizationId}`;
+    
+    // Check cache first
+    const cached = multiTierCache.get<OrganizationGet>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const response = await client.get<OrganizationGet>(`/organizations/${organizationId}`);
+        return response.data;
+      }, {
+        maxRetries: 2,
+        exponentialBackoff: true
+      });
+      
+      // Cache in cold tier (organizations rarely change)
+      multiTierCache.set(cacheKey, result, 'cold');
+      return result;
+    } catch (error) {
+      console.error('Failed to get organization:', error);
+      return undefined;
+    }
+  }
+
   async updateCourse(courseId: string, updates: CourseUpdate): Promise<CourseGet> {
     const client = await this.getHttpClient();
     const response = await client.patch<CourseGet>(`/courses/${courseId}`, updates);

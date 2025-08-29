@@ -1195,19 +1195,25 @@ export class LecturerCommands {
   }
 
   private async showOrganizationDetails(item: OrganizationTreeItem): Promise<void> {
+    // Fetch fresh data from API
+    const freshOrganization = await this.apiService.getOrganization(item.organization.id) || item.organization;
+    
     await this.organizationWebviewProvider.show(
-      `Organization: ${item.organization.title || item.organization.path}`,
+      `Organization: ${freshOrganization.title || freshOrganization.path}`,
       {
-        organization: item.organization
+        organization: freshOrganization
       }
     );
   }
 
   private async showCourseFamilyDetails(item: CourseFamilyTreeItem): Promise<void> {
+    // Fetch fresh data from API
+    const freshCourseFamily = await this.apiService.getCourseFamily(item.courseFamily.id) || item.courseFamily;
+    
     await this.courseFamilyWebviewProvider.show(
-      `Course Family: ${item.courseFamily.title || item.courseFamily.path}`,
+      `Course Family: ${freshCourseFamily.title || freshCourseFamily.path}`,
       {
-        courseFamily: item.courseFamily,
+        courseFamily: freshCourseFamily,
         organization: item.organization
       }
     );

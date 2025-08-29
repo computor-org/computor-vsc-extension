@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
-import { OrganizationList } from '../../types/generated';
+import { OrganizationGet } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
 
@@ -15,7 +15,7 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
   }
 
   protected async getWebviewContent(data?: {
-    organization: OrganizationList;
+    organization: OrganizationGet;
   }): Promise<string> {
     if (!data) {
       return this.getBaseHtml('Organization', '<p>No organization data available</p>');
@@ -52,7 +52,7 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
           
           <div class="form-group">
             <label for="description">Description</label>
-            <textarea id="description" name="description" rows="4"></textarea>
+            <textarea id="description" name="description" rows="4">${organization.description || ''}</textarea>
           </div>
           
           <div class="actions">

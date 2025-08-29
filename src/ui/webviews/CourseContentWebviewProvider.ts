@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
-import { CourseContentList, CourseList, CourseContentTypeList } from '../../types/generated';
+import { CourseContentGet, CourseList, CourseContentTypeList } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
 
@@ -15,7 +15,7 @@ export class CourseContentWebviewProvider extends BaseWebviewProvider {
   }
 
   protected async getWebviewContent(data?: {
-    courseContent: CourseContentList;
+    courseContent: CourseContentGet;
     course: CourseList;
     contentType?: CourseContentTypeList;
     exampleInfo?: any;
@@ -77,7 +77,7 @@ export class CourseContentWebviewProvider extends BaseWebviewProvider {
           
           <div class="form-group">
             <label for="description">Description</label>
-            <textarea id="description" name="description" rows="4"></textarea>
+            <textarea id="description" name="description" rows="4">${courseContent.description || ''}</textarea>
           </div>
           
           ${isSubmittable ? `
