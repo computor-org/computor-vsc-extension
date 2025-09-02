@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
 import { LecturerTreeDataProvider } from '../ui/tree/lecturer/LecturerTreeDataProvider';
-import { OrganizationTreeItem, CourseFamilyTreeItem, CourseTreeItem, CourseContentTreeItem, CourseFolderTreeItem, CourseContentTypeTreeItem, CourseGroupTreeItem } from '../ui/tree/lecturer/LecturerTreeItems';
+import { OrganizationTreeItem, CourseFamilyTreeItem, CourseTreeItem, CourseContentTreeItem, CourseFolderTreeItem, CourseContentTypeTreeItem, CourseGroupTreeItem, CourseMemberTreeItem } from '../ui/tree/lecturer/LecturerTreeItems';
 import { CourseGroupCommands } from './lecturer/courseGroupCommands';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { CourseWebviewProvider } from '../ui/webviews/CourseWebviewProvider';
@@ -158,7 +158,7 @@ export class LecturerCommands {
 
     // GitLab repository opening
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.openGitLabRepo', async (item: CourseTreeItem) => {
+      vscode.commands.registerCommand('computor.lecturer.openGitLabRepo', async (item: CourseTreeItem | CourseMemberTreeItem) => {
         await this.openGitLabRepository(item);
       })
     );
@@ -795,34 +795,51 @@ export class LecturerCommands {
     }
   }
 
-  private async openGitLabRepository(item: CourseTreeItem): Promise<void> {
-    const repoUrl = item.course.properties?.gitlab?.url;
-    
-    if (!repoUrl) {
-      vscode.window.showWarningMessage('No GitLab repository URL found for this course');
-      return;
-    }
-
+  private async openGitLabRepository(item: CourseTreeItem | CourseMemberTreeItem): Promise<void> {
     try {
-      // Convert git URL to web URL if needed
-      let webUrl = repoUrl;
+      let webUrl: string | undefined;
+      let itemType: string;
       
-      // If it's a git URL (ends with .git), remove the .git extension
-      if (webUrl.endsWith('.git')) {
-        webUrl = webUrl.slice(0, -4);
+      if (item instanceof CourseMemberTreeItem) {
+        // For course members, we need to fetch the full member data to get the GitLab project URL
+        itemType = 'member project';
+        const memberData = await this.apiService.getCourseMember(item.member.id);
+        
+        if (memberData?.properties?.gitlab?.url && memberData.properties.gitlab.full_path) {
+          // Build the full GitLab project URL
+          const gitlabHost = memberData.properties.gitlab.url;
+          const projectPath = memberData.properties.gitlab.full_path;
+          webUrl = `${gitlabHost}/${projectPath}`;
+        } else {
+          vscode.window.showWarningMessage('No GitLab project found for this course member');
+          return;
+        }
+      } else {
+        // For courses, use the course group URL
+        itemType = 'course group';
+        const courseGitlab = item.course.properties?.gitlab;
+        
+        if (courseGitlab?.url && courseGitlab.full_path) {
+          // Build the full GitLab group URL
+          const gitlabHost = courseGitlab.url;
+          const groupPath = courseGitlab.full_path;
+          webUrl = `${gitlabHost}/${groupPath}`;
+        } else {
+          vscode.window.showWarningMessage('No GitLab group found for this course');
+          return;
+        }
       }
       
-      // If it's a git:// or ssh:// URL, convert to https://
-      if (webUrl.startsWith('git@')) {
-        // Convert git@gitlab.example.com:user/repo to https://gitlab.example.com/user/repo
-        webUrl = webUrl.replace(/^git@([^:]+):/, 'https://$1/');
-      } else if (webUrl.startsWith('git://')) {
-        webUrl = webUrl.replace(/^git:\/\//, 'https://');
+      if (webUrl) {
+        // Ensure the URL has proper protocol
+        if (!webUrl.startsWith('http://') && !webUrl.startsWith('https://')) {
+          webUrl = `https://${webUrl}`;
+        }
+        
+        // Open the URL in the default browser
+        await vscode.env.openExternal(vscode.Uri.parse(webUrl));
+        vscode.window.showInformationMessage(`Opening GitLab ${itemType} in browser`);
       }
-      
-      // Open the URL in the default browser
-      await vscode.env.openExternal(vscode.Uri.parse(webUrl));
-      vscode.window.showInformationMessage(`Opening GitLab repository in browser`);
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to open GitLab repository: ${error}`);
     }
