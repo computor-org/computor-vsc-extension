@@ -127,7 +127,22 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
         break;
 
       case 'refresh':
-        vscode.commands.executeCommand('computor.lecturer.refresh');
+        // Reload the webview with fresh data
+        if (message.data.organizationId) {
+          try {
+            const organization = await this.apiService.getOrganization(message.data.organizationId);
+            if (organization && this.currentData) {
+              // Update the current data and re-render the entire webview
+              this.currentData.organization = organization;
+              const content = await this.getWebviewContent(this.currentData);
+              if (this.panel) {
+                this.panel.webview.html = content;
+              }
+            }
+          } catch (error) {
+            vscode.window.showErrorMessage(`Failed to refresh: ${error}`);
+          }
+        }
         break;
 
       case 'createCourseFamily':

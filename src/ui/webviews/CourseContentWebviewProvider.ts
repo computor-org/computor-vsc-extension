@@ -209,8 +209,22 @@ export class CourseContentWebviewProvider extends BaseWebviewProvider {
         break;
 
       case 'refresh':
-        // Trigger tree refresh
-        vscode.commands.executeCommand('computor.lecturer.refresh');
+        // Reload the webview with fresh data
+        if (message.data.contentId) {
+          try {
+            const freshContent = await this.apiService.getCourseContent(message.data.contentId);
+            if (freshContent && this.currentData) {
+              // Update the current data and re-render the entire webview
+              this.currentData.courseContent = freshContent;
+              const content = await this.getWebviewContent(this.currentData);
+              if (this.panel) {
+                this.panel.webview.html = content;
+              }
+            }
+          } catch (error) {
+            vscode.window.showErrorMessage(`Failed to refresh: ${error}`);
+          }
+        }
         break;
 
       case 'assignExample':
