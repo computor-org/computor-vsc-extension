@@ -23,10 +23,13 @@ export class LecturerExampleCommands {
     // Search examples - already registered in extension.ts but we'll override with better implementation
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.searchExamples', async () => {
+        // Get current search query to prefill the input
+        const currentQuery = this.treeProvider.getSearchQuery();
+        
         const query = await vscode.window.showInputBox({
           prompt: 'Search examples by title, identifier, or tags',
           placeHolder: 'Enter search query',
-          value: ''
+          value: currentQuery  // Prefill with current search
         });
         
         if (query !== undefined) {

@@ -225,6 +225,10 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
   }
 
   // Search and filter methods
+  getSearchQuery(): string {
+    return this.searchQuery;
+  }
+
   setSearchQuery(query: string): void {
     this.searchQuery = query;
     this._onDidChangeTreeData.fire(undefined);
