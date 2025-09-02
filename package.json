@@ -200,12 +200,6 @@
         "category": "Computor Examples"
       },
       {
-        "command": "computor.lecturer.scanWorkspace",
-        "title": "Scan Workspace for Examples",
-        "icon": "$(search)",
-        "category": "Computor Examples"
-      },
-      {
         "command": "computor.lecturer.createNewExample",
         "title": "Create New Example",
         "icon": "$(add)",
@@ -596,11 +590,6 @@
           "command": "computor.lecturer.refreshExamples",
           "when": "view == computor.lecturer.examples",
           "group": "navigation@1"
-        },
-        {
-          "command": "computor.lecturer.scanWorkspace",
-          "when": "view == computor.lecturer.examples",
-          "group": "navigation@3"
         },
         {
           "command": "computor.openJsonInEditor",

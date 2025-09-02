@@ -119,8 +119,30 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
   async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
     try {
       if (!element) {
-        // Root level - show example repositories
-        return this.getExampleRepositories();
+        // Root level - show search filter if active, then example repositories
+        const items: vscode.TreeItem[] = [];
+        
+        // Add search filter indicator if search is active
+        if (this.searchQuery) {
+          const searchItem = new vscode.TreeItem(
+            `🔍 Search: "${this.searchQuery}"`,
+            vscode.TreeItemCollapsibleState.None
+          );
+          searchItem.contextValue = 'searchFilter';
+          searchItem.tooltip = `Current search filter: ${this.searchQuery}\nClick to clear`;
+          searchItem.command = {
+            command: 'computor.lecturer.clearSearch',
+            title: 'Clear Search',
+            arguments: []
+          };
+          items.push(searchItem);
+        }
+        
+        // Add repositories
+        const repositories = await this.getExampleRepositories();
+        items.push(...repositories);
+        
+        return items;
       }
 
       if (element instanceof ExampleRepositoryTreeItem) {

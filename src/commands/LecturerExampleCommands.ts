@@ -48,6 +48,14 @@ export class LecturerExampleCommands {
       })
     );
 
+    // Also register clearSearch for the tree item click
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.clearSearch', () => {
+        this.treeProvider.clearSearch();
+        vscode.window.showInformationMessage('Search cleared');
+      })
+    );
+
     // Filter by category
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.filterExamplesByCategory', async () => {
@@ -129,13 +137,6 @@ export class LecturerExampleCommands {
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.uploadExamplesFromZip', async (item?: ExampleRepositoryTreeItem) => {
         await this.uploadExamplesFromZip(item);
-      })
-    );
-
-    // Scan workspace
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.scanWorkspace', async () => {
-        vscode.window.showInformationMessage('Scan workspace for examples - not yet implemented');
       })
     );
   }
