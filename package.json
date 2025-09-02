@@ -841,7 +841,7 @@
         },
         {
           "command": "computor.lecturer.openGitLabRepo",
-          "when": "view == computor.lecturer.courses && viewItem =~ /course/",
+          "when": "view == computor.lecturer.courses && (viewItem == course || viewItem == course.member)",
           "group": "5_gitlab@1"
         },
         {
