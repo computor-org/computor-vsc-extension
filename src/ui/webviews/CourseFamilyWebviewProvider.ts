@@ -64,7 +64,6 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
           
           <div class="actions">
             <button type="submit" class="button">Save Changes</button>
-            <button type="button" class="button secondary" onclick="refreshView()">Refresh</button>
           </div>
         </form>
       </div>
