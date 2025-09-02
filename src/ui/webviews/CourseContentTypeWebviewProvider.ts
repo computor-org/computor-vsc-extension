@@ -202,12 +202,28 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
           try {
             const freshContentType = await this.apiService.getCourseContentType(message.data.typeId);
             if (freshContentType && this.currentData) {
+              // Also refresh content kind info if needed
+              let contentKind = this.currentData.contentKind;
+              if (freshContentType.course_content_kind_id) {
+                try {
+                  const kinds = await this.apiService.getCourseContentKinds();
+                  const freshKind = kinds.find(k => k.id === freshContentType.course_content_kind_id);
+                  if (freshKind) {
+                    contentKind = freshKind;
+                  }
+                } catch (error) {
+                  console.error('Failed to refresh content kind:', error);
+                }
+              }
+              
               // Update the current data and re-render the entire webview
               this.currentData.contentType = freshContentType;
+              this.currentData.contentKind = contentKind;
               const content = await this.getWebviewContent(this.currentData);
               if (this.panel) {
                 this.panel.webview.html = content;
               }
+              vscode.window.showInformationMessage('Content type refreshed');
             }
           } catch (error) {
             vscode.window.showErrorMessage(`Failed to refresh: ${error}`);

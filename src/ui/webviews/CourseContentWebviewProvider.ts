@@ -220,6 +220,7 @@ export class CourseContentWebviewProvider extends BaseWebviewProvider {
               if (this.panel) {
                 this.panel.webview.html = content;
               }
+              vscode.window.showInformationMessage('Course content refreshed');
             }
           } catch (error) {
             vscode.window.showErrorMessage(`Failed to refresh: ${error}`);

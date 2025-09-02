@@ -138,6 +138,7 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
               if (this.panel) {
                 this.panel.webview.html = content;
               }
+              vscode.window.showInformationMessage('Organization refreshed');
             }
           } catch (error) {
             vscode.window.showErrorMessage(`Failed to refresh: ${error}`);
