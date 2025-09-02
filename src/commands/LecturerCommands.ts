@@ -598,7 +598,15 @@ export class LecturerCommands {
       return;
     }
 
-    await this.treeDataProvider.updateCourseContent(item, { title: newTitle });
+    try {
+      await this.treeDataProvider.updateCourseContent(item, { title: newTitle });
+      vscode.window.showInformationMessage(`Content renamed to "${newTitle}"`);
+      
+      // Force a full refresh to ensure the tree updates
+      await this.treeDataProvider.refresh();
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to rename content: ${error}`);
+    }
   }
 
   private async renameCourseContentType(item: CourseContentTypeTreeItem): Promise<void> {
