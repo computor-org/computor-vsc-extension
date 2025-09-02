@@ -378,6 +378,11 @@
         "category": "Computor Lecturer"
       },
       {
+        "command": "computor.lecturer.renameCourseGroup",
+        "title": "Rename",
+        "category": "Computor Lecturer"
+      },
+      {
         "command": "computor.lecturer.showCourseDetails",
         "title": "Show Details",
         "icon": "$(info)",
@@ -828,6 +833,11 @@
           "command": "computor.lecturer.showCourseGroupDetails",
           "when": "view == computor.lecturer.courses && viewItem == course.group",
           "group": "5_details@1"
+        },
+        {
+          "command": "computor.lecturer.renameCourseGroup",
+          "when": "view == computor.lecturer.courses && viewItem == course.group",
+          "group": "2_edit@1"
         },
         {
           "command": "computor.lecturer.openGitLabRepo",

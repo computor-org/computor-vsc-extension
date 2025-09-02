@@ -215,6 +215,12 @@ export class LecturerCommands {
         await this.showCourseGroupDetails(item);
       })
     );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.renameCourseGroup', async (item: CourseGroupTreeItem) => {
+        await this.renameCourseGroup(item);
+      })
+    );
   }
 
   /**
@@ -1298,6 +1304,28 @@ export class LecturerCommands {
       );
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to show group details: ${error}`);
+    }
+  }
+
+  private async renameCourseGroup(item: CourseGroupTreeItem): Promise<void> {
+    const currentTitle = item.group.title || '';
+    const newTitle = await vscode.window.showInputBox({
+      prompt: 'Enter new title for the group',
+      value: currentTitle
+    });
+
+    if (!newTitle || newTitle === currentTitle) {
+      return;
+    }
+
+    try {
+      await this.apiService.updateCourseGroup(item.group.id, { title: newTitle });
+      vscode.window.showInformationMessage(`Group renamed to "${newTitle}"`);
+      
+      // Refresh the tree to show the changes
+      await this.treeDataProvider.refresh();
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to rename group: ${error}`);
     }
   }
 }

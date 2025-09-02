@@ -32,6 +32,7 @@ import {
   ExampleDownloadResponse,
   CourseGroupList,
   CourseGroupGet,
+  CourseGroupUpdate,
   CourseMemberList,
   CourseMemberGet,
   TaskResponse,
@@ -821,6 +822,17 @@ export class ComputorApiService {
       console.error('Failed to get course group:', error);
       return undefined;
     }
+  }
+
+  async updateCourseGroup(groupId: string, updates: CourseGroupUpdate): Promise<CourseGroupGet> {
+    const client = await this.getHttpClient();
+    const response = await client.patch<CourseGroupGet>(`/course-groups/${groupId}`, updates);
+    
+    // Invalidate related caches
+    this.invalidateCachePattern('courseGroup-');
+    this.invalidateCachePattern('courseGroups-');
+    
+    return response.data;
   }
 
   // Course Members API methods
