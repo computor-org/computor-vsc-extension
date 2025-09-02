@@ -425,6 +425,11 @@
         "category": "Computor Lecturer"
       },
       {
+        "command": "computor.lecturer.renameCourseContentType",
+        "title": "Rename",
+        "category": "Computor Lecturer"
+      },
+      {
         "command": "computor.lecturer.deleteCourseContent",
         "title": "Delete",
         "category": "Computor Lecturer"
@@ -766,12 +771,22 @@
         },
         {
           "command": "computor.lecturer.renameCourseContent",
-          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent/",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/",
+          "group": "2_edit@1"
+        },
+        {
+          "command": "computor.lecturer.renameCourseContentType",
+          "when": "view == computor.lecturer.courses && viewItem =~ /courseContentType/",
           "group": "2_edit@1"
         },
         {
           "command": "computor.lecturer.deleteCourseContent",
-          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent/",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/",
+          "group": "3_delete@1"
+        },
+        {
+          "command": "computor.lecturer.deleteCourseContentType",
+          "when": "view == computor.lecturer.courses && viewItem =~ /courseContentType/",
           "group": "3_delete@1"
         },
         {

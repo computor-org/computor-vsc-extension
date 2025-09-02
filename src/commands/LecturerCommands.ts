@@ -134,6 +134,12 @@ export class LecturerCommands {
     );
 
     this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.renameCourseContentType', async (item: CourseContentTypeTreeItem) => {
+        await this.renameCourseContentType(item);
+      })
+    );
+
+    this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.deleteCourseContent', async (item: CourseContentTreeItem) => {
         await this.deleteCourseContent(item);
       })
@@ -595,6 +601,26 @@ export class LecturerCommands {
     await this.treeDataProvider.updateCourseContent(item, { title: newTitle });
   }
 
+  private async renameCourseContentType(item: CourseContentTypeTreeItem): Promise<void> {
+    const currentTitle = item.contentType.title || '';
+    const newTitle = await vscode.window.showInputBox({
+      prompt: 'Enter new title for content type',
+      value: currentTitle
+    });
+
+    if (!newTitle || newTitle === currentTitle) {
+      return;
+    }
+
+    try {
+      await this.apiService.updateCourseContentType(item.contentType.id, { title: newTitle });
+      vscode.window.showInformationMessage(`Content type renamed to "${newTitle}"`);
+      await this.treeDataProvider.refresh();
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to rename content type: ${error}`);
+    }
+  }
+
   private async deleteCourseContent(item: CourseContentTreeItem): Promise<void> {
     console.log('Delete command called with item:', item);
     console.log('Item type:', item.constructor.name);
@@ -961,11 +987,10 @@ export class LecturerCommands {
     if (confirmation === 'Yes') {
       try {
         await this.apiService.deleteCourseContentType(item.contentType.id);
-        
-        // Refresh parent folder
-        const parent = new CourseFolderTreeItem('contentTypes', item.course, item.courseFamily, item.organization);
-        this.treeDataProvider.refreshNode(parent);
         vscode.window.showInformationMessage('Content type deleted successfully');
+        
+        // Refresh the tree to show the changes
+        await this.treeDataProvider.refresh();
       } catch (error) {
         vscode.window.showErrorMessage(`Failed to delete content type: ${error}`);
       }
