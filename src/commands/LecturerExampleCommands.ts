@@ -180,6 +180,13 @@ export class LecturerExampleCommands {
         this.treeProvider.refresh();
       })
     );
+
+    // Reveal downloaded example in explorer
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.revealExampleInExplorer', async (item: ExampleTreeItem) => {
+        await this.revealExampleInExplorer(item);
+      })
+    );
   }
 
   /**
@@ -1046,6 +1053,30 @@ Explain how to use this example.
     } catch (error) {
       console.error('Failed to create course content from example:', error);
       vscode.window.showErrorMessage(`Failed to create assignment: ${error}`);
+    }
+  }
+
+  /**
+   * Reveal a downloaded example in the VS Code explorer
+   */
+  private async revealExampleInExplorer(item: ExampleTreeItem): Promise<void> {
+    if (!item || !item.example) {
+      vscode.window.showErrorMessage('Invalid example item');
+      return;
+    }
+
+    if (!item.isDownloaded || !item.downloadPath) {
+      vscode.window.showErrorMessage('Example is not downloaded yet');
+      return;
+    }
+
+    try {
+      // Convert to URI and reveal in explorer
+      const folderUri = vscode.Uri.file(item.downloadPath);
+      await vscode.commands.executeCommand('revealInExplorer', folderUri);
+    } catch (error) {
+      console.error('Failed to reveal example in explorer:', error);
+      vscode.window.showErrorMessage(`Failed to reveal in explorer: ${error}`);
     }
   }
 

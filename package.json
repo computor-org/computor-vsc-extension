@@ -153,6 +153,12 @@
         "category": "Computor Examples"
       },
       {
+        "command": "computor.lecturer.revealExampleInExplorer",
+        "title": "Reveal in Explorer",
+        "icon": "$(folder)",
+        "category": "Computor Examples"
+      },
+      {
         "command": "computor.lecturer.createNewExample",
         "title": "Create New Example",
         "icon": "$(add)",
@@ -860,6 +866,11 @@
           "command": "computor.lecturer.createCourseContentFromExample",
           "when": "view == computor.lecturer.examples && (viewItem == example || viewItem == exampleDownloaded)",
           "group": "2_course@1"
+        },
+        {
+          "command": "computor.lecturer.revealExampleInExplorer",
+          "when": "view == computor.lecturer.examples && viewItem == exampleDownloaded",
+          "group": "1_actions@3"
         }
       ]
     }
