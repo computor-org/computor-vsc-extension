@@ -83,7 +83,7 @@ export class TutorExampleTreeItem extends vscode.TreeItem {
     );
     this.id = `tutor-example-${example.id}`;
     this.contextValue = 'tutorExample';
-    this.tooltip = `${example.title}\\nIdentifier: ${example.identifier}\\nDirectory: ${example.directory}`;
+    this.tooltip = `${example.title}\\nIdentifier: ${example.identifier}`;
     this.iconPath = new vscode.ThemeIcon('file-code');
     
     if (example.category) {

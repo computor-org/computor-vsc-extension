@@ -72,7 +72,7 @@ class ExampleTreeItem extends vscode.TreeItem {
     const parts = [];
     
     if (this.isDownloaded) {
-      parts.push('📁 Downloaded');
+      parts.push('📁 checked out');
     }
     
     if (this.example.category) {
