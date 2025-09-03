@@ -173,6 +173,13 @@ export class LecturerExampleCommands {
         await this.createCourseContentFromExample(item);
       })
     );
+
+    // Refresh examples tree
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.refreshExamples', async () => {
+        this.treeProvider.refresh();
+      })
+    );
   }
 
   /**
@@ -231,6 +238,12 @@ export class LecturerExampleCommands {
         
         // Write file content
         fs.writeFileSync(filePath, content, 'utf8');
+        
+        // If this is meta.yaml, also create a .meta.yaml copy as source of truth
+        if (filename === 'meta.yaml') {
+          const hiddenMetaPath = path.join(examplePath, '.meta.yaml');
+          fs.writeFileSync(hiddenMetaPath, content, 'utf8');
+        }
       }
 
       // Mark example as downloaded and refresh tree
@@ -339,6 +352,12 @@ export class LecturerExampleCommands {
               
               // Write file content
               fs.writeFileSync(filePath, content, 'utf8');
+              
+              // If this is meta.yaml, also create a .meta.yaml copy as source of truth
+              if (filename === 'meta.yaml') {
+                const hiddenMetaPath = path.join(examplePath, '.meta.yaml');
+                fs.writeFileSync(hiddenMetaPath, content, 'utf8');
+              }
             }
 
             // Mark example as downloaded
@@ -603,6 +622,7 @@ Explain how to use this example.
     vscode.window.showInformationMessage(`Uploading example from ${metaFile.fsPath} - not yet fully implemented`);
     
     // TODO: Read meta.yaml, package the example, and upload
+    // IMPORTANT: When packaging, exclude .meta.yaml file (it's only for local version tracking)
   }
 
   /**
@@ -680,7 +700,9 @@ Explain how to use this example.
 
         // Find all directories that contain meta.yaml files
         const allPaths = Object.keys(loadedZip.files).filter(path => 
-          !path.startsWith('__MACOSX/') && !path.includes('/.')
+          !path.startsWith('__MACOSX/') && 
+          !path.includes('/.') && // Exclude hidden files/directories
+          !path.endsWith('.meta.yaml') // Exclude .meta.yaml (local version tracking)
         );
         
         const metaYamlPaths = allPaths.filter(path => path.endsWith('meta.yaml'));

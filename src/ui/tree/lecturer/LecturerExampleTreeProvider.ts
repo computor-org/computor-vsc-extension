@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as yaml from 'js-yaml';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { 
   ExampleRepositoryList,
@@ -72,7 +73,28 @@ class ExampleTreeItem extends vscode.TreeItem {
     const parts = [];
     
     if (this.isDownloaded) {
-      parts.push('📁 checked out');
+      // Try to read version from .meta.yaml
+      if (this.downloadPath) {
+        try {
+          const metaPath = path.join(this.downloadPath, '.meta.yaml');
+          if (fs.existsSync(metaPath)) {
+            const metaContent = fs.readFileSync(metaPath, 'utf8');
+            const metaData = yaml.load(metaContent) as any;
+            if (metaData && metaData.version) {
+              parts.push(`📁 ${metaData.version}`);
+            } else {
+              parts.push('📁 checked out');
+            }
+          } else {
+            parts.push('📁 checked out');
+          }
+        } catch (error) {
+          console.warn('Failed to read .meta.yaml:', error);
+          parts.push('📁 checked out');
+        }
+      } else {
+        parts.push('📁 checked out');
+      }
     }
     
     if (this.example.category) {

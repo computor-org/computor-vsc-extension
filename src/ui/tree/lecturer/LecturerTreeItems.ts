@@ -151,7 +151,7 @@ export class CourseContentTreeItem extends vscode.TreeItem {
       if (this.courseContent.example_version) {
         parts.push(`Version: ${this.courseContent.example_version}`);
       } else {
-        parts.push(`Version: latest`);
+        parts.push(`Version: <missing>`);
       }
     }
     
@@ -164,8 +164,8 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     // Show only version indicator for examples
     if (this.courseContent.example_id) {
       const versionText = this.courseContent.example_version ? 
-        `v${this.courseContent.example_version}` : 
-        'latest';
+        `${this.courseContent.example_version}` : 
+        '<missing>';
       parts.push(`📦 ${versionText}`);
     }
     
