@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { 
   ExampleRepositoryList,
@@ -6,7 +8,7 @@ import {
 } from '../../../types/generated';
 
 // Export tree items for use in commands
-export { ExampleRepositoryTreeItem, ExampleTreeItem };
+export { ExampleRepositoryTreeItem, ExampleTreeItem, FileSystemTreeItem };
 
 // Tree items for example view
 class ExampleRepositoryTreeItem extends vscode.TreeItem {
@@ -26,12 +28,17 @@ class ExampleRepositoryTreeItem extends vscode.TreeItem {
 class ExampleTreeItem extends vscode.TreeItem {
   constructor(
     public readonly example: ExampleList,
-    public readonly repository: ExampleRepositoryList
+    public readonly repository: ExampleRepositoryList,
+    public readonly isDownloaded: boolean = false,
+    public readonly downloadPath?: string
   ) {
-    super(example.title, vscode.TreeItemCollapsibleState.None);
+    super(
+      example.title, 
+      isDownloaded ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None
+    );
     this.id = `example-${example.id}`;
-    this.contextValue = 'example';
-    this.iconPath = new vscode.ThemeIcon('file-code');
+    this.contextValue = isDownloaded ? 'exampleDownloaded' : 'example';
+    this.iconPath = new vscode.ThemeIcon(isDownloaded ? 'folder-library' : 'file-code');
     this.tooltip = this.getTooltip();
     this.description = this.getDescription();
     
@@ -64,6 +71,10 @@ class ExampleTreeItem extends vscode.TreeItem {
   private getDescription(): string {
     const parts = [];
     
+    if (this.isDownloaded) {
+      parts.push('📁 Downloaded');
+    }
+    
     if (this.example.category) {
       parts.push(this.example.category);
     }
@@ -74,6 +85,34 @@ class ExampleTreeItem extends vscode.TreeItem {
     }
     
     return parts.join(' ');
+  }
+}
+
+// Tree item for file system entries
+class FileSystemTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly filePath: string,
+    public readonly isDirectory: boolean,
+    public readonly relativePath: string
+  ) {
+    super(
+      path.basename(filePath),
+      isDirectory ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None
+    );
+    this.id = `file-${filePath}`;
+    this.contextValue = isDirectory ? 'folder' : 'file';
+    this.iconPath = new vscode.ThemeIcon(isDirectory ? 'folder' : 'file');
+    this.tooltip = relativePath;
+    this.resourceUri = vscode.Uri.file(filePath);
+    
+    // Allow opening files on click
+    if (!isDirectory) {
+      this.command = {
+        command: 'vscode.open',
+        title: 'Open',
+        arguments: [this.resourceUri]
+      };
+    }
   }
 }
 
@@ -93,6 +132,9 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
   // Caches
   private repositoriesCache: ExampleRepositoryList[] | null = null;
   private examplesCache: Map<string, ExampleList[]> = new Map();
+  
+  // Track downloaded examples
+  private downloadedExamples: Map<string, string> = new Map(); // exampleId -> path
 
   constructor(
     context: vscode.ExtensionContext,
@@ -182,6 +224,20 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
         return this.getExamplesForRepository(element.repository);
       }
 
+      if (element instanceof ExampleTreeItem) {
+        // Show file structure for downloaded examples
+        if (element.isDownloaded && element.downloadPath) {
+          return this.getFileSystemItems(element.downloadPath);
+        }
+      }
+
+      if (element instanceof FileSystemTreeItem) {
+        // Show subdirectory contents
+        if (element.isDirectory) {
+          return this.getFileSystemItems(element.filePath);
+        }
+      }
+
       return [];
     } catch (error) {
       console.error('Failed to load example tree data:', error);
@@ -251,9 +307,61 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
       );
     }
 
-    return filteredExamples.map(example =>
-      new ExampleTreeItem(example, repository)
-    );
+    return filteredExamples.map(example => {
+      const downloadPath = this.downloadedExamples.get(example.id);
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      
+      // Check if the example is downloaded by checking if directory exists
+      let isDownloaded = false;
+      let actualPath: string | undefined;
+      
+      if (workspaceFolder) {
+        const expectedPath = path.join(workspaceFolder.uri.fsPath, example.directory);
+        if (fs.existsSync(expectedPath)) {
+          isDownloaded = true;
+          actualPath = expectedPath;
+          // Update the downloaded map
+          this.downloadedExamples.set(example.id, expectedPath);
+        }
+      }
+      
+      return new ExampleTreeItem(example, repository, isDownloaded, actualPath || downloadPath);
+    });
+  }
+
+  private getFileSystemItems(dirPath: string): vscode.TreeItem[] {
+    try {
+      if (!fs.existsSync(dirPath)) {
+        return [];
+      }
+
+      const items = fs.readdirSync(dirPath);
+      const treeItems: vscode.TreeItem[] = [];
+
+      for (const item of items) {
+        const fullPath = path.join(dirPath, item);
+        const stat = fs.statSync(fullPath);
+        const relativePath = vscode.workspace.asRelativePath(fullPath);
+        
+        treeItems.push(new FileSystemTreeItem(fullPath, stat.isDirectory(), relativePath));
+      }
+
+      // Sort: directories first, then files
+      treeItems.sort((a, b) => {
+        if (a instanceof FileSystemTreeItem && b instanceof FileSystemTreeItem) {
+          if (a.isDirectory !== b.isDirectory) {
+            return a.isDirectory ? -1 : 1;
+          }
+          return a.label!.toString().localeCompare(b.label!.toString());
+        }
+        return 0;
+      });
+
+      return treeItems;
+    } catch (error) {
+      console.error(`Failed to read directory ${dirPath}:`, error);
+      return [];
+    }
   }
 
   // Search and filter methods
@@ -302,6 +410,13 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
   // Public method to get filtered examples for a repository
   async getFilteredExamplesForRepository(repository: ExampleRepositoryList): Promise<ExampleTreeItem[]> {
     return this.getExamplesForRepository(repository);
+  }
+
+  // Mark an example as downloaded and refresh the tree
+  markExampleAsDownloaded(exampleId: string, downloadPath: string): void {
+    this.downloadedExamples.set(exampleId, downloadPath);
+    // Refresh just the affected repository to show the example as downloaded
+    this._onDidChangeTreeData.fire(undefined);
   }
 
   // Drag and drop implementation

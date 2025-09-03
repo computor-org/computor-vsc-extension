@@ -134,7 +134,7 @@ export class LecturerExampleCommands {
 
     // Upload example
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.uploadExample', async (item?: ExampleTreeItem) => {
+      vscode.commands.registerCommand('computor.lecturer.uploadExample', async (item: ExampleTreeItem) => {
         await this.uploadExample(item);
       })
     );
@@ -225,6 +225,9 @@ export class LecturerExampleCommands {
         // Write file content
         fs.writeFileSync(filePath, content, 'utf8');
       }
+
+      // Mark example as downloaded and refresh tree
+      this.treeProvider.markExampleAsDownloaded(item.example.id, examplePath);
 
       vscode.window.showInformationMessage(`Example '${item.example.title}' checked out to workspace root: ${item.example.directory}`);
     } catch (error) {
@@ -331,6 +334,9 @@ export class LecturerExampleCommands {
               fs.writeFileSync(filePath, content, 'utf8');
             }
 
+            // Mark example as downloaded
+            this.treeProvider.markExampleAsDownloaded(exampleItem.example.id, examplePath);
+
             successCount++;
           } catch (error) {
             errors.push(`${exampleItem.example.title}: ${error}`);
@@ -363,61 +369,94 @@ export class LecturerExampleCommands {
   }
 
   /**
-   * Upload an existing example
+   * Upload a downloaded example back to the repository
    */
-  private async uploadExample(item?: ExampleTreeItem): Promise<void> {
-    void item; // Currently unused - keeping for future enhancement
-    // If no item provided, ask user to select a folder
-    const folderUri = await vscode.window.showOpenDialog({
-      canSelectFolders: true,
-      canSelectFiles: false,
-      canSelectMany: false,
-      openLabel: 'Select Example Folder'
-    });
-
-    if (!folderUri || folderUri.length === 0) {
+  private async uploadExample(item: ExampleTreeItem): Promise<void> {
+    if (!item || !item.isDownloaded || !item.downloadPath) {
+      vscode.window.showErrorMessage('This example is not downloaded locally');
       return;
     }
 
-    const folderPath = folderUri[0]?.fsPath;
-    if (!folderPath) {
-      return;
-    }
-    const folderName = path.basename(folderPath);
-
-    // Prompt for example details
-    const title = await vscode.window.showInputBox({
-      prompt: 'Example Title',
-      value: folderName
-    });
-
-    if (!title) {
-      return;
-    }
-
-    const identifier = await vscode.window.showInputBox({
-      prompt: 'Example Identifier (e.g., hello.world.basic)',
-      value: folderName.toLowerCase().replace(/\s+/g, '.')
-    });
-
-    if (!identifier) {
-      return;
-    }
-
-    const repositoryId = await vscode.window.showInputBox({
-      prompt: 'Repository ID',
-      placeHolder: 'Enter the repository ID where this example should be uploaded'
-    });
-
-    if (!repositoryId) {
+    if (!fs.existsSync(item.downloadPath)) {
+      vscode.window.showErrorMessage(`Example directory not found: ${item.downloadPath}`);
       return;
     }
 
     try {
-      // TODO: Create upload request
-      // This would involve packaging the folder contents and sending to API
-      
-      vscode.window.showInformationMessage(`Example upload not yet fully implemented`);
+      // Confirm with user
+      const confirm = await vscode.window.showInformationMessage(
+        `Upload example "${item.example.title}" from local directory?`,
+        'Yes', 'No'
+      );
+
+      if (confirm !== 'Yes') {
+        return;
+      }
+
+      // Show progress
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: `Uploading example: ${item.example.title}`,
+        cancellable: false
+      }, async (progress) => {
+        progress.report({ increment: 10, message: 'Reading local files...' });
+
+        // Read all files from the directory
+        const files: Record<string, string> = {};
+        
+        const readDirectory = (dirPath: string, basePath: string) => {
+          const entries = fs.readdirSync(dirPath);
+          
+          for (const entry of entries) {
+            const fullPath = path.join(dirPath, entry);
+            const relativePath = path.relative(basePath, fullPath);
+            const stat = fs.statSync(fullPath);
+            
+            if (stat.isFile()) {
+              // Skip certain files
+              if (entry.startsWith('.') || entry === 'node_modules') continue;
+              
+              try {
+                const content = fs.readFileSync(fullPath, 'utf8');
+                files[relativePath] = content;
+              } catch (err) {
+                console.warn(`Failed to read file ${fullPath}:`, err);
+              }
+            } else if (stat.isDirectory()) {
+              // Skip certain directories
+              if (entry === 'node_modules' || entry === '.git' || entry.startsWith('.')) continue;
+              
+              readDirectory(fullPath, basePath);
+            }
+          }
+        };
+
+        readDirectory(item.downloadPath!, item.downloadPath!);
+
+        progress.report({ increment: 40, message: 'Preparing upload...' });
+
+        // Create upload request
+        const uploadRequest: ExampleUploadRequest = {
+          repository_id: item.repository.id,
+          directory: item.example.directory,
+          files: files
+        };
+
+        progress.report({ increment: 20, message: 'Uploading to server...' });
+
+        // Upload the example
+        const result = await this.apiService.uploadExample(uploadRequest);
+        
+        if (result) {
+          progress.report({ increment: 30, message: 'Complete!' });
+          vscode.window.showInformationMessage(`Successfully uploaded example: ${item.example.title}`);
+          
+          // Refresh the tree to show any updates
+          this.treeProvider.refresh();
+        } else {
+          throw new Error('Upload failed - no response from server');
+        }
+      });
     } catch (error) {
       console.error('Failed to upload example:', error);
       vscode.window.showErrorMessage(`Failed to upload example: ${error}`);
