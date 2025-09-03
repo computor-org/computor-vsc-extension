@@ -22,14 +22,6 @@
         "category": "Computor"
       },
       {
-        "command": "computor.activate",
-        "title": "Activate Computor"
-      },
-      {
-        "command": "computor.showUIComponents",
-        "title": "Computor: Show UI Components"
-      },
-      {
         "command": "computor.settings",
         "title": "Computor: Settings",
         "category": "Computor"
@@ -53,57 +45,6 @@
         "command": "computor.showGitStatus",
         "title": "Computor: Show Git Status",
         "category": "Git"
-      },
-      {
-        "command": "computor.loadMoreApiItems",
-        "title": "Load More",
-        "category": "Computor Tree"
-      },
-      {
-        "command": "computor.copyJsonValue",
-        "title": "Copy Value",
-        "category": "Computor Tree"
-      },
-      {
-        "command": "computor.copyJsonPath",
-        "title": "Copy Path",
-        "category": "Computor Tree"
-      },
-      {
-        "command": "computor.openJsonInEditor",
-        "title": "Open JSON in Editor",
-        "icon": "$(go-to-file)",
-        "category": "Computor Tree"
-      },
-      {
-        "command": "computor.searchJson",
-        "title": "Search",
-        "icon": "$(search)",
-        "category": "Computor Tree"
-      },
-      {
-        "command": "computor.clearJsonSearch",
-        "title": "Clear Search",
-        "icon": "$(clear-all)",
-        "category": "Computor Tree"
-      },
-      {
-        "command": "computor.expandAllJson",
-        "title": "Expand All",
-        "icon": "$(expand-all)",
-        "category": "Computor Tree"
-      },
-      {
-        "command": "computor.collapseAllJson",
-        "title": "Collapse All",
-        "icon": "$(collapse-all)",
-        "category": "Computor Tree"
-      },
-      {
-        "command": "computor.jsonStatistics",
-        "title": "Show Statistics",
-        "icon": "$(graph)",
-        "category": "Computor Tree"
       },
       {
         "command": "computor.goToTest",
