@@ -556,14 +556,34 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
           
           return result;
         } else {
-          // Show course content types
+          // Show course content types with content kind titles
           const contentTypes = await this.getCourseContentTypes(element.course.id);
-          return contentTypes.map(type => new CourseContentTypeTreeItem(
-            type,
-            element.course,
-            element.courseFamily,
-            element.organization
-          ));
+          
+          // Fetch content kind information for each type
+          const contentTypesWithKinds = await Promise.all(contentTypes.map(async (type) => {
+            try {
+              const fullType = await this.apiService.getCourseContentType(type.id);
+              const kindTitle = fullType?.course_content_kind?.title || undefined;
+              return new CourseContentTypeTreeItem(
+                type,
+                element.course,
+                element.courseFamily,
+                element.organization,
+                kindTitle
+              );
+            } catch (error) {
+              // If fetching full type fails, create without kind title
+              console.warn(`Failed to fetch content type details for ${type.id}:`, error);
+              return new CourseContentTypeTreeItem(
+                type,
+                element.course,
+                element.courseFamily,
+                element.organization
+              );
+            }
+          }));
+          
+          return contentTypesWithKinds;
         }
       }
 

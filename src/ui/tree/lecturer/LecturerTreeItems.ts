@@ -246,7 +246,8 @@ export class CourseContentTypeTreeItem extends vscode.TreeItem {
     public readonly contentType: CourseContentTypeList,
     public readonly course: CourseList,
     public readonly courseFamily: CourseFamilyList,
-    public readonly organization: OrganizationList
+    public readonly organization: OrganizationList,
+    public readonly contentKindTitle?: string
   ) {
     super(contentType.title || contentType.slug, vscode.TreeItemCollapsibleState.None);
     this.id = `contentType-${contentType.id}`;
@@ -266,9 +267,9 @@ export class CourseContentTypeTreeItem extends vscode.TreeItem {
     
     this.tooltip = `${contentType.title || contentType.slug}\nSlug: ${contentType.slug}`;
     
-    // Show color as description if available
-    if (contentType.color) {
-      this.description = contentType.color;
+    // Show content kind title as description if available
+    if (contentKindTitle) {
+      this.description = contentKindTitle;
     }
   }
 }
