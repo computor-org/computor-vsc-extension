@@ -62,11 +62,11 @@ export class LecturerExampleCommands {
     // Filter by category
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.filterExamplesByCategory', async () => {
-        // For now, show input box. Later we can get categories from API
+        const currentCategory = this.treeProvider.getSelectedCategory();
         const category = await vscode.window.showInputBox({
-          prompt: 'Enter category to filter by',
+          prompt: 'Enter category to filter by (leave empty to clear)',
           placeHolder: 'e.g., Introduction, Advanced',
-          value: ''
+          value: currentCategory || ''
         });
         
         if (category !== undefined) {
@@ -83,10 +83,11 @@ export class LecturerExampleCommands {
     // Filter by tags
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.filterExamplesByTags', async () => {
+        const currentTags = this.treeProvider.getSelectedTags();
         const tagsInput = await vscode.window.showInputBox({
-          prompt: 'Enter tags to filter by (comma-separated)',
+          prompt: 'Enter tags to filter by (comma-separated, leave empty to clear)',
           placeHolder: 'e.g., beginner, loops, functions',
-          value: ''
+          value: currentTags.join(', ')
         });
         
         if (tagsInput !== undefined) {
@@ -98,6 +99,22 @@ export class LecturerExampleCommands {
             vscode.window.showInformationMessage('Tag filter cleared');
           }
         }
+      })
+    );
+
+    // Clear category filter
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.clearCategoryFilter', () => {
+        this.treeProvider.clearCategoryFilter();
+        vscode.window.showInformationMessage('Category filter cleared');
+      })
+    );
+
+    // Clear tags filter
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.clearTagsFilter', () => {
+        this.treeProvider.clearTagsFilter();
+        vscode.window.showInformationMessage('Tags filter cleared');
       })
     );
 
@@ -160,6 +177,24 @@ export class LecturerExampleCommands {
     }
 
     try {
+      // Use the example directory name directly in the workspace
+      const examplePath = path.join(workspaceFolder.uri.fsPath, item.example.directory);
+      
+      // Check if directory already exists
+      if (fs.existsSync(examplePath)) {
+        const overwrite = await vscode.window.showWarningMessage(
+          `Directory '${item.example.directory}' already exists. Overwrite?`,
+          'Yes', 'No'
+        );
+        
+        if (overwrite !== 'Yes') {
+          return;
+        }
+        
+        // Remove existing directory
+        fs.rmSync(examplePath, { recursive: true, force: true });
+      }
+
       // Download the example
       const exampleData = await this.apiService.downloadExample(item.example.id, false);
       if (!exampleData) {
@@ -167,18 +202,13 @@ export class LecturerExampleCommands {
         return;
       }
 
-      // Create example directory
-      const examplePath = path.join(workspaceFolder.uri.fsPath, 'examples', item.example.directory);
-      
-      // Create directory if it doesn't exist
-      if (!fs.existsSync(examplePath)) {
-        fs.mkdirSync(examplePath, { recursive: true });
-      }
+      // Create directory
+      fs.mkdirSync(examplePath, { recursive: true });
 
       // TODO: Extract downloaded content to the directory
       // This depends on the format of the downloaded data
 
-      vscode.window.showInformationMessage(`Example '${item.example.title}' checked out to ${examplePath}`);
+      vscode.window.showInformationMessage(`Example '${item.example.title}' checked out to workspace root: ${item.example.directory}`);
     } catch (error) {
       console.error('Failed to checkout example:', error);
       vscode.window.showErrorMessage(`Failed to checkout example: ${error}`);
@@ -287,13 +317,18 @@ export class LecturerExampleCommands {
       return;
     }
 
-    const examplePath = path.join(workspaceFolder.uri.fsPath, 'examples', directory);
+    // Create example directly in workspace root
+    const examplePath = path.join(workspaceFolder.uri.fsPath, directory);
     
     try {
-      // Create directory
-      if (!fs.existsSync(examplePath)) {
-        fs.mkdirSync(examplePath, { recursive: true });
+      // Check if directory already exists
+      if (fs.existsSync(examplePath)) {
+        vscode.window.showErrorMessage(`Directory '${directory}' already exists in workspace`);
+        return;
       }
+      
+      // Create directory
+      fs.mkdirSync(examplePath, { recursive: true });
 
       // Create meta.yaml file
       const metaContent = `title: ${title}

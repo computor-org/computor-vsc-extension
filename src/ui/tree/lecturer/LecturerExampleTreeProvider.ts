@@ -138,6 +138,38 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
           items.push(searchItem);
         }
         
+        // Add category filter indicator if active
+        if (this.selectedCategory) {
+          const categoryItem = new vscode.TreeItem(
+            `📁 Category: ${this.selectedCategory}`,
+            vscode.TreeItemCollapsibleState.None
+          );
+          categoryItem.contextValue = 'categoryFilter';
+          categoryItem.tooltip = `Current category filter: ${this.selectedCategory}\nClick to clear`;
+          categoryItem.command = {
+            command: 'computor.lecturer.clearCategoryFilter',
+            title: 'Clear Category Filter',
+            arguments: []
+          };
+          items.push(categoryItem);
+        }
+        
+        // Add tags filter indicator if active
+        if (this.selectedTags.length > 0) {
+          const tagsItem = new vscode.TreeItem(
+            `🏷️ Tags: ${this.selectedTags.join(', ')}`,
+            vscode.TreeItemCollapsibleState.None
+          );
+          tagsItem.contextValue = 'tagsFilter';
+          tagsItem.tooltip = `Current tags filter: ${this.selectedTags.join(', ')}\nClick to clear`;
+          tagsItem.command = {
+            command: 'computor.lecturer.clearTagsFilter',
+            title: 'Clear Tags Filter',
+            arguments: []
+          };
+          items.push(tagsItem);
+        }
+        
         // Add repositories
         const repositories = await this.getExampleRepositories();
         items.push(...repositories);
@@ -239,13 +271,31 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
     this._onDidChangeTreeData.fire(undefined);
   }
 
+  getSelectedCategory(): string | undefined {
+    return this.selectedCategory;
+  }
+
   setCategory(category: string | undefined): void {
     this.selectedCategory = category;
     this._onDidChangeTreeData.fire(undefined);
   }
 
+  clearCategoryFilter(): void {
+    this.selectedCategory = undefined;
+    this._onDidChangeTreeData.fire(undefined);
+  }
+
+  getSelectedTags(): string[] {
+    return this.selectedTags;
+  }
+
   setTags(tags: string[]): void {
     this.selectedTags = tags;
+    this._onDidChangeTreeData.fire(undefined);
+  }
+
+  clearTagsFilter(): void {
+    this.selectedTags = [];
     this._onDidChangeTreeData.fire(undefined);
   }
 
