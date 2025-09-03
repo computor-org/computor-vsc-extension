@@ -572,22 +572,8 @@ export class LecturerCommands {
       return;
     }
 
-    // Generate a slug from the title for the path
-    const slug = await vscode.window.showInputBox({
-      prompt: 'Enter a URL-friendly identifier (slug) for this content',
-      placeHolder: 'e.g., week1, intro, assignment1',
-      value: title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''),
-      validateInput: (value) => {
-        if (!/^[a-z0-9_]+$/.test(value)) {
-          return 'Slug must contain only lowercase letters, numbers, and underscores';
-        }
-        return null;
-      }
-    });
-
-    if (!slug) {
-      return;
-    }
+    // Automatically generate a slug from the title for the path
+    const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
     await this.treeDataProvider.createCourseContent(
       item instanceof CourseFolderTreeItem ? item : new CourseFolderTreeItem('contents', item.course, item.courseFamily, item.organization), 
