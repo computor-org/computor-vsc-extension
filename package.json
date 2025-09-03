@@ -93,6 +93,12 @@
         "category": "Computor Examples"
       },
       {
+        "command": "computor.lecturer.checkoutAllFilteredExamples",
+        "title": "Checkout All Filtered Examples",
+        "icon": "$(cloud-download)",
+        "category": "Computor Examples"
+      },
+      {
         "command": "computor.lecturer.searchExamples",
         "title": "Search Examples",
         "icon": "$(search)",
@@ -872,6 +878,11 @@
         {
           "command": "computor.lecturer.checkoutExample",
           "when": "view == computor.lecturer.examples && viewItem == example",
+          "group": "1_actions@1"
+        },
+        {
+          "command": "computor.lecturer.checkoutAllFilteredExamples",
+          "when": "view == computor.lecturer.examples && viewItem == exampleRepository",
           "group": "1_actions@1"
         },
         {

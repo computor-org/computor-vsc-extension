@@ -299,6 +299,11 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
     this._onDidChangeTreeData.fire(undefined);
   }
 
+  // Public method to get filtered examples for a repository
+  async getFilteredExamplesForRepository(repository: ExampleRepositoryList): Promise<ExampleTreeItem[]> {
+    return this.getExamplesForRepository(repository);
+  }
+
   // Drag and drop implementation
   public async handleDrag(source: readonly ExampleTreeItem[], treeDataTransfer: vscode.DataTransfer): Promise<void> {
     // Prepare example data for drag

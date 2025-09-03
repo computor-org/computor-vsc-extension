@@ -125,6 +125,13 @@ export class LecturerExampleCommands {
       })
     );
 
+    // Checkout all filtered examples from repository
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.checkoutAllFilteredExamples', async (item: ExampleRepositoryTreeItem) => {
+        await this.checkoutAllFilteredExamples(item);
+      })
+    );
+
     // Upload example
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.uploadExample', async (item?: ExampleTreeItem) => {
@@ -205,13 +212,153 @@ export class LecturerExampleCommands {
       // Create directory
       fs.mkdirSync(examplePath, { recursive: true });
 
-      // TODO: Extract downloaded content to the directory
-      // This depends on the format of the downloaded data
+      // Write all files from the download response
+      for (const [filename, content] of Object.entries(exampleData.files)) {
+        const filePath = path.join(examplePath, filename);
+        const fileDir = path.dirname(filePath);
+        
+        // Create subdirectories if needed
+        if (!fs.existsSync(fileDir)) {
+          fs.mkdirSync(fileDir, { recursive: true });
+        }
+        
+        // Write file content
+        fs.writeFileSync(filePath, content, 'utf8');
+      }
 
       vscode.window.showInformationMessage(`Example '${item.example.title}' checked out to workspace root: ${item.example.directory}`);
     } catch (error) {
       console.error('Failed to checkout example:', error);
       vscode.window.showErrorMessage(`Failed to checkout example: ${error}`);
+    }
+  }
+
+  /**
+   * Checkout all filtered examples from a repository
+   */
+  private async checkoutAllFilteredExamples(item: ExampleRepositoryTreeItem): Promise<void> {
+    if (!item || !item.repository) {
+      vscode.window.showErrorMessage('Invalid repository item');
+      return;
+    }
+
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (!workspaceFolder) {
+      vscode.window.showErrorMessage('No workspace folder open');
+      return;
+    }
+
+    try {
+      // Get all filtered examples for this repository
+      const filteredExamples = await this.treeProvider.getFilteredExamplesForRepository(item.repository);
+      
+      if (filteredExamples.length === 0) {
+        vscode.window.showInformationMessage('No examples match the current filters');
+        return;
+      }
+
+      // Confirm with user
+      const activeFilters: string[] = [];
+      const searchQuery = this.treeProvider.getSearchQuery();
+      const selectedCategory = this.treeProvider.getSelectedCategory();
+      const selectedTags = this.treeProvider.getSelectedTags();
+      
+      if (searchQuery) activeFilters.push(`search: "${searchQuery}"`);
+      if (selectedCategory) activeFilters.push(`category: ${selectedCategory}`);
+      if (selectedTags.length > 0) activeFilters.push(`tags: ${selectedTags.join(', ')}`);
+      
+      const filterInfo = activeFilters.length > 0 
+        ? ` with filters: ${activeFilters.join(', ')}`
+        : '';
+      
+      const confirm = await vscode.window.showInformationMessage(
+        `Checkout ${filteredExamples.length} example(s)${filterInfo}?`,
+        'Yes', 'No'
+      );
+
+      if (confirm !== 'Yes') {
+        return;
+      }
+
+      // Progress indicator
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Checking out examples',
+        cancellable: false
+      }, async (progress) => {
+        let successCount = 0;
+        const errors: string[] = [];
+
+        for (let i = 0; i < filteredExamples.length; i++) {
+          const exampleItem = filteredExamples[i];
+          if (!exampleItem || !exampleItem.example) continue;
+          
+          progress.report({ 
+            increment: (100 / filteredExamples.length),
+            message: `(${i + 1}/${filteredExamples.length}) ${exampleItem.example.title}`
+          });
+
+          try {
+            const examplePath = path.join(workspaceFolder.uri.fsPath, exampleItem.example.directory);
+            
+            // Skip if directory already exists
+            if (fs.existsSync(examplePath)) {
+              errors.push(`${exampleItem.example.title}: Directory already exists`);
+              continue;
+            }
+
+            // Download the example
+            const exampleData = await this.apiService.downloadExample(exampleItem.example.id, false);
+            if (!exampleData) {
+              errors.push(`${exampleItem.example.title}: Failed to download`);
+              continue;
+            }
+
+            // Create directory
+            fs.mkdirSync(examplePath, { recursive: true });
+
+            // Write all files from the download response
+            for (const [filename, content] of Object.entries(exampleData.files)) {
+              const filePath = path.join(examplePath, filename);
+              const fileDir = path.dirname(filePath);
+              
+              // Create subdirectories if needed
+              if (!fs.existsSync(fileDir)) {
+                fs.mkdirSync(fileDir, { recursive: true });
+              }
+              
+              // Write file content
+              fs.writeFileSync(filePath, content, 'utf8');
+            }
+
+            successCount++;
+          } catch (error) {
+            errors.push(`${exampleItem.example.title}: ${error}`);
+            console.error(`Failed to checkout example ${exampleItem.example.title}:`, error);
+          }
+        }
+
+        // Show results
+        if (successCount === filteredExamples.length) {
+          vscode.window.showInformationMessage(
+            `Successfully checked out ${successCount} example(s)`
+          );
+        } else if (successCount > 0) {
+          const errorMessage = errors.length > 3 
+            ? errors.slice(0, 3).join('; ') + '...'
+            : errors.join('; ');
+          vscode.window.showWarningMessage(
+            `Checked out ${successCount} of ${filteredExamples.length} examples. Errors: ${errorMessage}`
+          );
+        } else {
+          vscode.window.showErrorMessage(
+            `Failed to checkout examples. ${errors[0]}`
+          );
+        }
+      });
+    } catch (error) {
+      console.error('Failed to checkout filtered examples:', error);
+      vscode.window.showErrorMessage(`Failed to checkout examples: ${error}`);
     }
   }
 
