@@ -179,7 +179,9 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
         break;
 
       case 'releaseContent':
-        vscode.commands.executeCommand('computor.releaseCourseContent', message.data);
+        // Convert course data to a format that the command expects
+        // The command expects either a CourseTreeItem or course data with an id
+        vscode.commands.executeCommand('computor.lecturer.releaseCourseContentFromWebview', message.data);
         break;
 
       case 'showMembers':

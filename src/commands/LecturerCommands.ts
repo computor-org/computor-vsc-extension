@@ -177,6 +177,13 @@ export class LecturerCommands {
       })
     );
 
+    // Release from webview (accepts course data directly)
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.releaseCourseContentFromWebview', async (courseData: any) => {
+        await this.releaseCourseContentFromWebview(courseData);
+      })
+    );
+
     // Webview commands
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.showCourseDetails', async (item: CourseTreeItem) => {
@@ -1044,6 +1051,38 @@ export class LecturerCommands {
       }
       
       await this.executeRelease(item.course.id);
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to release course content: ${error}`);
+    }
+  }
+
+  private async releaseCourseContentFromWebview(courseData: any): Promise<void> {
+    try {
+      // Extract course ID from the webview data
+      const courseId = courseData?.id || courseData;
+      
+      if (!courseId) {
+        vscode.window.showErrorMessage('Invalid course data: missing course ID');
+        return;
+      }
+      
+      // Clear both API and tree caches to get fresh data
+      this.apiService.clearCourseCache(courseId);
+      this.treeDataProvider.invalidateCache('course', courseId);
+      
+      const pendingContents = await this.getPendingReleaseContents(courseId);
+      
+      if (pendingContents.length === 0) {
+        await this.handleNoPendingContent(courseId);
+        return;
+      }
+      
+      const confirmed = await this.confirmRelease(pendingContents);
+      if (!confirmed) {
+        return;
+      }
+      
+      await this.executeRelease(courseId);
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to release course content: ${error}`);
     }

@@ -590,11 +590,6 @@
           "group": "navigation@2"
         },
         {
-          "command": "computor.lecturer.releaseCourseContent",
-          "when": "view == computor.lecturer.courses",
-          "group": "navigation@3"
-        },
-        {
           "command": "computor.lecturer.refreshExamples",
           "when": "view == computor.lecturer.examples",
           "group": "navigation@1"
@@ -754,7 +749,7 @@
         {
           "command": "computor.lecturer.releaseCourseContent",
           "when": "view == computor.lecturer.courses && viewItem == course",
-          "group": "5_gitlab@2"
+          "group": "inline@2"
         },
         {
           "command": "computor.student.openInBrowser",

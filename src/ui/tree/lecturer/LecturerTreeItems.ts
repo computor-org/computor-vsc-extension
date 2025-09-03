@@ -143,9 +143,15 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     }
     
     if (this.courseContent.example_id) {
-      parts.push(`Example: ${this.courseContent.example_id}`);
+      // Show example title if available
+      if (this.exampleInfo?.title) {
+        parts.push(`Example: ${this.exampleInfo.title}`);
+      }
+      parts.push(`Example ID: ${this.courseContent.example_id}`);
       if (this.courseContent.example_version) {
         parts.push(`Version: ${this.courseContent.example_version}`);
+      } else {
+        parts.push(`Version: latest`);
       }
     }
     
@@ -155,23 +161,18 @@ export class CourseContentTreeItem extends vscode.TreeItem {
   private getDescription(): string | undefined {
     const parts: string[] = [];
     
-    // Show example title and version
-    if (this.courseContent.example_id && this.exampleInfo) {
-      const exampleTitle = this.exampleInfo.title || 'Unknown Example';
-      const versionText = this.courseContent.example_version ? 
-        `v${this.courseContent.example_version}` : 
-        'latest';
-      parts.push(`📦 ${exampleTitle} (${versionText})`);
-    } else if (this.courseContent.example_id) {
-      // Fallback if example info couldn't be loaded
+    // Show only version indicator for examples
+    if (this.courseContent.example_id) {
       const versionText = this.courseContent.example_version ? 
         `v${this.courseContent.example_version}` : 
         'latest';
       parts.push(`📦 ${versionText}`);
     }
     
-    // Show deployment status only for submittable content (assignments)
-    if (this.isSubmittable && this.courseContent.deployment_status) {
+    // Show deployment status only for assignments (submittable content)
+    // Check if it's an assignment based on course_content_kind_id
+    const isAssignment = this.contentType?.course_content_kind_id === 'assignment';
+    if (isAssignment && this.courseContent.deployment_status) {
       const statusIcons: { [key: string]: string } = {
         'pending': '⏳',
         'pending_release': '📤',
