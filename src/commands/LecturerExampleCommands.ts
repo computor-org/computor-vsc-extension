@@ -5,7 +5,7 @@ import * as yaml from 'js-yaml';
 import JSZip from 'jszip';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { ExampleTreeItem, ExampleRepositoryTreeItem, LecturerExampleTreeProvider } from '../ui/tree/lecturer/LecturerExampleTreeProvider';
-import { ExampleUploadRequest } from '../types/generated';
+import { ExampleUploadRequest, CourseContentCreate, CourseContentList, CourseList } from '../types/generated';
 
 /**
  * Simplified example commands for the lecturer view
@@ -164,6 +164,13 @@ export class LecturerExampleCommands {
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.uploadExamplesFromZip', async (item?: ExampleRepositoryTreeItem) => {
         await this.uploadExamplesFromZip(item);
+      })
+    );
+
+    // Create course content from example
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.createCourseContentFromExample', async (item: ExampleTreeItem) => {
+        await this.createCourseContentFromExample(item);
       })
     );
   }
@@ -831,5 +838,214 @@ Explain how to use this example.
       const errorMessage = error instanceof Error ? error.message : String(error);
       vscode.window.showErrorMessage(`Failed to upload examples: ${errorMessage}`);
     }
+  }
+
+  /**
+   * Create a course content (assignment) from an example
+   */
+  private async createCourseContentFromExample(item: ExampleTreeItem): Promise<void> {
+    if (!item || !item.example) {
+      vscode.window.showErrorMessage('Invalid example item');
+      return;
+    }
+
+    try {
+      // Step 1: Get organizations, then course families and their courses
+      const organizations = await this.apiService.getOrganizations();
+      const allCourses: Array<{course: CourseList, familyTitle: string, orgTitle: string}> = [];
+      
+      for (const org of organizations) {
+        const courseFamilies = await this.apiService.getCourseFamilies(org.id);
+        for (const family of courseFamilies) {
+          const courses = await this.apiService.getCourses(family.id);
+          for (const course of courses) {
+            allCourses.push({
+              course,
+              familyTitle: family.title || family.path,
+              orgTitle: org.title || org.path
+            });
+          }
+        }
+      }
+      
+      if (allCourses.length === 0) {
+        vscode.window.showErrorMessage('No courses available');
+        return;
+      }
+
+      // Step 2: Let user select a course
+      const courseSelection = await vscode.window.showQuickPick(
+        allCourses.map(item => ({
+          label: item.course.title || item.course.path,
+          description: `${item.orgTitle} / ${item.familyTitle}`,
+          detail: `Path: ${item.course.path}`,
+          id: item.course.id
+        })),
+        {
+          placeHolder: 'Select a course to add this example to',
+          title: 'Select Course'
+        }
+      );
+
+      if (!courseSelection) {
+        return;
+      }
+
+      // Step 3: Get content types for the selected course and filter for submittable ones
+      const contentTypes = await this.apiService.getCourseContentTypes(courseSelection.id);
+      
+      // Fetch full details to check which are submittable
+      const submittableTypes = [];
+      for (const type of contentTypes) {
+        try {
+          const fullType = await this.apiService.getCourseContentType(type.id);
+          if (fullType?.course_content_kind?.submittable) {
+            submittableTypes.push({
+              type: type,
+              kindTitle: fullType.course_content_kind.title || 'Assignment'
+            });
+          }
+        } catch (error) {
+          console.warn(`Failed to fetch content type details: ${error}`);
+        }
+      }
+
+      if (submittableTypes.length === 0) {
+        vscode.window.showErrorMessage('No submittable content types available in this course. Please create an assignment-type content type first.');
+        return;
+      }
+
+      // Step 4: Let user select content type
+      const contentTypeSelection = await vscode.window.showQuickPick(
+        submittableTypes.map(st => ({
+          label: st.type.title || st.type.slug,
+          description: st.kindTitle,
+          detail: `Color: ${st.type.color}`,
+          id: st.type.id
+        })),
+        {
+          placeHolder: 'Select content type for this assignment',
+          title: 'Select Content Type'
+        }
+      );
+
+      if (!contentTypeSelection) {
+        return;
+      }
+
+      // Step 5: Get course contents to allow selection of parent unit (optional)
+      const courseContents = await this.apiService.getCourseContents(courseSelection.id);
+      
+      // Filter for units (non-submittable content types that can have children)
+      const units = [];
+      for (const content of courseContents) {
+        const contentType = contentTypes.find(t => t.id === content.course_content_type_id);
+        if (contentType) {
+          try {
+            const fullType = await this.apiService.getCourseContentType(contentType.id);
+            if (fullType?.course_content_kind && 
+                !fullType.course_content_kind.submittable && 
+                fullType.course_content_kind.has_descendants) {
+              units.push({
+                content: content,
+                kindTitle: fullType.course_content_kind.title || 'Unit'
+              });
+            }
+          } catch (error) {
+            console.warn(`Failed to fetch content type details: ${error}`);
+          }
+        }
+      }
+
+      // Step 6: Ask where to place the content (root or under a unit)
+      let parentPath: string | undefined;
+      
+      if (units.length > 0) {
+        const placementOptions = [
+          { label: '📁 Course Root', description: 'Place at the root level of the course', path: undefined },
+          ...units.map(unit => ({
+            label: unit.content.title || unit.content.path,
+            description: `${unit.kindTitle} - ${unit.content.path}`,
+            path: unit.content.path
+          }))
+        ];
+
+        const placementSelection = await vscode.window.showQuickPick(
+          placementOptions,
+          {
+            placeHolder: 'Select where to place this assignment',
+            title: 'Select Parent Location'
+          }
+        );
+
+        if (!placementSelection) {
+          return;
+        }
+        
+        parentPath = placementSelection.path;
+      }
+
+      // Step 7: Generate slug from example identifier
+      const slug = item.example.identifier.replace(/\./g, '_').toLowerCase();
+      
+      // Step 8: Create the course content
+      const position = await this.getNextPosition(courseSelection.id, parentPath, courseContents);
+      const pathSegment = slug;
+      const path = parentPath ? `${parentPath}.${pathSegment}` : pathSegment;
+      
+      // Check if path already exists
+      if (courseContents.some(c => c.path === path)) {
+        vscode.window.showErrorMessage(`A content item with path '${path}' already exists.`);
+        return;
+      }
+
+      const contentData: CourseContentCreate = {
+        title: item.example.title,
+        description: `Assignment based on example: ${item.example.identifier}`,
+        path: path,
+        position: position,
+        course_id: courseSelection.id,
+        course_content_type_id: contentTypeSelection.id,
+        example_id: item.example.id,
+        // Could add example_version here if we track it
+        max_submissions: 10, // Default values
+        max_test_runs: 100
+      };
+
+      await this.apiService.createCourseContent(courseSelection.id, contentData);
+      
+      vscode.window.showInformationMessage(
+        `Successfully created assignment "${item.example.title}" in course "${courseSelection.label}"`
+      );
+
+      // Refresh the lecturer tree if it's visible
+      vscode.commands.executeCommand('computor.lecturer.refresh');
+      
+    } catch (error) {
+      console.error('Failed to create course content from example:', error);
+      vscode.window.showErrorMessage(`Failed to create assignment: ${error}`);
+    }
+  }
+
+  private async getNextPosition(courseId: string, parentPath: string | undefined, contents: CourseContentList[]): Promise<number> {
+    void courseId; // Currently unused but kept for future use
+    // Filter contents at the same level
+    const sameLevelContents = contents.filter(c => {
+      if (!parentPath) {
+        // Root level - items with no dots in path
+        return !c.path.includes('.');
+      } else {
+        // Children of parent - items that start with parent path and have exactly one more segment
+        if (!c.path.startsWith(parentPath + '.')) {
+          return false;
+        }
+        const relativePath = c.path.substring(parentPath.length + 1);
+        return !relativePath.includes('.');
+      }
+    });
+    
+    // Find the highest position and add 1
+    const maxPosition = sameLevelContents.reduce((max, c) => Math.max(max, c.position || 0), 0);
+    return maxPosition + 1;
   }
 }

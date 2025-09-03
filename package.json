@@ -147,6 +147,12 @@
         "category": "Computor Examples"
       },
       {
+        "command": "computor.lecturer.createCourseContentFromExample",
+        "title": "Create Assignment in Course",
+        "icon": "$(add)",
+        "category": "Computor Examples"
+      },
+      {
         "command": "computor.lecturer.createNewExample",
         "title": "Create New Example",
         "icon": "$(add)",
@@ -854,6 +860,11 @@
           "command": "computor.lecturer.uploadExample",
           "when": "view == computor.lecturer.examples && viewItem == exampleDownloaded",
           "group": "1_actions@2"
+        },
+        {
+          "command": "computor.lecturer.createCourseContentFromExample",
+          "when": "view == computor.lecturer.examples && (viewItem == example || viewItem == exampleDownloaded)",
+          "group": "2_course@1"
         }
       ]
     }
