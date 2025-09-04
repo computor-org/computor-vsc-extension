@@ -455,11 +455,14 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
     const draggedExamples = source.map(item => ({
       exampleId: item.example.id,
       title: item.example.title,
+      description: item.example.description || null,
+      identifier: item.example.identifier,
       repositoryId: item.example.example_repository_id
     }));
     
+    // DataTransferItem expects the value to be stringified for complex objects
     treeDataTransfer.set('application/vnd.code.tree.computorexample', 
-      new vscode.DataTransferItem(draggedExamples)
+      new vscode.DataTransferItem(JSON.stringify(draggedExamples))
     );
   }
 
