@@ -186,15 +186,17 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     const deploymentStatus = getDeploymentStatus(this.courseContent);
     
     if (isAssignment && deploymentStatus) {
+      // According to new model, valid statuses are: pending, in_progress, deployed, failed
       const statusIcons: { [key: string]: string } = {
-        'pending': '⏳',
+        'pending': '⏳',         // Assigned but not deployed
+        'in_progress': '🔄',     // Currently deploying
+        'deployed': '✅',        // Successfully deployed
+        'failed': '❌',          // Deployment failed
+        // Legacy status mappings (for backwards compatibility)
         'pending_release': '📤',
         'assigned': '📎',
-        'in_progress': '🔄',
         'deploying': '🔄',
-        'deployed': '✅',
-        'released': '🚀',
-        'failed': '❌'
+        'released': '🚀'
       };
       const icon = statusIcons[deploymentStatus] || '❓';
       parts.push(`${icon} ${deploymentStatus}`);

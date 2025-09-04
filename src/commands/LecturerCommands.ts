@@ -1091,10 +1091,28 @@ export class LecturerCommands {
   }
   
   private async getPendingReleaseContents(courseId: string) {
+    // Fetch with deployment info included
     const contents = await this.apiService.getCourseContents(courseId, false, true);
+    
+    // Get content types to check if they are submittable
+    const contentTypes = await this.apiService.getCourseContentTypes(courseId);
+    const submittableTypeIds = new Set<string>();
+    
+    // Check each content type for submittability
+    for (const type of contentTypes) {
+      const fullType = await this.apiService.getCourseContentType(type.id);
+      if (fullType?.course_content_kind?.submittable) {
+        submittableTypeIds.add(type.id);
+      }
+    }
+    
     return contents?.filter(c => {
+      // Check if this content's type is submittable
+      const isSubmittable = submittableTypeIds.has(c.course_content_type_id);
+      // According to the new model, content with status 'pending' means assigned but not deployed
       const status = getDeploymentStatus(c);
-      return hasExampleAssigned(c) && (status === 'pending_release' || status === 'pending');
+      // Only include submittable content with pending deployment
+      return isSubmittable && hasExampleAssigned(c) && status === 'pending';
     }) || [];
   }
   
