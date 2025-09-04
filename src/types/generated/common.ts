@@ -1345,3 +1345,147 @@ export interface GitlabSignup {
 export interface GitlabSignupResponse {
   courses?: CourseSignupResponse[];
 }
+
+export interface DeploymentMetadata {
+  /** Temporal workflow ID */
+  workflow_id?: string | null;
+  /** List of files deployed */
+  files_deployed?: string[] | null;
+  /** Git commit hash */
+  git_commit_hash?: string | null;
+  /** Additional custom metadata */
+  [key: string]: any;
+}
+
+/**
+ * Create a new deployment (typically done automatically).
+ */
+export interface CourseContentDeploymentCreate {
+  /** Course content to deploy to */
+  course_content_id: string;
+  /** Example version to deploy */
+  example_version_id: string;
+  /** Initial deployment status */
+  deployment_status?: any;
+  /** Optional message */
+  deployment_message?: string | null;
+  /** Additional metadata */
+  deployment_metadata?: DeploymentMetadata | null;
+}
+
+/**
+ * Update deployment status.
+ */
+export interface CourseContentDeploymentUpdate {
+  deployment_status?: any | null;
+  deployment_message?: string | null;
+  deployed_at?: string | null;
+  last_attempt_at?: string | null;
+  deployment_path?: string | null;
+  deployment_metadata?: DeploymentMetadata | null;
+}
+
+/**
+ * Get deployment details.
+ */
+export interface CourseContentDeploymentGet {
+  /** Creation timestamp */
+  created_at?: string | null;
+  /** Update timestamp */
+  updated_at?: string | null;
+  created_by?: string | null;
+  updated_by?: string | null;
+  id: string;
+  course_content_id: string;
+  example_version_id: string | null;
+  deployment_status: string;
+  deployment_message: string | null;
+  assigned_at: string;
+  deployed_at: string | null;
+  last_attempt_at: string | null;
+  deployment_path: string | null;
+  deployment_metadata: Record<string, any> | null;
+  example_version?: any | null;
+  course_content?: any | null;
+}
+
+/**
+ * List view of deployments.
+ */
+export interface CourseContentDeploymentList {
+  id: string;
+  course_content_id: string;
+  example_version_id: string | null;
+  deployment_status: string;
+  assigned_at: string;
+  deployed_at: string | null;
+}
+
+/**
+ * Create a deployment history entry.
+ */
+export interface DeploymentHistoryCreate {
+  deployment_id: string;
+  action: any;
+  action_details?: string | null;
+  example_version_id?: string | null;
+  previous_example_version_id?: string | null;
+  metadata?: Record<string, any> | null;
+  workflow_id?: string | null;
+}
+
+/**
+ * Get deployment history entry.
+ */
+export interface DeploymentHistoryGet {
+  id: string;
+  deployment_id: string;
+  action: string;
+  action_details: string | null;
+  example_version_id: string | null;
+  previous_example_version_id: string | null;
+  metadata: Record<string, any> | null;
+  workflow_id: string | null;
+  created_at: string;
+  created_by: string | null;
+  example_version?: any | null;
+  previous_example_version?: any | null;
+}
+
+/**
+ * List view of deployment history.
+ */
+export interface DeploymentHistoryList {
+  id: string;
+  deployment_id: string;
+  action: string;
+  created_at: string;
+  workflow_id: string | null;
+}
+
+/**
+ * Deployment with its full history.
+ */
+export interface DeploymentWithHistory {
+  deployment: CourseContentDeploymentGet;
+  history: DeploymentHistoryGet[];
+}
+
+/**
+ * Summary of deployments for a course.
+ */
+export interface DeploymentSummary {
+  course_id: string;
+  /** Total course content items */
+  total_content: number;
+  /** Submittable content items */
+  submittable_content: number;
+  /** Content with deployments assigned */
+  assigned_deployments: number;
+  /** Successfully deployed content */
+  deployed_content: number;
+  /** Failed deployments */
+  failed_deployments: number;
+  /** Deployments pending */
+  pending_deployments: number;
+}

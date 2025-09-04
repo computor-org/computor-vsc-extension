@@ -529,6 +529,9 @@ export interface CourseContentPropertiesGet {
   deployment_history?: DeploymentHistory | null;
 }
 
+/**
+ * DTO for creating course content.
+ */
 export interface CourseContentCreate {
   title?: string | null;
   description?: string | null;
@@ -541,12 +544,11 @@ export interface CourseContentCreate {
   max_test_runs?: number | null;
   max_submissions?: number | null;
   execution_backend_id?: string | null;
-  example_id?: string | null;
-  example_version_id?: string | null;
-  deployment_status?: string | null;
-  deployed_at?: string | null;
 }
 
+/**
+ * DTO for course content GET responses.
+ */
 export interface CourseContentGet {
   /** Creation timestamp */
   created_at?: string | null;
@@ -568,13 +570,16 @@ export interface CourseContentGet {
   max_test_runs?: number | null;
   max_submissions?: number | null;
   execution_backend_id?: string | null;
-  example_id?: string | null;
+  /** DEPRECATED: Use deployment API */
   example_version_id?: string | null;
-  deployment_status?: string | null;
-  deployed_at?: string | null;
   course_content_type?: CourseContentTypeGet | null;
+  /** Deployment information if requested via include=deployment */
+  deployment?: any | null;
 }
 
+/**
+ * DTO for course content list responses.
+ */
 export interface CourseContentList {
   id: string;
   title?: string | null;
@@ -587,13 +592,16 @@ export interface CourseContentList {
   max_test_runs?: number | null;
   max_submissions?: number | null;
   execution_backend_id?: string | null;
-  example_id?: string | null;
-  example_version_id?: string | null;
-  deployment_status?: string | null;
-  deployed_at?: string | null;
   course_content_type?: CourseContentTypeGet | null;
+  /** Whether this content has an example deployment */
+  has_deployment?: boolean | null;
+  /** Current deployment status if has_deployment=true */
+  deployment_status?: string | null;
 }
 
+/**
+ * DTO for updating course content.
+ */
 export interface CourseContentUpdate {
   path?: string | null;
   title?: string | null;

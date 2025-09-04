@@ -706,27 +706,42 @@ export class LecturerCommands {
   }
   
   private async performExampleAssignment(item: CourseContentTreeItem, example: ExampleGet): Promise<void> {
-    const version = 'latest';
-    
-    // Get the updated content from the API response
-    const updatedContent = await this.apiService.assignExampleToCourseContent(
-      item.course.id,
+    // First, get the example with versions if not already loaded
+    let exampleWithVersions = example;
+    if (!example.versions || example.versions.length === 0) {
+      const fullExample = await this.apiService.getExample(example.id);
+      if (!fullExample || !fullExample.versions || fullExample.versions.length === 0) {
+        throw new Error('Example has no versions available');
+      }
+      exampleWithVersions = fullExample;
+    }
+
+    // Select version - for now use the latest version
+    // TODO: In future, allow user to select specific version
+    const latestVersion = exampleWithVersions.versions!.reduce((latest, current) => 
+      current.version_number > latest.version_number ? current : latest
+    );
+
+    // Get the updated content from the API response using the new method
+    const updatedContent = await this.apiService.assignExampleVersionToCourseContent(
       item.courseContent.id,
-      example.id,
-      version
+      latestVersion.id
     );
     
     console.log('Assignment API returned updated content:', {
       id: updatedContent.id,
       title: updatedContent.title,
       example_id: updatedContent.example_id,
-      deployment_status: updatedContent.deployment_status,
-      example_version_id: updatedContent.example_version_id
+      example_version_id: updatedContent.example_version_id,
+      deployment: updatedContent.deployment
     });
     
-    // Check if the deployment_status is what we expect
-    if (updatedContent.deployment_status !== 'pending_release' && updatedContent.deployment_status !== 'pending') {
-      console.warn(`Unexpected deployment_status: ${updatedContent.deployment_status}. Expected 'pending_release' or 'pending'.`);
+    // Check deployment status if deployment is included
+    if (updatedContent.deployment) {
+      const deploymentStatus = updatedContent.deployment.deployment_status;
+      if (deploymentStatus !== 'pending' && deploymentStatus !== 'assigned') {
+        console.warn(`Unexpected deployment_status: ${deploymentStatus}. Expected 'pending' or 'assigned'.`);
+      }
     }
 
     console.log('Example assignment completed, refreshing tree...');

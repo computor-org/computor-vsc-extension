@@ -178,17 +178,23 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     // Show deployment status only for assignments (submittable content)
     // Check if it's an assignment based on course_content_kind_id
     const isAssignment = this.contentType?.course_content_kind_id === 'assignment';
-    if (isAssignment && this.courseContent.deployment_status) {
+    
+    // Check deployment status from either the new nested structure or old deprecated fields
+    const deploymentStatus = this.courseContent.deployment?.deployment_status || this.courseContent.deployment_status;
+    
+    if (isAssignment && deploymentStatus) {
       const statusIcons: { [key: string]: string } = {
         'pending': '⏳',
         'pending_release': '📤',
+        'assigned': '📎',
+        'in_progress': '🔄',
         'deploying': '🔄',
         'deployed': '✅',
         'released': '🚀',
         'failed': '❌'
       };
-      const icon = statusIcons[this.courseContent.deployment_status] || '❓';
-      parts.push(`${icon} ${this.courseContent.deployment_status}`);
+      const icon = statusIcons[deploymentStatus] || '❓';
+      parts.push(`${icon} ${deploymentStatus}`);
     }
     
     return parts.length > 0 ? parts.join(' • ') : undefined;

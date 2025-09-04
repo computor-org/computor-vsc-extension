@@ -777,8 +777,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   }
 
   private async getCourseContents(courseId: string): Promise<CourseContentList[]> {
-    // Always fetch fresh data from API
-    const contents = await this.apiService.getCourseContents(courseId, true);
+    // Always fetch fresh data from API, include deployment info for proper status display
+    const contents = await this.apiService.getCourseContents(courseId, true, true);
     return contents || [];
   }
 
@@ -1178,12 +1178,21 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         return;
       }
 
-      // Assign the example to the course content
-      await this.apiService.assignExampleToCourseContent(
-        target.course.id,
+      // Get the example with versions to find the latest version ID
+      const fullExample = await this.apiService.getExample(example.exampleId);
+      if (!fullExample || !fullExample.versions || fullExample.versions.length === 0) {
+        throw new Error('Example has no versions available');
+      }
+
+      // Use the latest version
+      const latestVersion = fullExample.versions.reduce((latest, current) => 
+        current.version_number > latest.version_number ? current : latest
+      );
+
+      // Assign the example version to the course content
+      await this.apiService.assignExampleVersionToCourseContent(
         target.courseContent.id,
-        example.exampleId,
-        'latest' // Default to latest version
+        latestVersion.id
       );
 
       // Clear cache and force refresh to show the updated assignment

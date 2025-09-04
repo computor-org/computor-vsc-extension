@@ -1035,17 +1035,50 @@ Explain how to use this example.
         position: position,
         course_id: courseSelection.id,
         course_content_type_id: contentTypeSelection.id,
-        example_id: item.example.id,
-        // Could add example_version here if we track it
+        // Note: example_id removed - will be assigned after creation
         max_submissions: 10, // Default values
         max_test_runs: 100
       };
 
-      await this.apiService.createCourseContent(courseSelection.id, contentData);
+      // Step 1: Create the course content
+      const createdContent = await this.apiService.createCourseContent(courseSelection.id, contentData);
       
-      vscode.window.showInformationMessage(
-        `Successfully created assignment "${item.example.title}" in course "${courseSelection.label}"`
-      );
+      // Step 2: Assign the example version to the newly created content
+      if (createdContent && createdContent.id) {
+        // Get the full example with versions since item.example is ExampleList
+        const fullExample = await this.apiService.getExample(item.example.id);
+        
+        // If we have versions, assign the latest one
+        if (fullExample && fullExample.versions && fullExample.versions.length > 0) {
+          const latestVersion = fullExample.versions.reduce((latest, current) => 
+            current.version_number > latest.version_number ? current : latest
+          );
+
+          try {
+            await this.apiService.assignExampleVersionToCourseContent(
+              createdContent.id,
+              latestVersion.id
+            );
+            vscode.window.showInformationMessage(
+              `Successfully created assignment "${item.example.title}" with version ${latestVersion.version_tag} in course "${courseSelection.label}"`
+            );
+          } catch (assignError) {
+            // Content was created but example assignment failed
+            vscode.window.showWarningMessage(
+              `Assignment "${item.example.title}" was created but example assignment failed: ${assignError}. You can assign it manually later.`
+            );
+          }
+        } else {
+          // Content created but no versions available
+          vscode.window.showWarningMessage(
+            `Assignment "${item.example.title}" was created but no example versions were found. Please assign a version manually.`
+          );
+        }
+      } else {
+        vscode.window.showInformationMessage(
+          `Successfully created assignment "${item.example.title}" in course "${courseSelection.label}"`
+        );
+      }
 
       // Refresh the lecturer tree if it's visible
       vscode.commands.executeCommand('computor.lecturer.refresh');

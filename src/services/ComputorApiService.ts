@@ -37,7 +37,10 @@ import {
   CourseMemberGet,
   TaskResponse,
   SubmissionGroupStudent,
-  TestCreate
+  TestCreate,
+  CourseContentDeploymentGet,
+  DeploymentHistoryGet,
+  DeploymentResponse
 } from '../types/generated';
 
 // Query interface for examples (not generated yet)
@@ -315,8 +318,8 @@ export class ComputorApiService {
     return response.data;
   }
 
-  async getCourseContents(courseId: string, skipCache: boolean = false): Promise<CourseContentList[]> {
-    const cacheKey = `courseContents-${courseId}`;
+  async getCourseContents(courseId: string, skipCache: boolean = false, includeDeployment: boolean = false): Promise<CourseContentList[]> {
+    const cacheKey = `courseContents-${courseId}-${includeDeployment}`;
     
     // Check cache first (unless explicitly skipping)
     if (!skipCache) {
@@ -329,7 +332,8 @@ export class ComputorApiService {
     // Fetch with error recovery
     const result = await errorRecoveryService.executeWithRecovery(async () => {
       const client = await this.getHttpClient();
-      const response = await client.get<CourseContentList[]>(`/course-contents?course_id=${courseId}`);
+      const params = includeDeployment ? '&include=deployment' : '';
+      const response = await client.get<CourseContentList[]>(`/course-contents?course_id=${courseId}${params}`);
       return response.data;
     }, {
       maxRetries: 2,
@@ -344,8 +348,8 @@ export class ComputorApiService {
   }
 
 
-  async getCourseContent(contentId: string): Promise<CourseContentGet | undefined> {
-    const cacheKey = `courseContent-${contentId}`;
+  async getCourseContent(contentId: string, includeDeployment: boolean = false): Promise<CourseContentGet | undefined> {
+    const cacheKey = `courseContent-${contentId}-${includeDeployment}`;
     
     // Check cache first
     const cached = multiTierCache.get<CourseContentGet>(cacheKey);
@@ -356,7 +360,8 @@ export class ComputorApiService {
     try {
       const result = await errorRecoveryService.executeWithRecovery(async () => {
         const client = await this.getHttpClient();
-        const response = await client.get<CourseContentGet>(`/course-contents/${contentId}`);
+        const params = includeDeployment ? '?include=deployment' : '';
+        const response = await client.get<CourseContentGet>(`/course-contents/${contentId}${params}`);
         return response.data;
       }, {
         maxRetries: 2,
@@ -632,6 +637,10 @@ export class ComputorApiService {
     console.log('[ComputorApiService] Cleared examples cache');
   }
 
+  /**
+   * @deprecated Use assignExampleVersionToCourseContent instead
+   * This method is kept for backward compatibility but will be removed
+   */
   async assignExampleToCourseContent(
     courseId: string, 
     contentId: string, 
@@ -640,19 +649,36 @@ export class ComputorApiService {
   ): Promise<CourseContentGet> {
     // Note: courseId is kept for API consistency but not used in the endpoint
     void courseId;
+    void exampleId;
+    void exampleVersion;
     
+    // This old method signature can't work with the new API
+    // The backend now requires example_version_id, not example_id + version tag
+    throw new Error('assignExampleToCourseContent is deprecated. Use assignExampleVersionToCourseContent with example_version_id instead.');
+  }
+
+  /**
+   * Assign an example version to course content using the new deployment model
+   */
+  async assignExampleVersionToCourseContent(
+    contentId: string,
+    exampleVersionId: string
+  ): Promise<CourseContentGet> {
     return errorRecoveryService.executeWithRecovery(async () => {
       const client = await this.getHttpClient();
       
       const requestData = {
-        example_id: exampleId,
-        example_version: exampleVersion || 'latest'
+        example_version_id: exampleVersionId
       };
       
       const response = await client.post<CourseContentGet>(
         `/course-contents/${contentId}/assign-example`,
         requestData
       );
+      
+      // Clear cache for this content
+      multiTierCache.delete(`courseContent-${contentId}-true`);
+      multiTierCache.delete(`courseContent-${contentId}-false`);
       
       return response.data;
     }, {
@@ -666,14 +692,69 @@ export class ComputorApiService {
     void courseId;
     
     const client = await this.getHttpClient();
-    const response = await client.patch<CourseContentGet>(
-      `/course-contents/${contentId}`,
-      {
-        example_id: null,
-        example_version: null
-      }
+    const response = await client.delete<CourseContentGet>(
+      `/course-contents/${contentId}/deployment`
     );
+    
+    // Clear cache for this content
+    multiTierCache.delete(`courseContent-${contentId}-true`);
+    multiTierCache.delete(`courseContent-${contentId}-false`);
+    
     return response.data;
+  }
+
+  /**
+   * Get deployment information for a course content
+   */
+  async getCourseContentDeployment(contentId: string): Promise<CourseContentDeploymentGet | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<CourseContentDeploymentGet>(
+        `/course-contents/${contentId}/deployment`
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Failed to get deployment:', error);
+      return undefined;
+    }
+  }
+
+  /**
+   * Get deployment history for a course content
+   */
+  async getCourseContentDeploymentHistory(contentId: string): Promise<DeploymentHistoryGet[]> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<DeploymentHistoryGet[]>(
+        `/course-contents/${contentId}/deployment/history`
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Failed to get deployment history:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Trigger deployment for a course content
+   */
+  async deployCourseContent(contentId: string, force: boolean = false): Promise<DeploymentResponse | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.post<DeploymentResponse>(
+        `/course-contents/${contentId}/deploy`,
+        { force }
+      );
+      
+      // Clear cache for this content
+      multiTierCache.delete(`courseContent-${contentId}-true`);
+      multiTierCache.delete(`courseContent-${contentId}-false`);
+      
+      return response.data;
+    } catch (error) {
+      console.error('Failed to deploy content:', error);
+      return undefined;
+    }
   }
 
   clearCourseCache(courseId: string): void {

@@ -3,6 +3,7 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { CourseContentGet, CourseList, CourseContentTypeList } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
+import { hasExampleAssigned, getExampleVersionId, getDeploymentStatus } from '../../utils/deploymentHelpers';
 
 export class CourseContentWebviewProvider extends BaseWebviewProvider {
   private apiService: ComputorApiService;
@@ -42,15 +43,15 @@ export class CourseContentWebviewProvider extends BaseWebviewProvider {
         ${courseContent.max_group_size ? `<p><strong>Max Group Size:</strong> ${courseContent.max_group_size}</p>` : ''}
       </div>
 
-      ${courseContent.example_id ? `
+      ${hasExampleAssigned(courseContent) ? `
         <div class="info-section">
           <h2>Assigned Example</h2>
           <p><strong>Example:</strong> ${exampleInfo?.title || 'Unknown'}</p>
-          <p><strong>Version ID:</strong> ${courseContent.example_version_id || 'not set'}</p>
-          ${isSubmittable && courseContent.deployment_status ? `
+          <p><strong>Version ID:</strong> ${getExampleVersionId(courseContent) || 'not set'}</p>
+          ${isSubmittable && getDeploymentStatus(courseContent) ? `
             <p><strong>Deployment Status:</strong> 
-              <span class="status ${courseContent.deployment_status === 'deployed' ? 'success' : 'pending'}">
-                ${courseContent.deployment_status}
+              <span class="status ${getDeploymentStatus(courseContent) === 'deployed' ? 'success' : 'pending'}">
+                ${getDeploymentStatus(courseContent)}
               </span>
             </p>
           ` : ''}
