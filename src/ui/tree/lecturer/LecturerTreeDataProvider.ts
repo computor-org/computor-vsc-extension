@@ -5,6 +5,7 @@ import { ComputorSettingsManager } from '../../../settings/ComputorSettingsManag
 import { errorRecoveryService } from '../../../services/ErrorRecoveryService';
 import { performanceMonitor } from '../../../services/PerformanceMonitoringService';
 import { VirtualScrollingService } from '../../../services/VirtualScrollingService';
+import { hasExampleAssigned, getExampleVersionId } from '../../../utils/deploymentHelpers';
 import {
   OrganizationTreeItem,
   CourseFamilyTreeItem,
@@ -1132,36 +1133,102 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       return;
     }
 
-    // Only allow dropping on course content items
-    if (!(target instanceof CourseContentTreeItem)) {
-      vscode.window.showErrorMessage('Examples can only be dropped on course content items');
-      return;
-    }
+    // Determine where to create the new assignment based on drop target
+    let courseId: string;
+    let parentPath: string | undefined;
+    let targetDescription = '';
 
-
-    // First check: only allow drops on submittable content (assignments, exercises, etc.)
-    if (!target.isSubmittable) {
-      vscode.window.showErrorMessage(
-        `Examples can only be assigned to submittable content like assignments or exercises. "${target.courseContent.title}" is not submittable.`
-      );
-      return;
-    }
-
-    // Second check: if the content already has an example assigned, ask for confirmation
-    if (target.courseContent.example_id) {
-      const choice = await vscode.window.showWarningMessage(
-        `Assignment "${target.courseContent.title}" already has an example assigned. Replace it?`,
-        'Replace', 'Cancel'
-      );
-      if (choice !== 'Replace') {
-        return;
+    if (target instanceof CourseTreeItem) {
+      // Dropped on course - create at root level
+      courseId = target.course.id;
+      parentPath = undefined;
+      targetDescription = `in course "${target.course.title || target.course.path}"`;
+    } else if (target instanceof CourseContentTreeItem) {
+      courseId = target.course.id;
+      
+      // Check if target is submittable - if yes, we might want to replace
+      if (target.isSubmittable && hasExampleAssigned(target.courseContent)) {
+        const choice = await vscode.window.showWarningMessage(
+          `Assignment "${target.courseContent.title}" already has an example. Do you want to replace it or create a new assignment?`,
+          'Replace', 'Create New', 'Cancel'
+        );
+        
+        if (choice === 'Cancel') {
+          return;
+        } else if (choice === 'Replace') {
+          // Original behavior - assign to existing
+          await this.assignExampleToExisting(target, exampleData);
+          return;
+        }
+        // Otherwise fall through to create new
       }
+      
+      // For non-submittable content or when creating new, use it as parent
+      if (!target.isSubmittable) {
+        parentPath = target.courseContent.path;
+        targetDescription = `under "${target.courseContent.title}"`;
+      } else {
+        // For submittable content when creating new, create as sibling
+        const pathParts = target.courseContent.path.split('.');
+        if (pathParts.length > 1) {
+          pathParts.pop();
+          parentPath = pathParts.join('.');
+          targetDescription = `as sibling of "${target.courseContent.title}"`;
+        } else {
+          parentPath = undefined;
+          targetDescription = `at root level`;
+        }
+      }
+    } else {
+      vscode.window.showErrorMessage('Examples can only be dropped on courses or course contents');
+      return;
     }
 
     try {
-      const rawValue = exampleData.value;
+      // The value property returns a Promise, so we need to await it
+      const rawValue = await exampleData.value;
+      
+      console.log('Drag data received:', rawValue);
       
       // Parse the JSON string if it's a string, otherwise use as-is
+      const draggedExamples = typeof rawValue === 'string' 
+        ? JSON.parse(rawValue)
+        : rawValue;
+      
+      if (!Array.isArray(draggedExamples) || draggedExamples.length === 0) {
+        console.error('Invalid dragged examples format:', draggedExamples);
+        return;
+      }
+
+      // For simplicity, take the first dragged example
+      const example = draggedExamples[0];
+      
+      if (!example.exampleId) {
+        vscode.window.showErrorMessage('Invalid example data - missing exampleId');
+        console.error('Invalid example data:', example);
+        return;
+      }
+
+      // Create a new assignment with the example
+      await this.createAssignmentFromExample(
+        courseId,
+        parentPath,
+        example,
+        targetDescription
+      );
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      vscode.window.showErrorMessage(`Failed to create assignment: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Helper method to assign example to existing course content
+   */
+  private async assignExampleToExisting(target: CourseContentTreeItem, exampleData: vscode.DataTransferItem): Promise<void> {
+    try {
+      const rawValue = await exampleData.value;
       const draggedExamples = typeof rawValue === 'string' 
         ? JSON.parse(rawValue)
         : rawValue;
@@ -1170,9 +1237,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         return;
       }
 
-      // For simplicity, take the first dragged example
       const example = draggedExamples[0];
-      
       if (!example.exampleId) {
         vscode.window.showErrorMessage('Invalid example data');
         return;
@@ -1196,7 +1261,6 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       );
 
       // Clear cache and force refresh to show the updated assignment
-      // Cache cleared via API
       await this.forceRefreshCourse(target.course.id);
 
       vscode.window.showInformationMessage(
@@ -1206,6 +1270,123 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       vscode.window.showErrorMessage(`Failed to assign example: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Create a new assignment from an example at the specified location
+   */
+  private async createAssignmentFromExample(
+    courseId: string,
+    parentPath: string | undefined,
+    example: any,
+    targetDescription: string
+  ): Promise<void> {
+    try {
+      // Get content types for the course and find a submittable one
+      const contentTypes = await this.apiService.getCourseContentTypes(courseId);
+      
+      // Find submittable content types
+      const submittableTypes = [];
+      for (const type of contentTypes) {
+        try {
+          const fullType = await this.apiService.getCourseContentType(type.id);
+          if (fullType?.course_content_kind?.submittable) {
+            submittableTypes.push(type);
+          }
+        } catch (error) {
+          console.warn(`Failed to fetch content type details: ${error}`);
+        }
+      }
+
+      if (submittableTypes.length === 0) {
+        vscode.window.showErrorMessage(
+          'No submittable content types (assignments, exercises) are configured for this course. Please create one first.'
+        );
+        return;
+      }
+
+      // Use the first submittable type or let user choose if multiple
+      let contentType = submittableTypes[0];
+      if (submittableTypes.length > 1) {
+        const selected = await vscode.window.showQuickPick(
+          submittableTypes.map(t => ({
+            label: t.title || t.slug,
+            id: t.id
+          })),
+          { placeHolder: 'Select assignment type' }
+        );
+        
+        if (!selected) {
+          return;
+        }
+        
+        const selectedType = submittableTypes.find(t => t.id === selected.id);
+        if (selectedType) {
+          contentType = selectedType;
+        }
+      }
+
+      // Generate slug from example title
+      const slug = example.title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+      
+      // Build the full path
+      const path = parentPath ? `${parentPath}.${slug}` : slug;
+      
+      // Check if path already exists
+      const existingContents = await this.getCourseContents(courseId);
+      if (existingContents.some(c => c.path === path)) {
+        vscode.window.showErrorMessage(`A content item with path '${path}' already exists.`);
+        return;
+      }
+
+      // Get position for the new content
+      const position = await this.getNextPosition(courseId, parentPath);
+
+      // Create the course content
+      const contentData: CourseContentCreate = {
+        title: example.title,
+        description: example.description || `Assignment based on example: ${example.title}`,
+        path: path,
+        position: position,
+        course_id: courseId,
+        course_content_type_id: contentType.id,
+        max_submissions: 10,
+        max_test_runs: 100
+      };
+
+      const createdContent = await this.apiService.createCourseContent(courseId, contentData);
+      
+      // Assign the example version if content was created
+      if (createdContent && createdContent.id) {
+        const fullExample = await this.apiService.getExample(example.exampleId);
+        
+        if (fullExample && fullExample.versions && fullExample.versions.length > 0) {
+          const latestVersion = fullExample.versions.reduce((latest, current) => 
+            current.version_number > latest.version_number ? current : latest
+          );
+
+          try {
+            await this.apiService.assignExampleVersionToCourseContent(
+              createdContent.id,
+              latestVersion.id
+            );
+          } catch (assignError) {
+            console.warn('Failed to assign example version:', assignError);
+          }
+        }
+      }
+
+      // Refresh the tree
+      await this.forceRefreshCourse(courseId);
+      
+      vscode.window.showInformationMessage(
+        `✅ Created assignment "${example.title}" ${targetDescription}`
+      );
+      
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      vscode.window.showErrorMessage(`Failed to create assignment: ${errorMessage}`);
     }
   }
 }
