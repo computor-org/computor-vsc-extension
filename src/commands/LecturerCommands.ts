@@ -1094,6 +1094,8 @@ export class LecturerCommands {
     // Fetch with deployment info included
     const contents = await this.apiService.getCourseContents(courseId, false, true);
     
+    console.log('Debug: Fetched contents for release check:', contents?.length);
+    
     // Get content types to check if they are submittable
     const contentTypes = await this.apiService.getCourseContentTypes(courseId);
     const submittableTypeIds = new Set<string>();
@@ -1105,6 +1107,16 @@ export class LecturerCommands {
         submittableTypeIds.add(type.id);
       }
     }
+    
+    console.log('Debug: Submittable type IDs:', Array.from(submittableTypeIds));
+    
+    // Debug: log all contents with their deployment info
+    contents?.forEach(c => {
+      const isSubmittable = submittableTypeIds.has(c.course_content_type_id);
+      const hasExample = hasExampleAssigned(c);
+      const status = getDeploymentStatus(c);
+      console.log(`Debug: Content "${c.title}": submittable=${isSubmittable}, hasExample=${hasExample}, status=${status}, has_deployment=${c.has_deployment}, deployment_status=${c.deployment_status}`);
+    });
     
     return contents?.filter(c => {
       // Check if this content's type is submittable

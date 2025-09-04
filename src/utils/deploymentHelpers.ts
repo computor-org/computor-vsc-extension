@@ -49,14 +49,17 @@ export function getExampleVersionId(content: CourseContentGet | CourseContentLis
 export function getDeploymentStatus(content: CourseContentGet | CourseContentList): string | null | undefined {
   // Check deployment object first
   if ('deployment' in content && content.deployment?.deployment_status) {
+    console.log(`Debug getDeploymentStatus: Found deployment.deployment_status = ${content.deployment.deployment_status}`);
     return content.deployment.deployment_status;
   }
   
   // For CourseContentList, check the deprecated deployment_status field
   if ('deployment_status' in content) {
+    console.log(`Debug getDeploymentStatus: Using deprecated deployment_status = ${content.deployment_status}`);
     return content.deployment_status;
   }
   
+  console.log(`Debug getDeploymentStatus: No deployment status found for content`);
   return null;
 }
 
