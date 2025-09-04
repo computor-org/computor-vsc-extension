@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { ComputorApiService } from '../../../services/ComputorApiService';
+import { DragDropManager } from '../../../services/DragDropManager';
 import { 
   ExampleRepositoryList,
   ExampleList
@@ -450,20 +451,26 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
   }
 
   // Drag and drop implementation
-  public async handleDrag(source: readonly ExampleTreeItem[], treeDataTransfer: vscode.DataTransfer): Promise<void> {
+  public handleDrag(source: readonly ExampleTreeItem[], treeDataTransfer: vscode.DataTransfer, _token: vscode.CancellationToken): void | Thenable<void> {
     // Prepare example data for drag
     const draggedExamples = source.map(item => ({
       exampleId: item.example.id,
       title: item.example.title,
-      description: item.example.description || null,
+      description: null, // ExampleList doesn't have description field
       identifier: item.example.identifier,
       repositoryId: item.example.example_repository_id
     }));
     
-    // DataTransferItem expects the value to be stringified for complex objects
-    treeDataTransfer.set('application/vnd.code.tree.computorexample', 
-      new vscode.DataTransferItem(JSON.stringify(draggedExamples))
-    );
+    // Store in shared manager as a workaround for VS Code DataTransfer limitations
+    const dragDropManager = DragDropManager.getInstance();
+    dragDropManager.setDraggedData(draggedExamples);
+    
+    // Still set data on transfer for compatibility (even though it may come through empty)
+    const jsonData = JSON.stringify(draggedExamples);
+    const item = new vscode.DataTransferItem(jsonData);
+    treeDataTransfer.set('application/vnd.code.tree.computorexample', item);
+    
+    console.log('Drag initiated - data stored in DragDropManager');
   }
 
   public async handleDrop(target: vscode.TreeItem | undefined, dataTransfer: vscode.DataTransfer): Promise<void> {

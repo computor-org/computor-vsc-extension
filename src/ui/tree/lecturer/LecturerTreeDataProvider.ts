@@ -5,6 +5,7 @@ import { ComputorSettingsManager } from '../../../settings/ComputorSettingsManag
 import { errorRecoveryService } from '../../../services/ErrorRecoveryService';
 import { performanceMonitor } from '../../../services/PerformanceMonitoringService';
 import { VirtualScrollingService } from '../../../services/VirtualScrollingService';
+import { DragDropManager } from '../../../services/DragDropManager';
 import { hasExampleAssigned, getExampleVersionId } from '../../../utils/deploymentHelpers';
 import {
   OrganizationTreeItem,
@@ -428,18 +429,22 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
                     let exampleInfo = null;
                     let exampleVersionInfo = null;
                     
-                    if (content.example_id) {
-                      console.log(`[Virtual scroll] Fetching example info for content "${content.title}" with example_id: ${content.example_id}`);
-                      exampleInfo = await this.getExampleInfo(content.example_id);
-                      console.log(`[Virtual scroll] Example info fetched:`, exampleInfo ? `${exampleInfo.title}` : 'null');
-                      
-                      // Fetch version info if version_id is present
-                      if (content.example_version_id) {
+                    // Check if example is assigned using helper
+                    if (hasExampleAssigned(content)) {
+                      const versionId = getExampleVersionId(content);
+                      if (versionId) {
+                        console.log(`[Virtual scroll] Fetching example version info for content "${content.title}" with version_id: ${versionId}`);
                         try {
-                          exampleVersionInfo = await this.apiService.getExampleVersion(content.example_version_id);
+                          exampleVersionInfo = await this.apiService.getExampleVersion(versionId);
                           console.log(`[Virtual scroll] Version info fetched:`, exampleVersionInfo ? `${exampleVersionInfo.version_tag || 'unknown'}` : 'null');
+                          
+                          // Get example info from the version
+                          if (exampleVersionInfo && exampleVersionInfo.example_id) {
+                            exampleInfo = await this.getExampleInfo(exampleVersionInfo.example_id);
+                            console.log(`[Virtual scroll] Example info fetched:`, exampleInfo ? `${exampleInfo.title}` : 'null');
+                          }
                         } catch (error) {
-                          console.warn(`Failed to fetch version info for ${content.example_version_id}:`, error);
+                          console.warn(`Failed to fetch version info for ${versionId}:`, error);
                         }
                       }
                     }
@@ -497,18 +502,22 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
               let exampleInfo = null;
               let exampleVersionInfo = null;
               
-              if (content.example_id) {
-                console.log(`Fetching example info for content "${content.title}" with example_id: ${content.example_id}`);
-                exampleInfo = await this.getExampleInfo(content.example_id);
-                console.log(`Example info fetched:`, exampleInfo ? `${exampleInfo.title}` : 'null');
-                
-                // Fetch version info if version_id is present
-                if (content.example_version_id) {
+              // Check if example is assigned using helper
+              if (hasExampleAssigned(content)) {
+                const versionId = getExampleVersionId(content);
+                if (versionId) {
+                  console.log(`Fetching example version info for content "${content.title}" with version_id: ${versionId}`);
                   try {
-                    exampleVersionInfo = await this.apiService.getExampleVersion(content.example_version_id);
+                    exampleVersionInfo = await this.apiService.getExampleVersion(versionId);
                     console.log(`Version info fetched:`, exampleVersionInfo ? `${exampleVersionInfo.version_tag || 'unknown'}` : 'null');
+                    
+                    // Get example info from the version
+                    if (exampleVersionInfo && exampleVersionInfo.example_id) {
+                      exampleInfo = await this.getExampleInfo(exampleVersionInfo.example_id);
+                      console.log(`Example info fetched:`, exampleInfo ? `${exampleInfo.title}` : 'null');
+                    }
                   } catch (error) {
-                    console.warn(`Failed to fetch version info for ${content.example_version_id}:`, error);
+                    console.warn(`Failed to fetch version info for ${versionId}:`, error);
                   }
                 }
               }
@@ -623,15 +632,18 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
           let exampleInfo = null;
           let exampleVersionInfo = null;
           
-          if (content.example_id) {
-            exampleInfo = await this.getExampleInfo(content.example_id);
-            
-            // Fetch version info if version_id is present
-            if (content.example_version_id) {
+          // Check if example is assigned using helper
+          if (hasExampleAssigned(content)) {
+            const versionId = getExampleVersionId(content);
+            if (versionId) {
               try {
-                exampleVersionInfo = await this.apiService.getExampleVersion(content.example_version_id);
+                exampleVersionInfo = await this.apiService.getExampleVersion(versionId);
+                // Get example info from the version
+                if (exampleVersionInfo && exampleVersionInfo.example_id) {
+                  exampleInfo = await this.getExampleInfo(exampleVersionInfo.example_id);
+                }
               } catch (error) {
-                console.warn(`Failed to fetch version info for ${content.example_version_id}:`, error);
+                console.warn(`Failed to fetch version info for ${versionId}:`, error);
               }
             }
           }
@@ -868,15 +880,18 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
           let exampleInfo = null;
           let exampleVersionInfo = null;
           
-          if (parentContent.example_id) {
-            exampleInfo = await this.getExampleInfo(parentContent.example_id);
-            
-            // Fetch version info if version_id is present
-            if (parentContent.example_version_id) {
+          // Check if example is assigned using helper
+          if (hasExampleAssigned(parentContent)) {
+            const versionId = getExampleVersionId(parentContent);
+            if (versionId) {
               try {
-                exampleVersionInfo = await this.apiService.getExampleVersion(parentContent.example_version_id);
+                exampleVersionInfo = await this.apiService.getExampleVersion(versionId);
+                // Get example info from the version
+                if (exampleVersionInfo && exampleVersionInfo.example_id) {
+                  exampleInfo = await this.getExampleInfo(exampleVersionInfo.example_id);
+                }
               } catch (error) {
-                console.warn(`Failed to fetch version info for ${parentContent.example_version_id}:`, error);
+                console.warn(`Failed to fetch version info for ${versionId}:`, error);
               }
             }
           }
@@ -1126,10 +1141,20 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   }
 
   public async handleDrop(target: TreeItem | undefined, dataTransfer: vscode.DataTransfer): Promise<void> {
+    // Debug: Log all available mime types
+    const mimeTypes: string[] = [];
+    dataTransfer.forEach((_value, key) => {
+      mimeTypes.push(key);
+    });
+    console.log('Available mime types:', mimeTypes);
+    
     // Check if we have example data being dropped
     const exampleData = dataTransfer.get('application/vnd.code.tree.computorexample');
     
+    console.log('Example data found:', !!exampleData);
+    
     if (!exampleData || !target) {
+      console.log('Missing data or target - exampleData:', !!exampleData, 'target:', !!target);
       return;
     }
 
@@ -1185,15 +1210,44 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     }
 
     try {
-      // The value property returns a Promise, so we need to await it
-      const rawValue = await exampleData.value;
+      // First try to get data from DragDropManager (workaround for VS Code DataTransfer limitations)
+      const dragDropManager = DragDropManager.getInstance();
+      let draggedExamples = dragDropManager.getDraggedData();
       
-      console.log('Drag data received:', rawValue);
-      
-      // Parse the JSON string if it's a string, otherwise use as-is
-      const draggedExamples = typeof rawValue === 'string' 
-        ? JSON.parse(rawValue)
-        : rawValue;
+      if (!draggedExamples) {
+        // Fallback: try to get from DataTransfer (though this often fails)
+        console.log('No data in DragDropManager, trying DataTransfer...');
+        console.log('ExampleData item:', exampleData);
+        
+        let rawValue: any = '';
+        
+        if (typeof exampleData.value === 'function') {
+          try {
+            rawValue = await exampleData.value();
+          } catch (err) {
+            console.error('Error calling value():', err);
+          }
+        } else if (typeof exampleData.value === 'string') {
+          rawValue = exampleData.value;
+        } else {
+          rawValue = exampleData.value ? String(exampleData.value) : '';
+        }
+        
+        console.log('Drag data from DataTransfer:', rawValue);
+        
+        if (!rawValue || rawValue === '') {
+          vscode.window.showErrorMessage('No data received from drag operation. Please try again or use the context menu instead.');
+          console.error('Empty drag data received');
+          return;
+        }
+        
+        // Parse the JSON string if it's a string
+        draggedExamples = typeof rawValue === 'string' 
+          ? JSON.parse(rawValue)
+          : rawValue;
+      } else {
+        console.log('Successfully retrieved drag data from DragDropManager');
+      }
       
       if (!Array.isArray(draggedExamples) || draggedExamples.length === 0) {
         console.error('Invalid dragged examples format:', draggedExamples);
@@ -1216,6 +1270,9 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         example,
         targetDescription
       );
+      
+      // Clear the drag data after successful operation
+      dragDropManager.clearDraggedData();
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -1228,10 +1285,31 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
    */
   private async assignExampleToExisting(target: CourseContentTreeItem, exampleData: vscode.DataTransferItem): Promise<void> {
     try {
-      const rawValue = await exampleData.value;
-      const draggedExamples = typeof rawValue === 'string' 
-        ? JSON.parse(rawValue)
-        : rawValue;
+      // Try DragDropManager first
+      const dragDropManager = DragDropManager.getInstance();
+      let draggedExamples = dragDropManager.getDraggedData();
+      
+      if (!draggedExamples) {
+        // Fallback to DataTransfer
+        let rawValue: any = '';
+        
+        if (typeof exampleData.value === 'function') {
+          rawValue = await exampleData.value();
+        } else if (typeof exampleData.value === 'string') {
+          rawValue = exampleData.value;
+        } else {
+          rawValue = exampleData.value ? String(exampleData.value) : '';
+        }
+        
+        if (!rawValue || rawValue === '') {
+          vscode.window.showErrorMessage('No data received from drag operation.');
+          return;
+        }
+        
+        draggedExamples = typeof rawValue === 'string' 
+          ? JSON.parse(rawValue)
+          : rawValue;
+      }
       
       if (!Array.isArray(draggedExamples) || draggedExamples.length === 0) {
         return;
@@ -1342,6 +1420,12 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
 
       // Get position for the new content
       const position = await this.getNextPosition(courseId, parentPath);
+
+      // Ensure we have a content type (TypeScript safety)
+      if (!contentType) {
+        vscode.window.showErrorMessage('No content type selected');
+        return;
+      }
 
       // Create the course content
       const contentData: CourseContentCreate = {

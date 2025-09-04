@@ -12,6 +12,7 @@ import { CourseFamilyWebviewProvider } from '../ui/webviews/CourseFamilyWebviewP
 import { CourseContentTypeWebviewProvider } from '../ui/webviews/CourseContentTypeWebviewProvider';
 import { CourseGroupWebviewProvider } from '../ui/webviews/CourseGroupWebviewProvider';
 import { ExampleGet } from '../types/generated/examples';
+import { hasExampleAssigned, getExampleVersionId, getDeploymentStatus } from '../utils/deploymentHelpers';
 
 interface ExampleQuickPickItem extends vscode.QuickPickItem {
   example: ExampleGet;
@@ -731,8 +732,8 @@ export class LecturerCommands {
     console.log('Assignment API returned updated content:', {
       id: updatedContent.id,
       title: updatedContent.title,
-      example_id: updatedContent.example_id,
-      example_version_id: updatedContent.example_version_id,
+      hasExample: hasExampleAssigned(updatedContent),
+      versionId: getExampleVersionId(updatedContent),
       deployment: updatedContent.deployment
     });
     
@@ -779,8 +780,8 @@ export class LecturerCommands {
         console.log('Unassign API returned updated content:', {
           id: updatedContent.id,
           title: updatedContent.title,
-          example_id: updatedContent.example_id,
-          deployment_status: updatedContent.deployment_status
+          hasExample: hasExampleAssigned(updatedContent),
+          deploymentStatus: getDeploymentStatus(updatedContent)
         });
         
         // Clear cache and refresh the specific item
@@ -1090,20 +1091,21 @@ export class LecturerCommands {
   }
   
   private async getPendingReleaseContents(courseId: string) {
-    const contents = await this.apiService.getCourseContents(courseId);
-    return contents?.filter(c => 
-      c.example_id && (c.deployment_status === 'pending_release' || c.deployment_status === 'pending')
-    ) || [];
+    const contents = await this.apiService.getCourseContents(courseId, false, true);
+    return contents?.filter(c => {
+      const status = getDeploymentStatus(c);
+      return hasExampleAssigned(c) && (status === 'pending_release' || status === 'pending');
+    }) || [];
   }
   
   private async handleNoPendingContent(courseId: string): Promise<void> {
-    const contents = await this.apiService.getCourseContents(courseId);
-    const withExamples = contents?.filter(c => c.example_id) || [];
+    const contents = await this.apiService.getCourseContents(courseId, false, true);
+    const withExamples = contents?.filter(c => hasExampleAssigned(c)) || [];
     
     if (withExamples.length > 0) {
       vscode.window.showInformationMessage(
         `Found ${withExamples.length} content(s) with examples. Their deployment status: ${
-          withExamples.map(c => c.deployment_status || 'not set').join(', ')
+          withExamples.map(c => getDeploymentStatus(c) || 'not set').join(', ')
         }`
       );
     } else {
@@ -1198,15 +1200,22 @@ export class LecturerCommands {
 
   private async showCourseContentDetails(item: CourseContentTreeItem): Promise<void> {
     // Fetch full course content data from API (individual GET has all fields)
-    const freshContent = await this.apiService.getCourseContent(item.courseContent.id) || item.courseContent;
+    const freshContent = await this.apiService.getCourseContent(item.courseContent.id, true) || item.courseContent;
     
-    // Fetch example info if the content has an example_id
+    // Fetch example info if the content has an example assigned
     let exampleInfo = item.exampleInfo;
-    if (freshContent.example_id && !exampleInfo) {
+    if (hasExampleAssigned(freshContent) && !exampleInfo) {
       try {
-        exampleInfo = await this.apiService.getExample(freshContent.example_id);
+        // Get version ID and fetch the version, then get the example
+        const versionId = getExampleVersionId(freshContent);
+        if (versionId) {
+          const versionInfo = await this.apiService.getExampleVersion(versionId);
+          if (versionInfo && versionInfo.example_id) {
+            exampleInfo = await this.apiService.getExample(versionInfo.example_id);
+          }
+        }
       } catch (error) {
-        console.error(`Failed to fetch example ${freshContent.example_id}:`, error);
+        console.error(`Failed to fetch example info:`, error);
       }
     }
     

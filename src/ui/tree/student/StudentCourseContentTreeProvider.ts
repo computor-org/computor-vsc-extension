@@ -8,6 +8,7 @@ import { StudentRepositoryManager } from '../../../services/StudentRepositoryMan
 import { ComputorSettingsManager } from '../../../settings/ComputorSettingsManager';
 import { SubmissionGroupStudent, CourseContentList, CourseContentTypeList, CourseContentKindList, CourseList } from '../../../types/generated';
 import { IconGenerator } from '../../../utils/IconGenerator';
+import { hasExampleAssigned, getExampleVersionId } from '../../../utils/deploymentHelpers';
 
 interface ContentNode {
     name?: string;
@@ -751,7 +752,7 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             this.iconPath = IconGenerator.getColoredIcon(color, shape);
         } catch {
             // Fallback to default theme icons if icon generation fails
-            if (this.courseContent.example_id) {
+            if (hasExampleAssigned(this.courseContent)) {
                 this.iconPath = new vscode.ThemeIcon('file-code');
             } else {
                 this.iconPath = new vscode.ThemeIcon('file');
@@ -760,7 +761,7 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
     }
     
     private isAssignment(): boolean {
-        if (!this.contentType) return !!this.courseContent.example_id;
+        if (!this.contentType) return hasExampleAssigned(this.courseContent);
         
         // First check the explicit kind_id
         if (this.contentType.course_content_kind_id === 'assignment') {
@@ -790,7 +791,7 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         if (this.submissionGroup?.latest_grading) {
             const grade = Math.round(this.submissionGroup.latest_grading.grading * 100);
             parts.push(`📊 ${grade}%`);
-        } else if (this.courseContent.example_id) {
+        } else if (hasExampleAssigned(this.courseContent)) {
             parts.push('📝 Assignment');
         }
         
@@ -807,10 +808,12 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             lines.push(`Type: ${this.contentType.title || this.contentType.slug}`);
         }
         
-        if (this.courseContent.example_id) {
-            lines.push(`Example ID: ${this.courseContent.example_id}`);
-            if (this.courseContent.example_version_id) {
-                lines.push(`Example Version ID: ${this.courseContent.example_version_id}`);
+        if (hasExampleAssigned(this.courseContent)) {
+            // Note: We can't easily get the example_id from the new structure
+            // Show version ID if available
+            const versionId = getExampleVersionId(this.courseContent);
+            if (versionId) {
+                lines.push(`Example Version ID: ${versionId}`);
             }
         }
         
@@ -857,7 +860,7 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             } else {
                 contexts.push('notCloned');
             }
-        } else if (this.courseContent.example_id) {
+        } else if (hasExampleAssigned(this.courseContent)) {
             contexts.push('hasExample');
         }
         
