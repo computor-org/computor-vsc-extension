@@ -31,7 +31,8 @@ class ExampleTreeItem extends vscode.TreeItem {
     public readonly example: ExampleList,
     public readonly repository: ExampleRepositoryList,
     public readonly isDownloaded: boolean = false,
-    public readonly downloadPath?: string
+    public readonly downloadPath?: string,
+    public readonly version?: string
   ) {
     super(
       example.title, 
@@ -50,8 +51,7 @@ class ExampleTreeItem extends vscode.TreeItem {
   private getTooltip(): string {
     const parts = [
       `Title: ${this.example.title}`,
-      `Identifier: ${this.example.identifier}`,
-      `Directory: ${this.example.directory}`
+      `Identifier: ${this.example.identifier}`
     ];
     
     if (this.example.subject) {
@@ -73,27 +73,30 @@ class ExampleTreeItem extends vscode.TreeItem {
     const parts = [];
     
     if (this.isDownloaded) {
-      // Try to read version from .meta.yaml
-      if (this.downloadPath) {
+      // Use the version passed to constructor if available
+      if (this.version) {
+        parts.push(`📁 [${this.version}] checked out`);
+      } else if (this.downloadPath) {
+        // Fallback: try to read version from .meta.yaml
         try {
           const metaPath = path.join(this.downloadPath, '.meta.yaml');
           if (fs.existsSync(metaPath)) {
             const metaContent = fs.readFileSync(metaPath, 'utf8');
             const metaData = yaml.load(metaContent) as any;
             if (metaData && metaData.version) {
-              parts.push(`📁 ${metaData.version}`);
+              parts.push(`📁 [${metaData.version}] checked out`);
             } else {
-              parts.push('📁 checked out');
+              parts.push('📁 checked out (error: no version found)');
             }
           } else {
-            parts.push('📁 checked out');
+            parts.push('📁 checked out (error: Failed to read .meta.yaml)');
           }
         } catch (error) {
           console.warn('Failed to read .meta.yaml:', error);
-          parts.push('📁 checked out');
+          parts.push('📁 checked out (error: Failed to read .meta.yaml)');
         }
       } else {
-        parts.push('📁 checked out');
+        parts.push('📁 checked out (error: downloadPath is undefined or null)');
       }
     }
     
@@ -155,8 +158,8 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
   private repositoriesCache: ExampleRepositoryList[] | null = null;
   private examplesCache: Map<string, ExampleList[]> = new Map();
   
-  // Track downloaded examples
-  private downloadedExamples: Map<string, string> = new Map(); // exampleId -> path
+  // Track downloaded examples with version information
+  private downloadedExamples: Map<string, { path: string; version?: string }> = new Map(); // exampleId -> {path, version}
 
   constructor(
     context: vscode.ExtensionContext,
@@ -330,24 +333,29 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
     }
 
     return filteredExamples.map(example => {
-      const downloadPath = this.downloadedExamples.get(example.id);
+      const downloadInfo = this.downloadedExamples.get(example.id);
       const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
       
       // Check if the example is downloaded by checking if directory exists
       let isDownloaded = false;
       let actualPath: string | undefined;
+      let version: string | undefined;
       
       if (workspaceFolder) {
         const expectedPath = path.join(workspaceFolder.uri.fsPath, example.directory);
         if (fs.existsSync(expectedPath)) {
           isDownloaded = true;
           actualPath = expectedPath;
-          // Update the downloaded map
-          this.downloadedExamples.set(example.id, expectedPath);
+          // Update the downloaded map if not already tracked
+          if (!downloadInfo) {
+            this.downloadedExamples.set(example.id, { path: expectedPath });
+          } else {
+            version = downloadInfo.version;
+          }
         }
       }
       
-      return new ExampleTreeItem(example, repository, isDownloaded, actualPath || downloadPath);
+      return new ExampleTreeItem(example, repository, isDownloaded, actualPath || downloadInfo?.path, version);
     });
   }
 
@@ -435,8 +443,8 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
   }
 
   // Mark an example as downloaded and refresh the tree
-  markExampleAsDownloaded(exampleId: string, downloadPath: string): void {
-    this.downloadedExamples.set(exampleId, downloadPath);
+  markExampleAsDownloaded(exampleId: string, downloadPath: string, version?: string): void {
+    this.downloadedExamples.set(exampleId, { path: downloadPath, version });
     // Refresh just the affected repository to show the example as downloaded
     this._onDidChangeTreeData.fire(undefined);
   }

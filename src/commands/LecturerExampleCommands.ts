@@ -253,8 +253,8 @@ export class LecturerExampleCommands {
         }
       }
 
-      // Mark example as downloaded and refresh tree
-      this.treeProvider.markExampleAsDownloaded(item.example.id, examplePath);
+      // Mark example as downloaded and refresh tree with version information
+      this.treeProvider.markExampleAsDownloaded(item.example.id, examplePath, exampleData.version_tag);
 
       vscode.window.showInformationMessage(`Example '${item.example.title}' checked out to workspace root: ${item.example.directory}`);
     } catch (error) {
@@ -367,8 +367,8 @@ export class LecturerExampleCommands {
               }
             }
 
-            // Mark example as downloaded
-            this.treeProvider.markExampleAsDownloaded(exampleItem.example.id, examplePath);
+            // Mark example as downloaded with version information
+            this.treeProvider.markExampleAsDownloaded(exampleItem.example.id, examplePath, exampleData.version_tag);
 
             successCount++;
           } catch (error) {

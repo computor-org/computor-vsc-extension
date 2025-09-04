@@ -809,8 +809,8 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         
         if (this.courseContent.example_id) {
             lines.push(`Example ID: ${this.courseContent.example_id}`);
-            if (this.courseContent.example_version) {
-                lines.push(`Example Version: ${this.courseContent.example_version}`);
+            if (this.courseContent.example_version_id) {
+                lines.push(`Example Version ID: ${this.courseContent.example_version_id}`);
             }
         }
         

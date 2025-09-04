@@ -68,6 +68,7 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     public readonly exampleInfo?: any,
     public readonly contentType?: CourseContentTypeList,
     public readonly isSubmittable: boolean = false,
+    public readonly exampleVersionInfo?: any,
     public readonly providedCollapsibleState?: vscode.TreeItemCollapsibleState
   ) {
     super(
@@ -148,10 +149,12 @@ export class CourseContentTreeItem extends vscode.TreeItem {
         parts.push(`Example: ${this.exampleInfo.title}`);
       }
       parts.push(`Example ID: ${this.courseContent.example_id}`);
-      if (this.courseContent.example_version) {
-        parts.push(`Version: ${this.courseContent.example_version}`);
+      if (this.exampleVersionInfo) {
+        parts.push(`Version: ${this.exampleVersionInfo.version_tag || this.exampleVersionInfo.version || 'unknown'}`);
+      } else if (this.courseContent.example_version_id) {
+        parts.push(`Version ID: ${this.courseContent.example_version_id}`);
       } else {
-        parts.push(`Version: <missing>`);
+        parts.push(`Version: <not set>`);
       }
     }
     
@@ -163,9 +166,12 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     
     // Show only version indicator for examples
     if (this.courseContent.example_id) {
-      const versionText = this.courseContent.example_version ? 
-        `${this.courseContent.example_version}` : 
-        '<missing>';
+      let versionText = '<not set>';
+      if (this.exampleVersionInfo) {
+        versionText = this.exampleVersionInfo.version_tag || this.exampleVersionInfo.version || 'unknown';
+      } else if (this.courseContent.example_version_id) {
+        versionText = 'loading...';
+      }
       parts.push(`📦 ${versionText}`);
     }
     

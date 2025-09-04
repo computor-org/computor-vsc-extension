@@ -46,7 +46,7 @@ export class CourseContentWebviewProvider extends BaseWebviewProvider {
         <div class="info-section">
           <h2>Assigned Example</h2>
           <p><strong>Example:</strong> ${exampleInfo?.title || 'Unknown'}</p>
-          <p><strong>Version:</strong> ${courseContent.example_version || 'latest'}</p>
+          <p><strong>Version ID:</strong> ${courseContent.example_version_id || 'not set'}</p>
           ${isSubmittable && courseContent.deployment_status ? `
             <p><strong>Deployment Status:</strong> 
               <span class="status ${courseContent.deployment_status === 'deployed' ? 'success' : 'pending'}">

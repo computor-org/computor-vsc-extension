@@ -569,6 +569,37 @@ export class ComputorApiService {
     }
   }
 
+  async getExampleVersion(exampleVersionId: string): Promise<any | undefined> {
+    const cacheKey = `exampleVersion-${exampleVersionId}`;
+    
+    // Check cache first
+    const cached = multiTierCache.get<any>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        // Use the correct endpoint for fetching a specific example version
+        const response = await client.get<any>(`/examples/versions/${exampleVersionId}`);
+        return response.data;
+      }, {
+        maxRetries: 2,
+        exponentialBackoff: true
+      });
+      
+      // Cache in warm tier if we got a result
+      if (result) {
+        multiTierCache.set(cacheKey, result, 'warm');
+      }
+      return result;
+    } catch (error) {
+      console.error('Failed to get example version:', error);
+      return undefined;
+    }
+  }
+
   async downloadExample(exampleId: string, withDependencies: boolean = false): Promise<ExampleDownloadResponse | undefined> {
     try {
       const client = await this.getHttpClient();

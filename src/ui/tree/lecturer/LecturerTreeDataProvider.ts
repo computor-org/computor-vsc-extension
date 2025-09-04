@@ -425,11 +425,22 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
                   const treeItems = await Promise.all(items.map(async content => {
                     const hasChildren = this.hasChildContents(content, allContents);
                     let exampleInfo = null;
+                    let exampleVersionInfo = null;
                     
                     if (content.example_id) {
                       console.log(`[Virtual scroll] Fetching example info for content "${content.title}" with example_id: ${content.example_id}`);
                       exampleInfo = await this.getExampleInfo(content.example_id);
                       console.log(`[Virtual scroll] Example info fetched:`, exampleInfo ? `${exampleInfo.title}` : 'null');
+                      
+                      // Fetch version info if version_id is present
+                      if (content.example_version_id) {
+                        try {
+                          exampleVersionInfo = await this.apiService.getExampleVersion(content.example_version_id);
+                          console.log(`[Virtual scroll] Version info fetched:`, exampleVersionInfo ? `${exampleVersionInfo.version_tag || 'unknown'}` : 'null');
+                        } catch (error) {
+                          console.warn(`Failed to fetch version info for ${content.example_version_id}:`, error);
+                        }
+                      }
                     }
                     
                     // Get content type for this content
@@ -451,6 +462,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
                       exampleInfo,
                       contentType,
                       isSubmittable,
+                      exampleVersionInfo,
                       expandedState
                     );
                   }));
@@ -482,11 +494,22 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
             const contentItems = await Promise.all(rootContents.map(async content => {
               const hasChildren = this.hasChildContents(content, allContents);
               let exampleInfo = null;
+              let exampleVersionInfo = null;
               
               if (content.example_id) {
                 console.log(`Fetching example info for content "${content.title}" with example_id: ${content.example_id}`);
                 exampleInfo = await this.getExampleInfo(content.example_id);
                 console.log(`Example info fetched:`, exampleInfo ? `${exampleInfo.title}` : 'null');
+                
+                // Fetch version info if version_id is present
+                if (content.example_version_id) {
+                  try {
+                    exampleVersionInfo = await this.apiService.getExampleVersion(content.example_version_id);
+                    console.log(`Version info fetched:`, exampleVersionInfo ? `${exampleVersionInfo.version_tag || 'unknown'}` : 'null');
+                  } catch (error) {
+                    console.warn(`Failed to fetch version info for ${content.example_version_id}:`, error);
+                  }
+                }
               }
               
               // Get content type info
@@ -508,6 +531,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
                 exampleInfo,
                 contentType,
                 isSubmittable,
+                exampleVersionInfo,
                 expandedState
               );
             }));
@@ -596,9 +620,19 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         const childItems = await Promise.all(childContents.map(async content => {
           const hasChildren = this.hasChildContents(content, allContents);
           let exampleInfo = null;
+          let exampleVersionInfo = null;
           
           if (content.example_id) {
             exampleInfo = await this.getExampleInfo(content.example_id);
+            
+            // Fetch version info if version_id is present
+            if (content.example_version_id) {
+              try {
+                exampleVersionInfo = await this.apiService.getExampleVersion(content.example_version_id);
+              } catch (error) {
+                console.warn(`Failed to fetch version info for ${content.example_version_id}:`, error);
+              }
+            }
           }
           
           // Get content type info
@@ -620,6 +654,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
             exampleInfo,
             contentType,
             isSubmittable,
+            exampleVersionInfo,
             expandedState
           );
         }));
@@ -830,9 +865,19 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         if (parentContent) {
           const hasChildren = this.hasChildContents(parentContent, allContents);
           let exampleInfo = null;
+          let exampleVersionInfo = null;
           
           if (parentContent.example_id) {
             exampleInfo = await this.getExampleInfo(parentContent.example_id);
+            
+            // Fetch version info if version_id is present
+            if (parentContent.example_version_id) {
+              try {
+                exampleVersionInfo = await this.apiService.getExampleVersion(parentContent.example_version_id);
+              } catch (error) {
+                console.warn(`Failed to fetch version info for ${parentContent.example_version_id}:`, error);
+              }
+            }
           }
           
           // Get content type info
@@ -854,6 +899,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
             exampleInfo,
             contentType,
             isSubmittable,
+            exampleVersionInfo,
             expandedState
           );
         }

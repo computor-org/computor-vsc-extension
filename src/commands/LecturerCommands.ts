@@ -721,7 +721,7 @@ export class LecturerCommands {
       title: updatedContent.title,
       example_id: updatedContent.example_id,
       deployment_status: updatedContent.deployment_status,
-      example_version: updatedContent.example_version
+      example_version_id: updatedContent.example_version_id
     });
     
     // Check if the deployment_status is what we expect
