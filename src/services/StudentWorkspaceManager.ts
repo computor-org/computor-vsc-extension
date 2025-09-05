@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { ComputorApiService } from './ComputorApiService';
 import { execAsync } from '../utils/exec';
+import { GitLabTokenManager } from './GitLabTokenManager';
 
 interface CourseInfo {
   id: string;
@@ -22,10 +23,12 @@ export class StudentWorkspaceManager {
   private apiService: ComputorApiService;
   private context: vscode.ExtensionContext;
   private currentCourseId?: string;
+  private gitLabTokenManager: GitLabTokenManager;
 
   constructor(context: vscode.ExtensionContext, apiService: ComputorApiService) {
     this.context = context;
     this.apiService = apiService;
+    this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
   }
 
   /**
@@ -253,6 +256,18 @@ export class StudentWorkspaceManager {
       return false;
     }
 
+    // Get GitLab token for authentication
+    const gitlabUrl = new URL(cloneUrl).origin;
+    const token = await this.gitLabTokenManager.ensureTokenForUrl(gitlabUrl);
+    
+    if (!token) {
+      vscode.window.showErrorMessage('GitLab authentication token required. Please provide a personal access token.');
+      return false;
+    }
+
+    // Add token to URL for authentication
+    const authenticatedUrl = this.addTokenToUrl(cloneUrl, token);
+
     return await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
       title: `Cloning ${course.title || course.path}...`,
@@ -265,7 +280,7 @@ export class StudentWorkspaceManager {
         
         if (isEmpty && fs.existsSync(targetPath)) {
           // Clone directly
-          await execAsync(`git clone "${cloneUrl}" .`, {
+          await execAsync(`git clone "${authenticatedUrl}" .`, {
             cwd: targetPath,
             env: {
               ...process.env,
@@ -274,7 +289,7 @@ export class StudentWorkspaceManager {
           });
         } else {
           // Clone normally
-          await execAsync(`git clone "${cloneUrl}" "${targetPath}"`, {
+          await execAsync(`git clone "${authenticatedUrl}" "${targetPath}"`, {
             env: {
               ...process.env,
               GIT_TERMINAL_PROMPT: '0'
@@ -286,7 +301,15 @@ export class StudentWorkspaceManager {
         return true;
       } catch (error: any) {
         console.error('Failed to clone repository:', error);
-        vscode.window.showErrorMessage(`Failed to clone: ${error.message}`);
+        
+        // Check if authentication failed
+        if (this.isAuthenticationError(error)) {
+          // Clear token and prompt for new one
+          await this.gitLabTokenManager.removeToken(gitlabUrl);
+          vscode.window.showErrorMessage('Authentication failed. Please try again with a valid GitLab token.');
+        } else {
+          vscode.window.showErrorMessage(`Failed to clone: ${error.message}`);
+        }
         return false;
       }
     });
@@ -341,5 +364,31 @@ export class StudentWorkspaceManager {
     } catch (error) {
       console.error('Failed to save course metadata:', error);
     }
+  }
+
+  /**
+   * Add authentication token to Git URL
+   */
+  private addTokenToUrl(url: string, token: string): string {
+    // Handle both http and https URLs
+    if (url.startsWith('https://')) {
+      return url.replace('https://', `https://oauth2:${token}@`);
+    } else if (url.startsWith('http://')) {
+      return url.replace('http://', `http://oauth2:${token}@`);
+    }
+    return url;
+  }
+
+  /**
+   * Check if error is an authentication error
+   */
+  private isAuthenticationError(error: any): boolean {
+    const message = error?.message || error?.toString() || '';
+    return message.includes('Authentication failed') ||
+           message.includes('Access denied') ||
+           message.includes('HTTP Basic') ||
+           message.includes('401') ||
+           message.includes('403') ||
+           message.includes('could not read Username');
   }
 }
