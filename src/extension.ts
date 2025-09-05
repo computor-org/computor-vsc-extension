@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
 import { ComputorApiService } from './services/ComputorApiService';
 import { BasicAuthHttpClient } from './http/BasicAuthHttpClient';
@@ -462,8 +464,34 @@ class ComputorStudentExtension extends ComputorExtension {
       );
       
       if (action === 'Open Folder') {
-        // Guide user to open a folder
-        await vscode.commands.executeCommand('vscode.openFolder');
+        // Ask user to select a folder for course repositories
+        const folderUri = await vscode.window.showOpenDialog({
+          canSelectFolders: true,
+          canSelectFiles: false,
+          canSelectMany: false,
+          openLabel: 'Select Course Workspace',
+          title: 'Select a folder where all course repositories will be stored'
+        });
+        
+        if (folderUri && folderUri[0]) {
+          const selectedPath = folderUri[0].fsPath;
+          
+          // Create marker file to indicate this is a student workspace
+          const markerFile = path.join(selectedPath, '.computor_student');
+          try {
+            fs.writeFileSync(markerFile, JSON.stringify({
+              created: new Date().toISOString(),
+              type: 'student_workspace',
+              version: '1.0'
+            }, null, 2));
+            console.log(`Created student marker file at: ${markerFile}`);
+          } catch (error) {
+            console.error('Failed to create marker file:', error);
+          }
+          
+          // Open the folder as workspace
+          await vscode.commands.executeCommand('vscode.openFolder', folderUri[0], false);
+        }
       }
       
       console.error('No workspace folder open - student login cancelled');
@@ -485,12 +513,30 @@ class ComputorStudentExtension extends ComputorExtension {
     if (restored) {
       console.log('Student session restored');
       await this.initializeStudentView();
+      this.createStudentMarkerFile(workspaceRoot);
     } else {
       // Perform login
       const success = await this.performLogin();
       if (success) {
         console.log('Student login successful');
         await this.initializeStudentView();
+        this.createStudentMarkerFile(workspaceRoot);
+      }
+    }
+  }
+
+  private createStudentMarkerFile(workspaceRoot: string): void {
+    const markerFile = path.join(workspaceRoot, '.computor_student');
+    if (!fs.existsSync(markerFile)) {
+      try {
+        fs.writeFileSync(markerFile, JSON.stringify({
+          created: new Date().toISOString(),
+          type: 'student_workspace',
+          version: '1.0'
+        }, null, 2));
+        console.log(`Created student marker file at: ${markerFile}`);
+      } catch (error) {
+        console.error('Failed to create marker file:', error);
       }
     }
   }
@@ -649,6 +695,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   console.log('Computor extension is now active');
 
   IconGenerator.initialize(context);
+
+  // Check if this is a student workspace
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (workspaceFolders && workspaceFolders.length > 0 && workspaceFolders[0]) {
+    const workspaceRoot = workspaceFolders[0].uri.fsPath;
+    const markerFile = path.join(workspaceRoot, '.computor_student');
+    
+    if (fs.existsSync(markerFile)) {
+      console.log('Detected student workspace marker file');
+      
+      // Auto-trigger student login after a short delay
+      setTimeout(async () => {
+        const answer = await vscode.window.showInformationMessage(
+          'Student workspace detected. Would you like to login as a student?',
+          'Login as Student',
+          'Not Now'
+        );
+        
+        if (answer === 'Login as Student') {
+          await vscode.commands.executeCommand('computor.student.login');
+        }
+      }, 1000);
+    }
+  }
 
   extensionClasses.push({id: "computor.lecturer.login", extensionClass: ComputorLecturerExtension});
   extensionClasses.push({id: "computor.tutor.login", extensionClass: ComputorTutorExtension});
