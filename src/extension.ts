@@ -6,7 +6,9 @@ import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataPro
 import { LecturerExampleTreeProvider } from './ui/tree/lecturer/LecturerExampleTreeProvider';
 import { LecturerCommands } from './commands/LecturerCommands';
 import { LecturerExampleCommands } from './commands/LecturerExampleCommands';
-// Student-related imports removed - starting fresh
+// Student-related imports
+import { StudentWorkspaceManager } from './services/StudentWorkspaceManager';
+import { SimpleStudentTreeProvider } from './ui/tree/student/SimpleStudentTreeProvider';
 import { TutorTreeDataProvider } from './ui/tree/tutor/TutorTreeDataProvider';
 import { TutorCommands } from './commands/TutorCommands';
 import { IconGenerator } from './utils/IconGenerator';
@@ -431,9 +433,12 @@ class ComputorTutorExtension extends ComputorExtension {
 }
 
 /**
- * Simple Student Extension - Basic login functionality only
+ * Student Extension with course selection, repository management, and tree view
  */
 class ComputorStudentExtension extends ComputorExtension {
+  private workspaceManager?: StudentWorkspaceManager;
+  private treeProvider?: SimpleStudentTreeProvider;
+
   constructor(context: vscode.ExtensionContext) {
     super(context, 'Student');
   }
@@ -463,7 +468,7 @@ class ComputorStudentExtension extends ComputorExtension {
     }
 
     try {
-      // Verify student role
+      // Verify student role and get courses
       console.log('Checking student role...');
       const response = await this.httpClient.get<any[]>('/students/courses');
       const courses = response.data as any[];
@@ -483,13 +488,102 @@ class ComputorStudentExtension extends ComputorExtension {
         }
       }
 
+      // Initialize workspace manager
+      this.workspaceManager = new StudentWorkspaceManager(this.context, this.apiService);
+
+      // Check if current workspace is already a course repository
+      const detectedCourseId = await this.workspaceManager.detectCourseRepository();
+      
+      let selectedCourseId: string | undefined = detectedCourseId;
+      
+      if (detectedCourseId) {
+        // Workspace is already a course repository
+        const course = courses.find(c => c.id === detectedCourseId);
+        if (course) {
+          vscode.window.showInformationMessage(
+            `Detected course workspace: ${course.title || course.path}`
+          );
+        }
+      } else {
+        // No course detected, check if we have a saved course
+        selectedCourseId = await this.workspaceManager.loadSavedCourseId();
+        
+        if (!selectedCourseId || !courses.find(c => c.id === selectedCourseId)) {
+          // Need to select a course
+          const selectedCourse = await this.workspaceManager.selectCourse(courses);
+          
+          if (!selectedCourse) {
+            vscode.window.showWarningMessage('No course selected. You can select one later.');
+            return;
+          }
+          
+          selectedCourseId = selectedCourse.id;
+          
+          // Ask if user wants to clone the repository
+          const clone = await vscode.window.showQuickPick(
+            ['Clone Repository', 'Continue Without Repository'],
+            {
+              placeHolder: `Would you like to clone the repository for ${selectedCourse.title || selectedCourse.path}?`
+            }
+          );
+          
+          if (clone === 'Clone Repository') {
+            const success = await this.workspaceManager.cloneCourseRepository(selectedCourse);
+            if (!success) {
+              vscode.window.showWarningMessage('Repository cloning cancelled or failed');
+            }
+          }
+        }
+      }
+
+      // Save the selected course
+      if (selectedCourseId) {
+        this.workspaceManager.setCurrentCourseId(selectedCourseId);
+      }
+
+      // Initialize tree view
+      this.treeProvider = new SimpleStudentTreeProvider(this.apiService);
+      
+      // Register tree data provider
+      this.disposables.push(
+        vscode.window.registerTreeDataProvider('computor.student.courses', this.treeProvider)
+      );
+
+      // Create tree view
+      const treeView = vscode.window.createTreeView('computor.student.courses', {
+        treeDataProvider: this.treeProvider,
+        showCollapseAll: true
+      });
+      this.disposables.push(treeView);
+
+      // Set the course in tree provider
+      if (selectedCourseId) {
+        await this.treeProvider.setCourse(selectedCourseId);
+      }
+
+      // Register refresh command
+      this.disposables.push(
+        vscode.commands.registerCommand('computor.student.refresh', () => {
+          this.treeProvider?.refresh();
+        })
+      );
+
+      // Show student view
+      await vscode.commands.executeCommand('setContext', 'computor.student.show', true);
+      
+      // Try to focus the view
+      setTimeout(async () => {
+        try {
+          await vscode.commands.executeCommand('workbench.view.extension.computor-student');
+        } catch (error) {
+          console.log('Could not focus student view:', error);
+        }
+      }, 100);
+
       // Update status bar
       this.statusBar.text = '$(account) Active: Student';
       this.statusBar.command = undefined;
       this.statusBar.tooltip = 'Logged in as Student';
-
-      // Show success message
-      vscode.window.showInformationMessage(`Successfully logged in as Student with ${courses.length} courses`);
 
     } catch (error) {
       console.error('Failed to initialize student view:', error);
@@ -500,6 +594,7 @@ class ComputorStudentExtension extends ComputorExtension {
   async deactivate(): Promise<void> {
     console.log('Deactivating Student extension...');
     this.disposeAll();
+    await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
   }
 }
 

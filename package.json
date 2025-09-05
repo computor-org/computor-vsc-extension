@@ -195,6 +195,12 @@
         "category": "Computor Lecturer"
       },
       {
+        "command": "computor.student.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "Computor Student"
+      },
+      {
         "command": "computor.tutor.refresh",
         "title": "Refresh",
         "icon": "$(refresh)",
@@ -425,6 +431,12 @@
           "title": "Tutor",
           "icon": "$(person)",
           "when": "computor.tutor.show"
+        },
+        {
+          "id": "computor-student",
+          "title": "Student",
+          "icon": "$(book)",
+          "when": "computor.student.show"
         }
       ],
       "panel": [
@@ -457,6 +469,14 @@
           "name": "Courses",
           "icon": "$(person)",
           "contextualTitle": "Tutor Courses"
+        }
+      ],
+      "computor-student": [
+        {
+          "id": "computor.student.courses",
+          "name": "Course Content",
+          "icon": "$(book)",
+          "contextualTitle": "Student Course Content"
         }
       ],
       "explorer": [
@@ -513,6 +533,11 @@
         {
           "command": "computor.lecturer.refresh",
           "when": "view == computor.lecturer.courses",
+          "group": "navigation@1"
+        },
+        {
+          "command": "computor.student.refresh",
+          "when": "view == computor.student.courses",
           "group": "navigation@1"
         },
         {
