@@ -2,7 +2,7 @@
 
  * Auto-generated TypeScript interfaces from Pydantic models
 
- * Generated on: 2025-09-03T14:23:27.604284
+ * Generated on: 2025-09-05T13:28:29.862255
 
  * Category: Courses
 
@@ -10,7 +10,7 @@
 
 
 
-import type { ComputorDeploymentConfig, CourseMemberGitLabConfig, DeploymentHistory, GitLabConfig, GitLabConfigGet, GitLabCredentials } from './common';
+import type { ComputorDeploymentConfig, CourseContentDeploymentGet, CourseContentDeploymentList, CourseMemberGitLabConfig, GitLabConfig, GitLabConfigGet, GitLabCredentials } from './common';
 
 import type { OrganizationGet } from './organizations';
 
@@ -517,16 +517,18 @@ export interface CourseFamilyUpdate {
   properties?: CourseFamilyProperties | null;
 }
 
+/**
+ * Properties for course content (stored in JSONB).
+ */
 export interface CourseContentProperties {
   gitlab?: GitLabConfig | null;
-  /** Complete deployment history for this content */
-  deployment_history?: DeploymentHistory | null;
 }
 
+/**
+ * Properties for course content GET responses.
+ */
 export interface CourseContentPropertiesGet {
   gitlab?: GitLabConfigGet | null;
-  /** Complete deployment history for this content */
-  deployment_history?: DeploymentHistory | null;
 }
 
 /**
@@ -570,11 +572,14 @@ export interface CourseContentGet {
   max_test_runs?: number | null;
   max_submissions?: number | null;
   execution_backend_id?: string | null;
+  is_submittable?: boolean;
+  has_deployment?: boolean | null;
+  deployment_status?: string | null;
   /** DEPRECATED: Use deployment API */
   example_version_id?: string | null;
   course_content_type?: CourseContentTypeGet | null;
   /** Deployment information if requested via include=deployment */
-  deployment?: any | null;
+  deployment?: CourseContentDeploymentGet | null;
 }
 
 /**
@@ -592,11 +597,14 @@ export interface CourseContentList {
   max_test_runs?: number | null;
   max_submissions?: number | null;
   execution_backend_id?: string | null;
+  is_submittable?: boolean;
   course_content_type?: CourseContentTypeGet | null;
   /** Whether this content has an example deployment */
   has_deployment?: boolean | null;
   /** Current deployment status if has_deployment=true */
   deployment_status?: string | null;
+  /** Deployment information if requested via include=deployment */
+  deployment?: CourseContentDeploymentList | null;
 }
 
 /**
@@ -690,28 +698,6 @@ export interface CourseContentMessage {
 
 export interface CourseContentFileQuery {
   filename?: string | null;
-}
-
-/**
- * Request to assign an example to course content.
- */
-export interface AssignExampleRequest {
-  /** UUID of the Example to assign */
-  example_id: string;
-  /** Version to assign (default: latest) */
-  example_version?: string;
-}
-
-/**
- * Response for course content with example information.
- */
-export interface CourseContentExampleResponse {
-  id: string;
-  path: string;
-  title: string;
-  example?: Record<string, any> | null;
-  /** pending_release, released, modified */
-  deployment_status: string;
 }
 
 export interface CourseMemberCommentTutorCreate {

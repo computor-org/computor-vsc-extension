@@ -64,7 +64,7 @@ export class StudentRepositoryManager {
       for (const repo of repositories) {
         // Extract course ID from the assignment data
         const content = courseContents.find(c => c.path === repo.assignmentPath);
-        const contentCourseId = content?.submission_group?.course_id || courseId || 'default';
+        const contentCourseId = content?.course_id || courseId || 'default';
         
         if (!reposByCourse.has(contentCourseId)) {
           reposByCourse.set(contentCourseId, []);

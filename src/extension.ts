@@ -10,6 +10,8 @@ import { LecturerExampleCommands } from './commands/LecturerExampleCommands';
 import { StudentWorkspaceManager } from './services/StudentWorkspaceManager';
 import { StudentCourseContentTreeProvider } from './ui/tree/student/StudentCourseContentTreeProvider';
 import { StudentRepositoryManager } from './services/StudentRepositoryManager';
+import { CourseSelectionService } from './services/CourseSelectionService';
+import { StatusBarService } from './ui/StatusBarService';
 import { TutorTreeDataProvider } from './ui/tree/tutor/TutorTreeDataProvider';
 import { TutorCommands } from './commands/TutorCommands';
 import { IconGenerator } from './utils/IconGenerator';
@@ -440,6 +442,8 @@ class ComputorStudentExtension extends ComputorExtension {
   private workspaceManager?: StudentWorkspaceManager;
   private treeProvider?: StudentCourseContentTreeProvider;
   private repositoryManager?: StudentRepositoryManager;
+  private courseSelectionService?: CourseSelectionService;
+  private statusBarService?: StatusBarService;
 
   constructor(context: vscode.ExtensionContext) {
     super(context, 'Student');
@@ -490,7 +494,9 @@ class ComputorStudentExtension extends ComputorExtension {
         }
       }
 
-      // Initialize managers
+      // Initialize services and managers
+      this.statusBarService = StatusBarService.initialize(this.context);
+      this.courseSelectionService = CourseSelectionService.initialize(this.context, this.apiService, this.statusBarService);
       this.workspaceManager = new StudentWorkspaceManager(this.context, this.apiService);
       this.repositoryManager = new StudentRepositoryManager(this.context, this.apiService);
 
@@ -545,7 +551,7 @@ class ComputorStudentExtension extends ComputorExtension {
       }
 
       // Initialize tree view with proper styling
-      this.treeProvider = new StudentCourseContentTreeProvider(this.apiService, this.repositoryManager);
+      this.treeProvider = new StudentCourseContentTreeProvider(this.apiService, this.courseSelectionService, this.repositoryManager, this.context);
       
       // Register tree data provider
       this.disposables.push(
@@ -559,9 +565,14 @@ class ComputorStudentExtension extends ComputorExtension {
       });
       this.disposables.push(treeView);
 
-      // Set the course in tree provider
+      // Set the course in course selection service
       if (selectedCourseId) {
-        await this.treeProvider.setCurrentCourse(selectedCourseId);
+        const course = courses.find(c => c.id === selectedCourseId);
+        if (course) {
+          await this.courseSelectionService.selectCourse(course);
+        }
+        // Force a refresh after setting the course
+        this.treeProvider.refresh();
       }
 
       // Register refresh command

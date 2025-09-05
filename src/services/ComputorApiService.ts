@@ -36,11 +36,10 @@ import {
   CourseMemberList,
   CourseMemberGet,
   TaskResponse,
-  SubmissionGroupStudent,
   TestCreate,
   CourseContentDeploymentGet,
   DeploymentHistoryGet,
-  DeploymentResponse
+  CourseContentStudentList
 } from '../types/generated';
 
 // Query interface for examples (not generated yet)
@@ -649,6 +648,7 @@ export class ComputorApiService {
   ): Promise<CourseContentGet> {
     // Note: courseId is kept for API consistency but not used in the endpoint
     void courseId;
+    void contentId;
     void exampleId;
     void exampleVersion;
     
@@ -738,10 +738,10 @@ export class ComputorApiService {
   /**
    * Trigger deployment for a course content
    */
-  async deployCourseContent(contentId: string, force: boolean = false): Promise<DeploymentResponse | undefined> {
+  async deployCourseContent(contentId: string, force: boolean = false): Promise<TaskResponse | undefined> {
     try {
       const client = await this.getHttpClient();
-      const response = await client.post<DeploymentResponse>(
+      const response = await client.post<TaskResponse>(
         `/course-contents/${contentId}/deploy`,
         { force }
       );
@@ -1085,11 +1085,11 @@ export class ComputorApiService {
     }
   }
 
-  async getStudentCourseContents(courseId?: string): Promise<any[]> {
+  async getStudentCourseContents(courseId?: string): Promise<CourseContentStudentList[]> {
     const cacheKey = courseId ? `studentCourseContents-${courseId}` : 'studentCourseContents-all';
     
     // Check cache first
-    const cached = multiTierCache.get<any[]>(cacheKey);
+    const cached = multiTierCache.get<CourseContentStudentList[]>(cacheKey);
     if (cached) {
       return cached;
     }
@@ -1098,7 +1098,7 @@ export class ComputorApiService {
       const result = await errorRecoveryService.executeWithRecovery(async () => {
         const client = await this.getHttpClient();
         const params = courseId ? `?course_id=${courseId}` : '';
-        const response = await client.get<any[]>(`/students/course-contents${params}`);
+        const response = await client.get<CourseContentStudentList[]>(`/students/course-contents${params}`);
         return response.data;
       }, {
         maxRetries: 2,
@@ -1114,11 +1114,11 @@ export class ComputorApiService {
     }
   }
 
-  async getStudentCourseContent(contentId: string): Promise<any | undefined> {
+  async getStudentCourseContent(contentId: string): Promise<CourseContentStudentList | undefined> {
     const cacheKey = `studentCourseContent-${contentId}`;
     
     // Check cache first
-    const cached = multiTierCache.get<any>(cacheKey);
+    const cached = multiTierCache.get<CourseContentStudentList>(cacheKey);
     if (cached) {
       return cached;
     }
@@ -1126,7 +1126,7 @@ export class ComputorApiService {
     try {
       const result = await errorRecoveryService.executeWithRecovery(async () => {
         const client = await this.getHttpClient();
-        const response = await client.get<any>(`/students/course-contents/${contentId}`);
+        const response = await client.get<CourseContentStudentList>(`/students/course-contents/${contentId}`);
         return response.data;
       }, {
         maxRetries: 2,
@@ -1175,13 +1175,13 @@ export class ComputorApiService {
     course_content_id?: string;
     has_repository?: boolean;
     is_graded?: boolean;
-  }): Promise<SubmissionGroupStudent[]> {
-    // Get course contents and extract submission groups
+  }): Promise<CourseContentStudentList[]> {
+    // Get course contents with submission groups
     try {
       const courseContents = await this.getStudentCourseContents(params?.course_id);
       
-      // Extract submission groups from course contents
-      const submissionGroups: SubmissionGroupStudent[] = [];
+      // Filter course contents that have submission groups
+      const contentsWithSubmissionGroups: CourseContentStudentList[] = [];
       
       for (const content of courseContents) {
         if (content.submission_group) {
@@ -1198,11 +1198,12 @@ export class ComputorApiService {
             if (isGraded !== params.is_graded) continue;
           }
           
-          submissionGroups.push(content.submission_group);
+          // Add the full course content with its submission group
+          contentsWithSubmissionGroups.push(content);
         }
       }
       
-      return submissionGroups;
+      return contentsWithSubmissionGroups;
     } catch (error) {
       console.error('Failed to get student submission groups:', error);
       return [];

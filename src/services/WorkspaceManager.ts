@@ -6,7 +6,7 @@ import * as os from 'os';
 // import { promisify } from 'util'; // Now used in GitWorktreeManager
 import { GitLabTokenManager } from './GitLabTokenManager';
 import { GitWorktreeManager } from './GitWorktreeManager';
-import { SubmissionGroupStudent } from '../types/generated';
+import { SubmissionGroupStudentList } from '../types/generated';
 
 interface WorkspaceConfig {
   workspaceRoot: string;
@@ -114,7 +114,7 @@ export class WorkspaceManager {
   // Student workspace methods using Git worktrees
   async cloneStudentRepository(
     courseId: string,
-    submissionGroup: SubmissionGroupStudent,
+    submissionGroup: SubmissionGroupStudentList,
     directory?: string
   ): Promise<string> {
     console.log('[WorkspaceManager] cloneStudentRepository called with:');
@@ -275,7 +275,7 @@ export class WorkspaceManager {
 
   private async updateStudentRepositoryConfig(
     courseId: string,
-    submissionGroup: SubmissionGroupStudent,
+    submissionGroup: SubmissionGroupStudentList,
     localPath: string
   ): Promise<void> {
     if (!this.config) return;
@@ -291,7 +291,7 @@ export class WorkspaceManager {
     if (this.config) {
       const course = this.config.courses[courseId];
       if (course) {
-        course.studentRepositories[submissionGroup.id] = {
+        course.studentRepositories[submissionGroup.id!] = {
           localPath,
           remoteUrl: submissionGroup.repository?.clone_url || '',
           type: submissionGroup.max_group_size === 1 ? 'individual' : 'team'

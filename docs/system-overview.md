@@ -41,18 +41,29 @@ The Computor VS Code Extension is the interactive frontend component of a compre
 
 #### Course Directory Management
 **Local Storage Configuration:**
-- Users must select a base directory for course content storage
-- All assignment repositories will be cloned/managed within this directory
-- Directory structure example:
-  ```
-  ~/ComputorCourses/           # User-selected base directory
-  ├── course-2024-python/      # Course repositories
-  ├── course-2024-java/
-  ├── team-projects/           # Team assignment repositories
-  └── external-labs/           # External assignment repositories
-  ```
-- Extension manages repository organization within the selected directory
-- Supports changing the base directory through settings
+
+**Lecturers:**
+- Work directly in their current workspace directory
+- No additional directory management required upon login
+- Course content managed in-place where lecturer is working
+
+**Students:**
+- Can be enrolled in multiple courses simultaneously
+- On login, students must choose a directory where ALL course repositories will be stored
+- Course can have multiple repositories (found via CourseContentStudentList → SubmissionGroupStudentList → SubmissionGroupRepository)
+- Repository directory naming:
+  - Uses the last segment of SubmissionGroupRepository.full_path (after final "/" delimiter)
+  - Each unique repository gets its own subdirectory within the chosen course directory
+- Repository management:
+  - All repositories for a course are cloned into subdirectories of the selected course directory
+  - Repositories can be cloned or fork updated as needed
+- After successful setup:
+  - Student course content tree displays based on StudentCourseContentTreeProvider
+  - Tree structure uses CourseContentStudentList data model
+  
+**Tutors:**
+- Implementation planned for future release
+- Directory management strategy to be determined
 
 ## User Roles & Workflows
 

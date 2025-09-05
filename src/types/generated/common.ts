@@ -2,7 +2,7 @@
 
  * Auto-generated TypeScript interfaces from Pydantic models
 
- * Generated on: 2025-08-18T21:27:50.169064
+ * Generated on: 2025-09-05T13:28:29.867300
 
  * Category: Common
 
@@ -10,7 +10,9 @@
 
 
 
-import type { CourseContentGet, CourseSignupResponse } from './courses';
+import type { CourseSignupResponse } from './courses';
+
+import type { ExampleVersionList } from './examples';
 
 import type { UserGet } from './users';
 
@@ -149,6 +151,181 @@ export interface StudentProfileUpdate {
   properties?: any | null;
 }
 
+/**
+ * Metadata stored with deployments.
+ */
+export interface DeploymentMetadata {
+  /** Temporal workflow ID */
+  workflow_id?: string | null;
+  /** List of files deployed */
+  files_deployed?: string[] | null;
+  /** Git commit hash */
+  git_commit?: string | null;
+  /** Error details if deployment failed */
+  error_details?: Record<string, any> | null;
+  /** Properties migrated from old schema */
+  migrated_properties?: Record<string, any> | null;
+}
+
+/**
+ * Create a new deployment (typically done automatically).
+ */
+export interface CourseContentDeploymentCreate {
+  /** Course content to deploy to */
+  course_content_id: string;
+  /** Example version to deploy */
+  example_version_id: string;
+  /** Initial deployment status */
+  deployment_status?: any;
+  /** Optional message */
+  deployment_message?: string | null;
+  /** Additional metadata */
+  deployment_metadata?: DeploymentMetadata | null;
+}
+
+/**
+ * Update deployment status.
+ */
+export interface CourseContentDeploymentUpdate {
+  deployment_status?: any | null;
+  deployment_message?: string | null;
+  deployed_at?: string | null;
+  last_attempt_at?: string | null;
+  deployment_path?: string | null;
+  deployment_metadata?: DeploymentMetadata | null;
+}
+
+/**
+ * Get deployment details.
+ */
+export interface CourseContentDeploymentGet {
+  /** Creation timestamp */
+  created_at?: string | null;
+  /** Update timestamp */
+  updated_at?: string | null;
+  created_by?: string | null;
+  updated_by?: string | null;
+  id: string;
+  course_content_id: string;
+  example_version_id: string | null;
+  deployment_status: string;
+  deployment_message: string | null;
+  assigned_at: string;
+  deployed_at: string | null;
+  last_attempt_at: string | null;
+  deployment_path: string | null;
+  deployment_metadata: Record<string, any> | null;
+  workflow_id: string | null;
+  example_version?: any | null;
+  course_content?: any | null;
+}
+
+/**
+ * List view of deployments.
+ */
+export interface CourseContentDeploymentList {
+  id: string;
+  course_content_id: string;
+  example_version_id: string | null;
+  deployment_status: string;
+  assigned_at: string;
+  deployed_at: string | null;
+  example_version?: ExampleVersionList | null;
+}
+
+/**
+ * Create a deployment history entry.
+ */
+export interface DeploymentHistoryCreate {
+  deployment_id: string;
+  action: any;
+  action_details?: string | null;
+  example_version_id?: string | null;
+  previous_example_version_id?: string | null;
+  metadata?: Record<string, any> | null;
+  workflow_id?: string | null;
+}
+
+/**
+ * Get deployment history entry.
+ */
+export interface DeploymentHistoryGet {
+  id: string;
+  deployment_id: string;
+  action: string;
+  action_details: string | null;
+  example_version_id: string | null;
+  previous_example_version_id: string | null;
+  meta?: Record<string, any> | null;
+  workflow_id: string | null;
+  created_at: string;
+  created_by: string | null;
+  example_version?: any | null;
+  previous_example_version?: any | null;
+}
+
+/**
+ * List view of deployment history.
+ */
+export interface DeploymentHistoryList {
+  id: string;
+  deployment_id: string;
+  action: string;
+  created_at: string;
+  workflow_id: string | null;
+}
+
+/**
+ * Deployment with its full history.
+ */
+export interface DeploymentWithHistory {
+  deployment: CourseContentDeploymentGet;
+  history: DeploymentHistoryGet[];
+}
+
+/**
+ * Summary of deployments for a course.
+ */
+export interface DeploymentSummary {
+  course_id: string;
+  /** Total course content items */
+  total_content: number;
+  /** Total submittable content (assignments) */
+  submittable_content: number;
+  /** Total deployments */
+  deployments_total: number;
+  /** Deployments pending */
+  deployments_pending: number;
+  /** Successfully deployed */
+  deployments_deployed: number;
+  /** Failed deployments */
+  deployments_failed: number;
+  /** Most recent deployment */
+  last_deployment_at?: string | null;
+}
+
+/**
+ * Request to assign an example to course content.
+ */
+export interface AssignExampleRequest {
+  /** Example version to assign */
+  example_version_id: string;
+  /** Optional message about this assignment */
+  deployment_message?: string | null;
+}
+
+/**
+ * Request to deploy assigned examples.
+ */
+export interface DeployExampleRequest {
+  /** Course to deploy examples for */
+  course_id: string;
+  /** Specific content IDs to deploy (all if None) */
+  content_ids?: string[] | null;
+  /** Force re-deployment even if already deployed */
+  force?: boolean;
+}
+
 export interface ExecutionBackendCreate {
   type: string;
   slug: string;
@@ -166,12 +343,6 @@ export interface ExecutionBackendGet {
   created_by?: string | null;
   updated_by?: string | null;
   id: string;
-}
-
-export interface ExecutionBackendList {
-  id: string;
-  type: string;
-  slug: string;
 }
 
 export interface ExecutionBackendUpdate {
@@ -336,17 +507,6 @@ export interface ResultUpdate {
   status?: any | null;
   test_system_id?: string | null;
   properties?: any | null;
-}
-
-export interface Submission {
-  submission: Repository;
-  provider: string;
-  full_path: string;
-  token: string;
-  assignment: CourseContentGet;
-  module: Repository;
-  result_id: string;
-  user_id: string;
 }
 
 export interface TestCreate {
@@ -613,58 +773,6 @@ export interface SubmissionGroupUpdate {
 }
 
 /**
- * Repository information for a submission group
- */
-export interface SubmissionGroupRepository {
-  provider?: string;
-  url: string;
-  full_path: string;
-  clone_url?: string | null;
-  web_url?: string | null;
-}
-
-/**
- * Basic member information
- */
-export interface SubmissionGroupMemberBasic {
-  id: string;
-  user_id: string;
-  course_member_id: string;
-  username?: string | null;
-  full_name?: string | null;
-}
-
-/**
- * Student's view of grading
- */
-export interface SubmissionGroupGradingStudent {
-  id: string;
-  grading: number;
-  status?: string | null;
-  graded_by?: string | null;
-  created_at: string;
-}
-
-/**
- * Student's view of a submission group
- */
-export interface SubmissionGroupStudent {
-  id: string;
-  course_id: string;
-  course_content_id: string;
-  course_content_title?: string | null;
-  course_content_path?: string | null;
-  example_identifier?: string | null;
-  max_group_size: number;
-  current_group_size?: number;
-  members?: SubmissionGroupMemberBasic[];
-  repository?: SubmissionGroupRepository | null;
-  latest_grading?: SubmissionGroupGradingStudent | null;
-  created_at: string;
-  updated_at: string;
-}
-
-/**
  * Query parameters for student submission groups
  */
 export interface SubmissionGroupStudentQuery {
@@ -672,46 +780,6 @@ export interface SubmissionGroupStudentQuery {
   course_content_id?: string | null;
   has_repository?: boolean | null;
   is_graded?: boolean | null;
-}
-
-/**
- * Single deployment history action entry.
- */
-export interface DeploymentHistoryAction {
-  /** Type of deployment action */
-  action: any;
-  /** When the action occurred */
-  timestamp: string;
-  /** Example ID involved in the action */
-  example_id?: string | null;
-  /** Example version at time of action */
-  example_version?: string | null;
-  /** Previous example ID (for reassignment) */
-  previous_example_id?: string | null;
-  /** Previous example version (for reassignment) */
-  previous_example_version?: string | null;
-  /** Reason for the action (optional) */
-  reason?: string | null;
-  /** User ID who performed the action */
-  performed_by?: string | null;
-  /** Temporal workflow ID if applicable */
-  workflow_id?: string | null;
-  /** Error message if action failed */
-  error_message?: string | null;
-}
-
-/**
- * Complete deployment history for a CourseContent.
- */
-export interface DeploymentHistory {
-  /** List of deployment actions in chronological order */
-  actions?: DeploymentHistoryAction[];
-  /** Timestamp of last successful deployment */
-  last_successful_deployment?: string | null;
-  /** Example ID of last successful deployment */
-  last_successful_example_id?: string | null;
-  /** Example version of last successful deployment */
-  last_successful_example_version?: string | null;
 }
 
 export interface SubmissionGroupMemberProperties {
@@ -947,6 +1015,8 @@ export interface UserDeployment {
   properties?: Record<string, any> | null;
   /** Initial password for the user */
   password?: string | null;
+  /** System roles to assign to the user */
+  roles?: string[] | null;
   /** GitLab username (if different from username) */
   gitlab_username?: string | null;
   /** GitLab email (if different from email) */
@@ -1060,17 +1130,25 @@ export interface GitHubConfig {
 }
 
 /**
- * Execution backend configuration for courses.
+ * Full execution backend configuration for defining backends at root level.
  */
 export interface ExecutionBackendConfig {
   /** Unique identifier for the backend */
   slug: string;
-  /** Type of execution backend (e.g., python, matlab) */
+  /** Type of execution backend (e.g., temporal, prefect) */
   type: string;
-  /** Backend version */
-  version?: string | null;
-  /** Backend-specific settings */
-  settings?: Record<string, any> | null;
+  /** Backend-specific properties (e.g., task_queue, namespace, timeout settings) */
+  properties?: Record<string, any> | null;
+}
+
+/**
+ * Reference to an execution backend by slug for linking to courses.
+ */
+export interface ExecutionBackendReference {
+  /** Slug of the execution backend to link */
+  slug: string;
+  /** Course-specific overrides for this backend (optional) */
+  properties?: Record<string, any> | null;
 }
 
 /**
@@ -1151,8 +1229,8 @@ export interface CourseConfig {
   description?: string | null;
   /** Course project structure */
   projects?: CourseProjects | null;
-  /** Available execution backends for this course */
-  execution_backends?: ExecutionBackendConfig[] | null;
+  /** References to execution backends to link to this course (by slug) */
+  execution_backends?: ExecutionBackendReference[] | null;
   /** Course content types to be created (assignments, units, etc.) */
   content_types?: CourseContentTypeConfig[] | null;
   /** Course-specific settings */
@@ -1171,8 +1249,8 @@ export interface HierarchicalCourseConfig {
   description?: string | null;
   /** Course project structure */
   projects?: CourseProjects | null;
-  /** Available execution backends for this course */
-  execution_backends?: ExecutionBackendConfig[] | null;
+  /** References to execution backends to link to this course (by slug) */
+  execution_backends?: ExecutionBackendReference[] | null;
   /** Course content types to be created (assignments, units, etc.) */
   content_types?: CourseContentTypeConfig[] | null;
   /** Course-specific settings */
@@ -1221,6 +1299,8 @@ export interface HierarchicalOrganizationConfig {
  * Supports deploying multiple organizations, each with multiple course families and courses.
  */
 export interface ComputorDeploymentConfig {
+  /** List of execution backends to create or ensure exist in the system */
+  execution_backends?: ExecutionBackendConfig[] | null;
   /** List of organizations with nested course families and courses */
   organizations: HierarchicalOrganizationConfig[];
   /** List of users with their accounts and course memberships */
@@ -1313,30 +1393,6 @@ export interface VSCExtensionConfig {
   download_link: string;
 }
 
-/**
- * Request model for deployment from configuration.
- */
-export interface DeploymentRequest {
-  /** Deployment configuration as dictionary */
-  deployment_config: Record<string, any>;
-  /** If true, only validate the configuration without deploying */
-  validate_only?: boolean;
-}
-
-/**
- * Response model for deployment operations.
- */
-export interface DeploymentResponse {
-  /** Temporal workflow ID */
-  workflow_id: string;
-  /** Deployment status */
-  status: string;
-  /** Status message */
-  message: string;
-  /** Full deployment path */
-  deployment_path?: string | null;
-}
-
 export interface GitlabSignup {
   provider: string;
   token: string;
@@ -1344,148 +1400,4 @@ export interface GitlabSignup {
 
 export interface GitlabSignupResponse {
   courses?: CourseSignupResponse[];
-}
-
-export interface DeploymentMetadata {
-  /** Temporal workflow ID */
-  workflow_id?: string | null;
-  /** List of files deployed */
-  files_deployed?: string[] | null;
-  /** Git commit hash */
-  git_commit_hash?: string | null;
-  /** Additional custom metadata */
-  [key: string]: any;
-}
-
-/**
- * Create a new deployment (typically done automatically).
- */
-export interface CourseContentDeploymentCreate {
-  /** Course content to deploy to */
-  course_content_id: string;
-  /** Example version to deploy */
-  example_version_id: string;
-  /** Initial deployment status */
-  deployment_status?: any;
-  /** Optional message */
-  deployment_message?: string | null;
-  /** Additional metadata */
-  deployment_metadata?: DeploymentMetadata | null;
-}
-
-/**
- * Update deployment status.
- */
-export interface CourseContentDeploymentUpdate {
-  deployment_status?: any | null;
-  deployment_message?: string | null;
-  deployed_at?: string | null;
-  last_attempt_at?: string | null;
-  deployment_path?: string | null;
-  deployment_metadata?: DeploymentMetadata | null;
-}
-
-/**
- * Get deployment details.
- */
-export interface CourseContentDeploymentGet {
-  /** Creation timestamp */
-  created_at?: string | null;
-  /** Update timestamp */
-  updated_at?: string | null;
-  created_by?: string | null;
-  updated_by?: string | null;
-  id: string;
-  course_content_id: string;
-  example_version_id: string | null;
-  deployment_status: string;
-  deployment_message: string | null;
-  assigned_at: string;
-  deployed_at: string | null;
-  last_attempt_at: string | null;
-  deployment_path: string | null;
-  deployment_metadata: Record<string, any> | null;
-  example_version?: any | null;
-  course_content?: any | null;
-}
-
-/**
- * List view of deployments.
- */
-export interface CourseContentDeploymentList {
-  id: string;
-  course_content_id: string;
-  example_version_id: string | null;
-  deployment_status: string;
-  assigned_at: string;
-  deployed_at: string | null;
-}
-
-/**
- * Create a deployment history entry.
- */
-export interface DeploymentHistoryCreate {
-  deployment_id: string;
-  action: any;
-  action_details?: string | null;
-  example_version_id?: string | null;
-  previous_example_version_id?: string | null;
-  metadata?: Record<string, any> | null;
-  workflow_id?: string | null;
-}
-
-/**
- * Get deployment history entry.
- */
-export interface DeploymentHistoryGet {
-  id: string;
-  deployment_id: string;
-  action: string;
-  action_details: string | null;
-  example_version_id: string | null;
-  previous_example_version_id: string | null;
-  metadata: Record<string, any> | null;
-  workflow_id: string | null;
-  created_at: string;
-  created_by: string | null;
-  example_version?: any | null;
-  previous_example_version?: any | null;
-}
-
-/**
- * List view of deployment history.
- */
-export interface DeploymentHistoryList {
-  id: string;
-  deployment_id: string;
-  action: string;
-  created_at: string;
-  workflow_id: string | null;
-}
-
-/**
- * Deployment with its full history.
- */
-export interface DeploymentWithHistory {
-  deployment: CourseContentDeploymentGet;
-  history: DeploymentHistoryGet[];
-}
-
-/**
- * Summary of deployments for a course.
- */
-export interface DeploymentSummary {
-  course_id: string;
-  /** Total course content items */
-  total_content: number;
-  /** Submittable content items */
-  submittable_content: number;
-  /** Content with deployments assigned */
-  assigned_deployments: number;
-  /** Successfully deployed content */
-  deployed_content: number;
-  /** Failed deployments */
-  failed_deployments: number;
-  /** Deployments pending */
-  pending_deployments: number;
 }

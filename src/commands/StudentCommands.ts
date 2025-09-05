@@ -7,7 +7,7 @@ import { WorkspaceManager } from '../services/WorkspaceManager';
 import { GitBranchManager } from '../services/GitBranchManager';
 import { CourseSelectionService } from '../services/CourseSelectionService';
 import { TestResultService } from '../services/TestResultService';
-import { SubmissionGroupStudent } from '../types/generated';
+import { SubmissionGroupStudentList } from '../types/generated';
 
 // Interface for course data used in commands
 interface CourseCommandData {
@@ -172,7 +172,7 @@ export class StudentCommands {
 
     // Clone submission group repository
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.student.cloneSubmissionGroupRepository', async (submissionGroup: SubmissionGroupStudent, courseId: string) => {
+      vscode.commands.registerCommand('computor.student.cloneSubmissionGroupRepository', async (submissionGroup: SubmissionGroupStudentList, courseId: string) => {
         if (!submissionGroup || !submissionGroup.repository) {
           vscode.window.showErrorMessage('No repository available for this submission group');
           return;
@@ -203,14 +203,14 @@ export class StudentCommands {
 
     // Submit assignment
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.student.submitAssignment', async (submissionGroup: SubmissionGroupStudent, course: CourseCommandData) => {
+      vscode.commands.registerCommand('computor.student.submitAssignment', async (submissionGroup: SubmissionGroupStudentList, course: CourseCommandData) => {
         if (!submissionGroup || !submissionGroup.repository) {
           vscode.window.showErrorMessage('No repository available for this assignment');
           return;
         }
 
         try {
-          const repoPath = await this.workspaceManager.getStudentRepositoryPath(course.id, submissionGroup.id);
+          const repoPath = await this.workspaceManager.getStudentRepositoryPath(course.id, submissionGroup.id!);
           
           if (!repoPath || !await this.directoryExists(repoPath)) {
             vscode.window.showErrorMessage('Repository not found. Please select the assignment first.');
@@ -269,7 +269,7 @@ export class StudentCommands {
 
     // View submission group details
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.student.viewSubmissionGroup', async (submissionGroup: SubmissionGroupStudent) => {
+      vscode.commands.registerCommand('computor.student.viewSubmissionGroup', async (submissionGroup: SubmissionGroupStudentList) => {
         if (!submissionGroup) {
           return;
         }
