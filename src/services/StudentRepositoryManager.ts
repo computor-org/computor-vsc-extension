@@ -28,7 +28,15 @@ export class StudentRepositoryManager {
   ) {
     this.apiService = apiService;
     this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
-    this.workspaceRoot = path.join(os.homedir(), '.computor', 'workspace');
+    // Use the actual VS Code workspace folder
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (workspaceFolders && workspaceFolders.length > 0 && workspaceFolders[0]) {
+      this.workspaceRoot = workspaceFolders[0].uri.fsPath;
+    } else {
+      // Fallback, but this shouldn't happen for students as we require a workspace
+      this.workspaceRoot = path.join(os.homedir(), '.computor', 'workspace');
+      console.warn('[StudentRepositoryManager] No workspace folder found, using fallback path');
+    }
   }
 
   /**
@@ -191,7 +199,7 @@ export class StudentRepositoryManager {
    * Set up or update a unique repository and link assignments to it
    */
   private async setupUniqueRepository(
-    courseId: string,
+    courseId: string, // Used for logging and upstream URL
     cloneUrl: string,
     repoInfos: RepositoryInfo[],
     token: string,
@@ -203,7 +211,8 @@ export class StudentRepositoryManager {
     const urlParts = cloneUrl.replace(/\.git$/, '').split('/');
     // Use just the last part of the URL as the repo name (e.g., "admin" from "students/admin")
     const repoName = urlParts[urlParts.length - 1] || 'repository';
-    const repoPath = path.join(this.workspaceRoot, 'courses', courseId, repoName);
+    // Clone directly into workspace root, not nested in courses/courseId
+    const repoPath = path.join(this.workspaceRoot, repoName);
     
     const repoExists = await this.directoryExists(repoPath);
     
