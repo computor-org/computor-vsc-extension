@@ -74,8 +74,28 @@ export class CourseSelectionService {
         }
     }
 
-    async selectCourse(): Promise<CourseInfo | undefined> {
+    async selectCourse(courseId?: string): Promise<CourseInfo | undefined> {
         try {
+            // If courseId is provided, select that course directly
+            if (courseId) {
+                const courses = await this.apiService.getStudentCourses();
+                const course = courses.find(c => c.id === courseId);
+                
+                if (course) {
+                    const courseInfo: CourseInfo = {
+                        id: course.id,
+                        title: course.title || course.path,
+                        path: course.path,
+                        organizationId: course.organization_id || '',
+                        courseFamilyId: course.course_family_id || ''
+                    };
+                    await this.switchToCourse(courseInfo);
+                    return courseInfo;
+                }
+                return undefined;
+            }
+            
+            // Otherwise, show course selection dialog
             // Fetch available courses for student
             const courses = await this.apiService.getStudentCourses();
             

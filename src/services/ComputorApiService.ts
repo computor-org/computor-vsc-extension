@@ -1001,6 +1001,34 @@ export class ComputorApiService {
   }
 
   // Student API methods
+  async getCurrentUser(): Promise<{ id: string; username: string; full_name?: string } | undefined> {
+    const cacheKey = 'currentUser';
+    
+    // Check cache first
+    const cached = multiTierCache.get<any>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const response = await client.get<any>('/users/me');
+        return response.data;
+      }, {
+        maxRetries: 2,
+        exponentialBackoff: true
+      });
+      
+      // Cache in warm tier
+      multiTierCache.set(cacheKey, result, 'warm');
+      return result;
+    } catch (error) {
+      console.error('Failed to get current user:', error);
+      return undefined;
+    }
+  }
+
   async getStudentCourses(): Promise<any[]> {
     const cacheKey = 'studentCourses';
     

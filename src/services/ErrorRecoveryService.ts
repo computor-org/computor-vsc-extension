@@ -91,7 +91,8 @@ export class AuthenticationErrorStrategy implements ErrorRecoveryStrategy {
         await vscode.commands.executeCommand('computor.tutor.signIn');
         break;
       case 'Sign In as Student':
-        await vscode.commands.executeCommand('computor.student.signIn');
+        // Command removed - student features being reimplemented
+        vscode.window.showInformationMessage('Student sign-in is being reimplemented');
         break;
       default:
         throw error;
