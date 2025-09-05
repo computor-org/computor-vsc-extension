@@ -452,6 +452,34 @@ class ComputorStudentExtension extends ComputorExtension {
   async activate(): Promise<void> {
     console.log('Activating Student extension...');
     
+    // Check if a workspace is open - required for students
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+      const action = await vscode.window.showErrorMessage(
+        'Student login requires an open workspace folder. This folder will be used to store all your course repositories.',
+        'Open Folder',
+        'Cancel'
+      );
+      
+      if (action === 'Open Folder') {
+        // Guide user to open a folder
+        await vscode.commands.executeCommand('vscode.openFolder');
+      }
+      
+      console.error('No workspace folder open - student login cancelled');
+      vscode.window.showInformationMessage(
+        'To use Computor as a student: 1) Open a folder (File → Open Folder), 2) Try logging in again'
+      );
+      return;
+    }
+    
+    const workspaceRoot = workspaceFolders[0]?.uri.fsPath;
+    if (!workspaceRoot) {
+      vscode.window.showErrorMessage('Unable to determine workspace folder path');
+      return;
+    }
+    console.log(`Student workspace root: ${workspaceRoot}`);
+    
     // Try to restore session first
     const restored = await this.restoreSession();
     if (restored) {
