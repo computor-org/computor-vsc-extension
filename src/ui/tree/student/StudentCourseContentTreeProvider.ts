@@ -153,22 +153,17 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                             assignmentPath = updatedDirectory;
                             console.log('[StudentTree] Repository setup complete, directory path:', assignmentPath);
                             
-                            // If the directory still doesn't exist, it might be a subdirectory issue
-                            // Try the parent directory (repository root)
+                            // If the directory still doesn't exist, it's not available yet
                             if (assignmentPath && !fs.existsSync(assignmentPath)) {
-                                const parentDir = path.dirname(assignmentPath);
-                                if (fs.existsSync(parentDir) && fs.existsSync(path.join(parentDir, '.git'))) {
-                                    console.log('[StudentTree] Using repository root instead:', parentDir);
-                                    assignmentPath = parentDir;
-                                    // Update the element's directory for future use
-                                    (element.courseContent as any).directory = parentDir;
-                                }
+                                console.log('[StudentTree] Assignment subdirectory does not exist:', assignmentPath);
+                                // Don't fall back to repository root - the assignment isn't available
+                                assignmentPath = undefined;
                             }
                         }
                         
                         if (!assignmentPath || !fs.existsSync(assignmentPath)) {
                             console.log('[StudentTree] Directory not available after setup:', assignmentPath);
-                            return [new MessageItem('Repository cloned but directory not found', 'warning')];
+                            return [new MessageItem('Assignment not deployed yet - sync repository to get updates', 'info')];
                         }
                     } else {
                         return [new MessageItem('Unable to setup repository', 'error')];
