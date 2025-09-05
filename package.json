@@ -319,6 +319,12 @@
         "category": "Computor Lecturer"
       },
       {
+        "command": "computor.lecturer.changeCourseContentType",
+        "title": "Change Content Type",
+        "icon": "$(symbol-class)",
+        "category": "Computor Lecturer"
+      },
+      {
         "command": "computor.lecturer.createCourseGroup",
         "title": "Create Course Group",
         "icon": "$(add)",
@@ -671,6 +677,11 @@
           "command": "computor.lecturer.createCourseContent",
           "when": "view == computor.lecturer.courses && viewItem =~ /courseContent\\.nonSubmittable/",
           "group": "1_content@1"
+        },
+        {
+          "command": "computor.lecturer.changeCourseContentType",
+          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent/",
+          "group": "2_edit@2"
         },
         {
           "command": "computor.lecturer.createCourseContentType",

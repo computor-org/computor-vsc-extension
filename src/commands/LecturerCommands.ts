@@ -100,6 +100,12 @@ export class LecturerCommands {
       })
     );
 
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.changeCourseContentType', async (item: CourseContentTreeItem) => {
+        await this.changeCourseContentType(item);
+      })
+    );
+
     // Course content type management
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.createCourseContentType', async (item: CourseFolderTreeItem) => {
@@ -583,6 +589,74 @@ export class LecturerCommands {
       parentPath,
       slug
     );
+  }
+
+  private async changeCourseContentType(item: CourseContentTreeItem): Promise<void> {
+    if (!item || !item.courseContent) {
+      vscode.window.showErrorMessage('Invalid course content item');
+      return;
+    }
+
+    try {
+      // Get available content types for this course
+      const contentTypes = await this.apiService.getCourseContentTypes(item.course.id);
+      
+      if (contentTypes.length === 0) {
+        vscode.window.showWarningMessage('No content types available in this course.');
+        return;
+      }
+
+      // Filter out the current type and prepare selection items
+      const availableTypes = contentTypes
+        .filter(ct => ct.id !== item.courseContent.course_content_type_id)
+        .map(ct => ({
+          label: ct.title || ct.slug,
+          description: ct.course_content_kind_id || 'unknown',
+          id: ct.id,
+          contentType: ct
+        }));
+
+      if (availableTypes.length === 0) {
+        vscode.window.showInformationMessage('No other content types available to switch to.');
+        return;
+      }
+
+      // Get full content type info for current type to show what we're changing from
+      const currentType = contentTypes.find(ct => ct.id === item.courseContent.course_content_type_id);
+      const currentTypeLabel = currentType ? (currentType.title || currentType.slug) : 'Unknown';
+
+      const selectedType = await vscode.window.showQuickPick(availableTypes, {
+        placeHolder: `Change from "${currentTypeLabel}" to...`,
+        title: 'Select New Content Type'
+      });
+
+      if (!selectedType) {
+        return;
+      }
+
+      // Update the course content with the new type
+      const updateData = {
+        course_content_type_id: selectedType.id
+      };
+
+      await this.apiService.updateCourseContent(
+        item.course.id,
+        item.courseContent.id,
+        updateData
+      );
+
+      vscode.window.showInformationMessage(
+        `Changed content type from "${currentTypeLabel}" to "${selectedType.label}"`
+      );
+
+      // Clear cache and refresh the tree
+      this.apiService.clearCourseCache(item.course.id);
+      this.treeDataProvider.refresh();
+
+    } catch (error) {
+      console.error('Failed to change course content type:', error);
+      vscode.window.showErrorMessage(`Failed to change content type: ${error}`);
+    }
   }
 
   private async renameCourseContent(item: CourseContentTreeItem): Promise<void> {
