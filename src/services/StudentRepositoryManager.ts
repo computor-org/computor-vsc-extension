@@ -288,22 +288,68 @@ export class StudentRepositoryManager {
     for (const repo of repoInfos) {
       const content = courseContents.find(c => c.path === repo.assignmentPath);
       if (content) {
-        // If we have a subdirectory specified, append it to the repo path
-        let finalPath = repoPath;
+        let finalPath: string | undefined;
+        
+        // First, try the exact subdirectory from example_identifier
         if (repo.directory) {
+          const exactPath = path.join(repoPath, repo.directory);
+          if (fs.existsSync(exactPath)) {
+            finalPath = exactPath;
+            console.log(`[StudentRepositoryManager] Found exact directory for ${repo.assignmentTitle}: ${repo.directory}`);
+          }
+        }
+        
+        // If not found, try to find a matching directory by scanning the repository
+        if (!finalPath && fs.existsSync(repoPath)) {
+          try {
+            const dirs = fs.readdirSync(repoPath, { withFileTypes: true })
+              .filter(dirent => dirent.isDirectory() && !dirent.name.startsWith('.'))
+              .map(dirent => dirent.name);
+            
+            // Try different matching strategies
+            const titleLower = repo.assignmentTitle.toLowerCase().replace(/\s+/g, '_');
+            const pathParts = repo.assignmentPath.split('.');
+            const lastPathPart = pathParts[pathParts.length - 1];
+            
+            // Look for directories that might match this assignment
+            for (const dir of dirs) {
+              const dirLower = dir.toLowerCase();
+              // Check if directory contains assignment title keywords
+              if (dirLower.includes('beta') && titleLower.includes('beta')) {
+                finalPath = path.join(repoPath, dir);
+                console.log(`[StudentRepositoryManager] Found matching directory by keyword for ${repo.assignmentTitle}: ${dir}`);
+                break;
+              }
+              // Check if directory contains last part of path
+              if (lastPathPart && dirLower.includes(lastPathPart.toLowerCase())) {
+                finalPath = path.join(repoPath, dir);
+                console.log(`[StudentRepositoryManager] Found matching directory by path for ${repo.assignmentTitle}: ${dir}`);
+                break;
+              }
+            }
+          } catch (error) {
+            console.error(`[StudentRepositoryManager] Error scanning repository: ${error}`);
+          }
+        }
+        
+        // If still not found, log warning but set to subdirectory path anyway
+        if (!finalPath && repo.directory) {
           finalPath = path.join(repoPath, repo.directory);
+          console.warn(`[StudentRepositoryManager] Directory not found for ${repo.assignmentTitle}, using: ${repo.directory}`);
         }
         
         console.log(`[StudentRepositoryManager] Setting directory for ${repo.assignmentTitle}:`, {
           repoPath,
           subdirectory: repo.directory,
           finalPath,
-          exists: fs.existsSync(finalPath)
+          exists: finalPath ? fs.existsSync(finalPath) : false
         });
         
         // Set the absolute path to the assignment directory
-        content.directory = finalPath;
-        console.log(`[StudentRepositoryManager] Set directory for ${repo.assignmentTitle} to ${finalPath}`);
+        if (finalPath) {
+          content.directory = finalPath;
+          console.log(`[StudentRepositoryManager] Set directory for ${repo.assignmentTitle} to ${finalPath}`);
+        }
       }
     }
   }
