@@ -450,8 +450,20 @@ export class LecturerExampleCommands {
               if (entry.startsWith('.') || entry === 'node_modules') continue;
               
               try {
-                const content = fs.readFileSync(fullPath, 'utf8');
-                files[relativePath] = content;
+                // Check if it's a binary file (images, etc.)
+                const ext = path.extname(fullPath).toLowerCase();
+                const binaryExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.svg', '.pdf', '.zip', '.gz', '.tar'];
+                
+                if (binaryExtensions.includes(ext)) {
+                  // Read binary files as buffer and encode as base64
+                  const buffer = fs.readFileSync(fullPath);
+                  const base64Content = buffer.toString('base64');
+                  files[relativePath] = `data:application/octet-stream;base64,${base64Content}`;
+                } else {
+                  // Read text files as UTF-8
+                  const content = fs.readFileSync(fullPath, 'utf8');
+                  files[relativePath] = content;
+                }
               } catch (err) {
                 console.warn(`Failed to read file ${fullPath}:`, err);
               }
@@ -759,8 +771,20 @@ Explain how to use this example.
               const relativePath = filePath.substring(directoryPrefix.length);
               
               try {
-                const content = await entry.async('string');
-                files[relativePath] = content;
+                // Check if it's a binary file
+                const ext = path.extname(filePath).toLowerCase();
+                const binaryExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.svg', '.pdf', '.zip', '.gz', '.tar'];
+                
+                if (binaryExtensions.includes(ext)) {
+                  // Read binary files as base64
+                  const buffer = await entry.async('nodebuffer');
+                  const base64Content = buffer.toString('base64');
+                  files[relativePath] = `data:application/octet-stream;base64,${base64Content}`;
+                } else {
+                  // Read text files as string
+                  const content = await entry.async('string');
+                  files[relativePath] = content;
+                }
               } catch (err) {
                 console.warn(`Failed to extract ${filePath}:`, err);
               }
