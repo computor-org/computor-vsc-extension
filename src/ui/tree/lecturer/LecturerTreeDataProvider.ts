@@ -1168,6 +1168,11 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       courseId = target.course.id;
       parentPath = undefined;
       targetDescription = `in course "${target.course.title || target.course.path}"`;
+    } else if (target instanceof CourseFolderTreeItem && target.folderType === 'contents') {
+      // Dropped on "Contents" folder - create at root level of course contents
+      courseId = target.course.id;
+      parentPath = undefined;
+      targetDescription = `in course "${target.course.title || target.course.path}"`;
     } else if (target instanceof CourseContentTreeItem) {
       courseId = target.course.id;
       
