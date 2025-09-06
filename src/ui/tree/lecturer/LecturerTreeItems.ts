@@ -22,6 +22,7 @@ export class OrganizationTreeItem extends vscode.TreeItem {
     this.contextValue = 'organization';
     this.iconPath = new vscode.ThemeIcon('organization');
     this.tooltip = organization.title || organization.path;
+    this.description = 'Organization';
   }
 }
 
@@ -36,6 +37,7 @@ export class CourseFamilyTreeItem extends vscode.TreeItem {
     this.contextValue = 'courseFamily';
     this.iconPath = new vscode.ThemeIcon('folder-library');
     this.tooltip = courseFamily.title || courseFamily.path;
+    this.description = 'Course Family';
   }
 }
 
@@ -52,10 +54,8 @@ export class CourseTreeItem extends vscode.TreeItem {
     this.iconPath = new vscode.ThemeIcon('book');
     this.tooltip = course.title || course.path;
     
-    // Add repository URL to description if available
-    if (course.properties?.gitlab) {
-      this.description = 'GitLab';
-    }
+    // Set description to indicate this is a Course
+    this.description = 'Course';
   }
 }
 
