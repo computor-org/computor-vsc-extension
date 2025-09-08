@@ -593,6 +593,12 @@ class ComputorStudentExtension extends ComputorExtension {
       // Initialize services and managers
       this.statusBarService = StatusBarService.initialize(this.context);
       this.courseSelectionService = CourseSelectionService.initialize(this.context, this.apiService, this.statusBarService);
+      
+      // Clear any old course IDs from global state to prevent using stale IDs
+      await this.courseSelectionService.clearStoredCourseIds();
+      await this.context.globalState.update('studentCurrentCourseId', undefined);
+      console.log('Cleared all stored course IDs from global state');
+      
       this.workspaceManager = new StudentWorkspaceManager(this.context, this.apiService);
       this.repositoryManager = new StudentRepositoryManager(this.context, this.apiService);
 
@@ -678,10 +684,15 @@ class ComputorStudentExtension extends ComputorExtension {
       if (selectedCourseId) {
         const course = courses.find(c => c.id === selectedCourseId);
         if (course) {
+          console.log(`Setting course in CourseSelectionService:`, course);
           await this.courseSelectionService.selectCourse(course);
+          console.log(`Course set, current course ID in service:`, this.courseSelectionService.getCurrentCourseId());
         }
         // Force a refresh after setting the course
+        console.log('Refreshing tree provider after course selection');
         this.treeProvider.refresh();
+      } else {
+        console.warn('No course selected - tree will show empty');
       }
 
       // Register refresh command

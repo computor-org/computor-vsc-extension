@@ -322,6 +322,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         if (!element) {
             // Root level - check if we have a selected course (when running in course workspace)
             const selectedCourseId = this.courseSelection.getCurrentCourseId();
+            console.log('[StudentTree] Getting children for root, selected course ID:', selectedCourseId);
             
             if (selectedCourseId) {
                 // We're in a course workspace - show course contents directly
@@ -335,16 +336,21 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                     let courseContents = this.courseContentsCache.get(selectedCourseId);
                     
                     if (!courseContents) {
+                        console.log('[StudentTree] Fetching course contents from API for course:', selectedCourseId);
                         courseContents = await this.apiService.getStudentCourseContents(selectedCourseId) || [];
+                        console.log('[StudentTree] Received course contents:', courseContents.length, 'items');
                         this.courseContentsCache.set(selectedCourseId, courseContents);
                         
                         // Update directory paths for existing repositories
                         if (this.repositoryManager) {
                             this.repositoryManager.updateExistingRepositoryPaths(selectedCourseId, courseContents);
                         }
+                    } else {
+                        console.log('[StudentTree] Using cached course contents:', courseContents.length, 'items');
                     }
                     
                     if (courseContents.length === 0) {
+                        console.log('[StudentTree] No course content available for course:', selectedCourseId);
                         return [new MessageItem('No course content available', 'info')];
                     }
                     

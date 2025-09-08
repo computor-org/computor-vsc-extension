@@ -32,8 +32,9 @@ export class CourseSelectionService {
         this.statusBarService = statusBarService;
         this.workspaceRoot = path.join(os.homedir(), '.computor', 'workspace');
         
-        // Load last selected course
-        this.loadLastSelectedCourse();
+        // Don't auto-load last selected course - let the student extension handle it
+        // This prevents loading stale/invalid course IDs from previous sessions
+        // this.loadLastSelectedCourse();
     }
 
     static initialize(
@@ -58,21 +59,8 @@ export class CourseSelectionService {
         return CourseSelectionService.instance;
     }
 
-    private async loadLastSelectedCourse(): Promise<void> {
-        const savedCourseId = this.context.globalState.get<string>('selectedCourseId');
-        const savedCourseInfo = this.context.globalState.get<CourseInfo>('selectedCourseInfo');
-        
-        if (savedCourseId && savedCourseInfo) {
-            this.currentCourseId = savedCourseId;
-            this.currentCourseInfo = savedCourseInfo;
-            this.statusBarService.updateCourse(savedCourseInfo.title);
-            // Set context to make course content view visible
-            vscode.commands.executeCommand('setContext', 'computor.courseSelected', true);
-        } else {
-            this.statusBarService.clearCourse();
-            vscode.commands.executeCommand('setContext', 'computor.courseSelected', false);
-        }
-    }
+    // Removed loadLastSelectedCourse - we don't want to load stale course IDs
+    // Course selection should come from the .computor_student marker file only
 
     async selectCourse(courseId?: string): Promise<CourseInfo | undefined> {
         try {
@@ -190,6 +178,16 @@ export class CourseSelectionService {
 
     getCurrentCourseInfo(): CourseInfo | undefined {
         return this.currentCourseInfo;
+    }
+
+    /**
+     * Clear any stored course IDs from global state
+     * Used to prevent stale course IDs from being loaded
+     */
+    async clearStoredCourseIds(): Promise<void> {
+        await this.context.globalState.update('selectedCourseId', undefined);
+        await this.context.globalState.update('selectedCourseInfo', undefined);
+        console.log('Cleared stored course IDs from global state');
     }
 
     getCourseWorkspacePath(): string | undefined {
