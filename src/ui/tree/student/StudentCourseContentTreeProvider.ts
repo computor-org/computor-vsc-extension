@@ -6,7 +6,7 @@ import { ComputorApiService } from '../../../services/ComputorApiService';
 import { CourseSelectionService } from '../../../services/CourseSelectionService';
 import { StudentRepositoryManager } from '../../../services/StudentRepositoryManager';
 import { ComputorSettingsManager } from '../../../settings/ComputorSettingsManager';
-import { SubmissionGroupStudentList, CourseContentStudentList, CourseContentTypeList, CourseContentKindList, CourseList } from '../../../types/generated';
+import { SubmissionGroupStudentList, CourseContentStudentList, CourseContentTypeList, CourseContentKindList } from '../../../types/generated';
 import { IconGenerator } from '../../../utils/IconGenerator';
 import { hasExampleAssigned, getExampleVersionId } from '../../../utils/deploymentHelpers';
 
@@ -34,7 +34,6 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     private courseSelection: CourseSelectionService;
     private repositoryManager?: StudentRepositoryManager;
     private settingsManager?: ComputorSettingsManager;
-    private courses: CourseList[] = [];
     private courseContentsCache: Map<string, CourseContentStudentList[]> = new Map(); // Cache course contents per course
     private contentKinds: CourseContentKindList[] = [];
     private expandedStates: Record<string, boolean> = {};
@@ -66,7 +65,6 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     }
     
     refresh(): void {
-        this.courses = [];
         this.courseContentsCache.clear();
         this.contentKinds = [];
         // Don't clear expanded states on refresh - preserve them
@@ -363,67 +361,9 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                     return [new MessageItem(`Error loading content: ${message}`, 'error')];
                 }
             } else {
-                // No course selected - show all courses
-                try {
-                    // Fetch courses and content kinds in parallel
-                    const [courses, contentKinds] = await Promise.all([
-                        this.apiService.getStudentCourses(),
-                        this.apiService.getCourseContentKinds()
-                    ]);
-                    
-                    this.courses = courses || [];
-                    this.contentKinds = contentKinds || [];
-                    
-                    if (this.courses.length === 0) {
-                        return [new MessageItem('No courses available', 'info')];
-                    }
-                    
-                    // Show courses directly without the start session message
-                    const items: TreeItem[] = [];
-                    
-                    // Add course items
-                    items.push(...this.courses.map(course => {
-                        const courseId = `course-${course.id}`;
-                        return new CourseTreeItem(course, this.getExpandedState(courseId));
-                    }));
-                    return items;
-                } catch (error: any) {
-                    console.error('Failed to load student courses:', error);
-                    const message = error?.response?.data?.message || error?.message || 'Unknown error';
-                    vscode.window.showErrorMessage(`Failed to load courses: ${message}`);
-                    return [new MessageItem(`Error loading courses: ${message}`, 'error')];
-                }
-            }
-        }
-        
-        // Handle course item - fetch course contents
-        if (element instanceof CourseTreeItem) {
-            try {
-                // Check cache first
-                let courseContents = this.courseContentsCache.get(element.course.id);
-                
-                if (!courseContents) {
-                    // Fetch course contents for this specific course
-                    courseContents = await this.apiService.getStudentCourseContents(element.course.id) || [];
-                    this.courseContentsCache.set(element.course.id, courseContents);
-                    
-                    // Update directory paths for existing repositories
-                    if (this.repositoryManager) {
-                        this.repositoryManager.updateExistingRepositoryPaths(element.course.id, courseContents);
-                    }
-                }
-                
-                if (courseContents.length === 0) {
-                    return [new MessageItem('No course content available', 'info')];
-                }
-                
-                // Build tree structure from course content
-                const tree = this.buildContentTree(courseContents, [], [], this.contentKinds);
-                return this.createTreeItems(tree);
-            } catch (error: any) {
-                console.error('Failed to load course content:', error);
-                const message = error?.response?.data?.message || error?.message || 'Unknown error';
-                return [new MessageItem(`Error loading content: ${message}`, 'error')];
+                // No course selected - this shouldn't happen with proper marker file
+                console.log('[StudentTree] No course selected - tree will be empty');
+                return [new MessageItem('No course selected. Please restart the extension.', 'warning')];
             }
         }
         
@@ -608,39 +548,6 @@ abstract class TreeItem extends vscode.TreeItem {
         collapsibleState: vscode.TreeItemCollapsibleState
     ) {
         super(label, collapsibleState);
-    }
-}
-
-class CourseTreeItem extends TreeItem {
-    constructor(
-        public readonly course: CourseList,
-        expanded: boolean = false
-    ) {
-        super(
-            course.title || course.path, 
-            expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed
-        );
-        
-        this.id = `course-${course.id}`;
-        this.contextValue = 'studentCourse';
-        this.iconPath = new vscode.ThemeIcon('book', new vscode.ThemeColor('charts.blue'));
-        
-        // Add description with course info
-        const parts: string[] = [];
-        if (course.path) {
-            parts.push(course.path);
-        }
-        this.description = parts.join(' • ');
-        
-        // Add tooltip
-        const tooltipParts: string[] = [
-            course.title || 'Course',
-            `ID: ${course.id}`
-        ];
-        if (course.path) {
-            tooltipParts.push(`Path: ${course.path}`);
-        }
-        this.tooltip = tooltipParts.join('\n');
     }
 }
 

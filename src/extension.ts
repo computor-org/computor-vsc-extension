@@ -491,6 +491,8 @@ class ComputorStudentExtension extends ComputorExtension {
           
           // Open the folder as workspace
           await vscode.commands.executeCommand('vscode.openFolder', folderUri[0], false);
+          // VS Code will reload with the new workspace, so we return here
+          return;
         }
       }
       
@@ -682,12 +684,10 @@ class ComputorStudentExtension extends ComputorExtension {
 
       // Set the course in course selection service
       if (selectedCourseId) {
-        const course = courses.find(c => c.id === selectedCourseId);
-        if (course) {
-          console.log(`Setting course in CourseSelectionService:`, course);
-          await this.courseSelectionService.selectCourse(course);
-          console.log(`Course set, current course ID in service:`, this.courseSelectionService.getCurrentCourseId());
-        }
+        console.log(`Setting course in CourseSelectionService with ID:`, selectedCourseId);
+        await this.courseSelectionService.selectCourse(selectedCourseId);
+        console.log(`Course set, current course ID in service:`, this.courseSelectionService.getCurrentCourseId());
+        
         // Force a refresh after setting the course
         console.log('Refreshing tree provider after course selection');
         this.treeProvider.refresh();
@@ -736,12 +736,9 @@ type ComputorExtensionConstructor = new (context: any) => ComputorExtension;
 
 let extensionClasses: Array<{id: string, extensionClass: ComputorExtensionConstructor}> = [];
 let extensions: Array<ComputorExtension> = [];
+let autoLoginTimeout: NodeJS.Timeout | undefined;
 
-export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  console.log('Computor extension is now active');
-
-  IconGenerator.initialize(context);
-
+async function autoLoginStudent(context: vscode.ExtensionContext) {
   // Check if this is a student workspace
   const workspaceFolders = vscode.workspace.workspaceFolders;
   if (workspaceFolders && workspaceFolders.length > 0 && workspaceFolders[0]) {
@@ -750,9 +747,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     
     if (fs.existsSync(markerFile)) {
       console.log('Detected student workspace marker file');
+
+      // Check if already logged in as any role
+      if (extensions.length > 0) {
+        console.log('Already logged in, skipping auto-login prompt');
+        return;
+      }
       
-      // Auto-trigger student login after a short delay
-      setTimeout(async () => {
+      // Check if we have stored credentials to auto-login
+      const settings = vscode.workspace.getConfiguration('computor');
+      const backendUrl = settings.get<string>('backendUrl');
+      const hasStoredCredentials = backendUrl && 
+        await context.secrets.get('computor.api.token');
+      
+      if (hasStoredCredentials) {
+        // Auto-login silently if we have credentials
+        console.log('Auto-logging in as student with stored credentials');
+        await vscode.commands.executeCommand('computor.student.login');
+      } else {
+        // Otherwise show the prompt
         const answer = await vscode.window.showInformationMessage(
           'Student workspace detected. Would you like to login as a student?',
           'Login as Student',
@@ -762,9 +775,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         if (answer === 'Login as Student') {
           await vscode.commands.executeCommand('computor.student.login');
         }
-      }, 1000);
+      }
     }
   }
+}
+
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  console.log('Computor extension is now active');
+
+  IconGenerator.initialize(context);
 
   extensionClasses.push({id: "computor.lecturer.login", extensionClass: ComputorLecturerExtension});
   extensionClasses.push({id: "computor.tutor.login", extensionClass: ComputorTutorExtension});
@@ -772,10 +791,35 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   for (const { id, extensionClass } of extensionClasses) {
     context.subscriptions.push(vscode.commands.registerCommand(id, async () => {
+      // Cancel any pending auto-login popup
+      if (autoLoginTimeout) {
+        clearTimeout(autoLoginTimeout);
+        autoLoginTimeout = undefined;
+        console.log('Cancelled auto-login timeout due to manual login');
+      }
+      
+      // Check if this extension type is already active
+      const existingExtension = extensions.find(ext => ext.constructor === extensionClass);
+      if (existingExtension) {
+        vscode.window.showWarningMessage(`Already logged in as ${id.split('.')[1]}. Please logout first.`);
+        return;
+      }
+      
       const extension = new extensionClass(context);
-      await extension.initialize();
-      await extension.activate();
-      extensions.push(extension);
+      try {
+        await extension.initialize();
+        await extension.activate();
+        extensions.push(extension);
+      } catch (error) {
+        console.error(`Failed to activate ${id}:`, error);
+        vscode.window.showErrorMessage(`Failed to login as ${id.split('.')[1]}: ${error}`);
+        // Clean up the partially initialized extension
+        try {
+          await extension.deactivate();
+        } catch (e) {
+          console.error('Failed to deactivate after error:', e);
+        }
+      }
     }));
   }
 
@@ -793,6 +837,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.commands.executeCommand('workbench.action.openSettings', 'computor');
     })
   );
+
+  await autoLoginStudent(context);
 }
 
 export function deactivate(): void {
