@@ -590,68 +590,59 @@ class ComputorStudentExtension extends ComputorExtension {
       this.workspaceManager = new StudentWorkspaceManager(this.context, this.apiService);
       this.repositoryManager = new StudentRepositoryManager(this.context, this.apiService);
 
-      // Check if current workspace is already a course repository
-      const detectedCourseId = await this.workspaceManager.detectCourseRepository();
+      // First, check if we have a saved course ID in the marker file
+      let selectedCourseId: string | undefined;
+      const workspaceFolders = vscode.workspace.workspaceFolders;
       
-      let selectedCourseId: string | undefined = detectedCourseId;
-      
-      if (detectedCourseId) {
-        // Workspace is already a course repository
-        const course = courses.find(c => c.id === detectedCourseId);
-        if (course) {
-          vscode.window.showInformationMessage(
-            `Detected course workspace: ${course.title || course.path}`
-          );
-        }
-      } else {
-        // No course detected, check if we have a saved course in marker file
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        if (workspaceFolders && workspaceFolders.length > 0 && workspaceFolders[0]) {
-          const markerFile = path.join(workspaceFolders[0].uri.fsPath, '.computor_student');
-          if (fs.existsSync(markerFile)) {
-            try {
-              const markerData = JSON.parse(fs.readFileSync(markerFile, 'utf8'));
-              if (markerData.courseId && courses.find(c => c.id === markerData.courseId)) {
-                selectedCourseId = markerData.courseId;
-                console.log(`Loaded course ID from marker file: ${selectedCourseId}`);
+      if (workspaceFolders && workspaceFolders.length > 0 && workspaceFolders[0]) {
+        const markerFile = path.join(workspaceFolders[0].uri.fsPath, '.computor_student');
+        if (fs.existsSync(markerFile)) {
+          try {
+            const markerData = JSON.parse(fs.readFileSync(markerFile, 'utf8'));
+            if (markerData.courseId && courses.find(c => c.id === markerData.courseId)) {
+              selectedCourseId = markerData.courseId;
+              console.log(`Loaded course ID from marker file: ${selectedCourseId}`);
+              
+              // Confirm with user that they want to continue with this course
+              const course = courses.find(c => c.id === selectedCourseId);
+              const continueWithCourse = await vscode.window.showQuickPick(
+                ['Yes, continue with this course', 'No, select a different course'],
+                {
+                  placeHolder: `Continue with course: ${course?.title || course?.path || 'Unknown'}?`
+                }
+              );
+              
+              if (continueWithCourse === 'No, select a different course') {
+                selectedCourseId = undefined;
               }
-            } catch (e) {
-              console.error('Failed to read course ID from marker file:', e);
             }
+          } catch (e) {
+            console.error('Failed to read course ID from marker file:', e);
           }
+        }
+      }
+      
+      // If no course selected yet, prompt user to select one
+      if (!selectedCourseId) {
+        // Show course selection
+        const courseItems = courses.map(course => ({
+          label: course.title || course.path,
+          description: course.path,
+          detail: `Course ID: ${course.id}`,
+          course
+        }));
+        
+        const selected = await vscode.window.showQuickPick(courseItems, {
+          placeHolder: 'Select a course to work on',
+          title: 'Course Selection'
+        });
+        
+        if (!selected) {
+          vscode.window.showWarningMessage('No course selected. You must select a course to continue.');
+          return;
         }
         
-        // If still no course, try legacy storage
-        if (!selectedCourseId) {
-          selectedCourseId = await this.workspaceManager.loadSavedCourseId();
-        }
-        
-        if (!selectedCourseId || !courses.find(c => c.id === selectedCourseId)) {
-          // Need to select a course
-          const selectedCourse = await this.workspaceManager.selectCourse(courses);
-          
-          if (!selectedCourse) {
-            vscode.window.showWarningMessage('No course selected. You can select one later.');
-            return;
-          }
-          
-          selectedCourseId = selectedCourse.id;
-          
-          // Ask if user wants to clone the repository
-          const clone = await vscode.window.showQuickPick(
-            ['Clone Repository', 'Continue Without Repository'],
-            {
-              placeHolder: `Would you like to clone the repository for ${selectedCourse.title || selectedCourse.path}?`
-            }
-          );
-          
-          if (clone === 'Clone Repository') {
-            const success = await this.workspaceManager.cloneCourseRepository(selectedCourse);
-            if (!success) {
-              vscode.window.showWarningMessage('Repository cloning cancelled or failed');
-            }
-          }
-        }
+        selectedCourseId = selected.course.id;
       }
 
       // Save the selected course

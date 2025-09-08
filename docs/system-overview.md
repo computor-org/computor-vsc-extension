@@ -56,7 +56,7 @@ The Computor VS Code Extension is the interactive frontend component of a compre
   - Each unique repository gets its own subdirectory within the chosen course directory
 - Repository management:
   - All repositories for a course are cloned into subdirectories of the selected course directory
-  - Repositories can be cloned or fork updated as needed
+  - Repositories can be cloned or fork updated as needed.
 - After successful setup:
   - Student course content tree displays based on StudentCourseContentTreeProvider
   - Tree structure uses CourseContentStudentList data model
