@@ -512,15 +512,17 @@ class ComputorStudentExtension extends ComputorExtension {
     const restored = await this.restoreSession();
     if (restored) {
       console.log('Student session restored');
-      await this.initializeStudentView();
+      // Create initial marker file if it doesn't exist (without course ID yet)
       this.createStudentMarkerFile(workspaceRoot);
+      await this.initializeStudentView();
     } else {
       // Perform login
       const success = await this.performLogin();
       if (success) {
         console.log('Student login successful');
-        await this.initializeStudentView();
+        // Create initial marker file if it doesn't exist (without course ID yet)
         this.createStudentMarkerFile(workspaceRoot);
+        await this.initializeStudentView();
       }
     }
   }
@@ -540,6 +542,10 @@ class ComputorStudentExtension extends ComputorExtension {
         try {
           const existing = JSON.parse(fs.readFileSync(markerFile, 'utf8'));
           markerData.created = existing.created || markerData.created;
+          // Preserve existing course ID if no new one provided
+          if (!courseId && existing.courseId) {
+            markerData.courseId = existing.courseId;
+          }
         } catch (e) {
           // If can't parse existing file, use new data
         }
@@ -648,11 +654,16 @@ class ComputorStudentExtension extends ComputorExtension {
       // Save the selected course
       if (selectedCourseId) {
         this.workspaceManager.setCurrentCourseId(selectedCourseId);
-        // Update marker file with course ID
+        // Update marker file with course ID - this is critical!
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (workspaceFolders && workspaceFolders.length > 0 && workspaceFolders[0]) {
           this.createStudentMarkerFile(workspaceFolders[0].uri.fsPath, selectedCourseId);
+          console.log(`Updated marker file with course ID: ${selectedCourseId}`);
+        } else {
+          console.error('Failed to update marker file - no workspace folder found!');
         }
+      } else {
+        console.error('No course selected - marker file not updated');
       }
 
       // Initialize tree view with proper styling
