@@ -1395,4 +1395,27 @@ export class ComputorApiService {
     return !!this.httpClient && this.httpClient.isAuthenticated();
   }
 
+  // Student submission API
+  async submitStudentAssignment(
+    courseContentId: string,
+    data: { branch_name: string; gitlab_token: string; title?: string; description?: string }
+  ): Promise<{ merge_request_id: number; merge_request_iid: number; web_url: string; source_branch: string; target_branch: string; title: string; state: string } | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.post(
+        `/students/course-contents/${courseContentId}/submit`,
+        data
+      );
+      return response.data as any;
+    } catch (error) {
+      console.error('Failed to submit assignment via API:', error);
+      if (error) {
+        vscode.window.showErrorMessage(`${error}`);
+      } else {
+        vscode.window.showErrorMessage('Failed to create Merge Request via backend');
+      }
+      return undefined;
+    }
+  }
+
 }

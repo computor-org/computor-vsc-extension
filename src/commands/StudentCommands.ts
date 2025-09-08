@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+// import * as os from 'os';
 import { StudentCourseContentTreeProvider } from '../ui/tree/student/StudentCourseContentTreeProvider';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { GitBranchManager } from '../services/GitBranchManager';
@@ -8,6 +9,8 @@ import { CourseSelectionService } from '../services/CourseSelectionService';
 import { TestResultService } from '../services/TestResultService';
 import { SubmissionGroupStudentList } from '../types/generated';
 import { StudentRepositoryManager } from '../services/StudentRepositoryManager';
+import { execAsync } from '../utils/exec';
+import { GitLabTokenManager } from '../services/GitLabTokenManager';
 
 // (Deprecated legacy types removed)
 
@@ -21,6 +24,7 @@ export class StudentCommands {
   private repositoryManager?: StudentRepositoryManager;
   private gitBranchManager: GitBranchManager;
   private testResultService: TestResultService;
+  private gitlabTokenManager: GitLabTokenManager;
 
   constructor(
     context: vscode.ExtensionContext, 
@@ -30,12 +34,13 @@ export class StudentCommands {
   ) {
     this.context = context;
     this.treeDataProvider = treeDataProvider;
-    // Use provided apiService or create a new one
+    // Use provided apiService || create a new one
     this.apiService = apiService || new ComputorApiService(context);
     // this.workspaceManager = WorkspaceManager.getInstance(context);
     this.repositoryManager = repositoryManager;
     this.gitBranchManager = GitBranchManager.getInstance();
     this.testResultService = TestResultService.getInstance();
+    this.gitlabTokenManager = GitLabTokenManager.getInstance(context);
     // Make sure TestResultService has the API service
     this.testResultService.setApiService(this.apiService);
     void this.courseContentTreeProvider; // Unused for now
@@ -264,35 +269,124 @@ export class StudentCommands {
             return;
           }
 
-          // Ensure we are on the assignment branch
-          const branchInfo = await this.gitBranchManager.checkAssignmentBranch(repoPath, assignmentPath);
-          if (!branchInfo.isCurrent) {
-            await this.gitBranchManager.switchToAssignmentBranch(repoPath, assignmentPath);
+          // Pre-check: warn if repository has uncommitted changes
+          try {
+            const dirty = await this.gitBranchManager.hasChanges(repoPath);
+            if (dirty) {
+              const choice = await vscode.window.showWarningMessage(
+                'Repository has uncommitted changes. Submission will ignore your working directory and restore assignment files from origin/main into a separate submission branch.',
+                'Proceed anyway',
+                'Cancel'
+              );
+              if (choice !== 'Proceed anyway') {
+                return;
+              }
+            }
+          } catch {
+            // If status fails, continue without blocking
           }
 
-          // Ask for commit message
-          const commitMessage = await vscode.window.showInputBox({
-            prompt: 'Enter commit message for submission',
-            value: `Submit ${assignmentTitle}`
+          // Auto-generate commit message (no prompt)
+          const nowTs = new Date().toISOString().replace('T', ' ').split('.')[0];
+          const commitMessage = `Submit ${assignmentTitle} - ${nowTs}`;
+
+          // Perform submission using git worktree to keep main worktree on main branch
+          let submissionOk = false;
+          await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `Submitting ${assignmentTitle}...`,
+            cancellable: false
+          }, async (progress) => {
+            try {
+              const relAssignmentPath = path.relative(repoPath, directory!);
+              const assignmentId = String(itemOrSubmissionGroup?.courseContent?.id || submissionGroup?.id || assignmentPath);
+              const submissionBranch = `submission-${assignmentId}`;
+
+              progress.report({ message: 'Fetching origin/main...' });
+              await execAsync('git fetch origin main', { cwd: repoPath });
+
+              const tempRoot = path.join(require('os').tmpdir(), 'computor', 'submit');
+              await fs.promises.mkdir(tempRoot, { recursive: true });
+              const repoName = path.basename(repoPath);
+              const time = Date.now().toString();
+              const worktreePath = path.join(tempRoot, `${repoName}-${submissionBranch}-${time}`);
+
+              const { stdout: lsRemote } = await execAsync(`git ls-remote --heads origin ${submissionBranch}`, { cwd: repoPath });
+              const existsRemote = lsRemote.trim().length > 0;
+              progress.report({ message: existsRemote ? 'Checking out submission branch...' : 'Creating submission branch...' });
+              if (existsRemote) {
+                await execAsync(`git worktree add "${worktreePath}" "${submissionBranch}"`, { cwd: repoPath });
+              } else {
+                await execAsync(`git worktree add "${worktreePath}" -b "${submissionBranch}" origin/main`, { cwd: repoPath });
+              }
+
+              // Clear worktree contents except .git
+              progress.report({ message: 'Clearing worktree...' });
+              const entries = await fs.promises.readdir(worktreePath, { withFileTypes: true });
+              for (const entry of entries) {
+                if (entry.name === '.git') continue;
+                await fs.promises.rm(path.join(worktreePath, entry.name), { recursive: true, force: true });
+              }
+
+              // Restore assignment folder from origin/main
+              progress.report({ message: 'Restoring assignment files...' });
+              await execAsync(`git checkout origin/main -- ${JSON.stringify(relAssignmentPath)}`, { cwd: worktreePath });
+
+              // Stage and commit
+              await execAsync(`git add ${JSON.stringify(relAssignmentPath)}`, { cwd: worktreePath });
+              const { stdout: diffCheck } = await execAsync('git diff --cached --name-only', { cwd: worktreePath });
+              if (diffCheck.trim().length > 0) {
+                const commitDate = new Date().toISOString();
+                progress.report({ message: 'Committing...' });
+                await execAsync(`git commit -m ${JSON.stringify(`Submit ${assignmentId} at ${commitDate}`)}`, { cwd: worktreePath });
+              } else {
+                progress.report({ message: 'No changes to commit' });
+              }
+
+              // Push branch
+              progress.report({ message: 'Pushing submission branch...' });
+              try {
+                await execAsync(`git push origin ${submissionBranch}`, { cwd: worktreePath });
+              } catch {
+                await execAsync(`git push -u origin ${submissionBranch}`, { cwd: worktreePath });
+              }
+
+              // Cleanup worktree
+              progress.report({ message: 'Cleaning up...' });
+              try {
+                await execAsync(`git worktree remove "${worktreePath}" --force`, { cwd: repoPath });
+              } catch {
+                await fs.promises.rm(worktreePath, { recursive: true, force: true });
+              }
+
+              // Create MR via backend API
+              const { stdout: originUrlStdout } = await execAsync('git remote get-url origin', { cwd: repoPath });
+              const gitlabOrigin = (this as any).extractGitLabOrigin(originUrlStdout.trim());
+              let token: string | undefined;
+              if (gitlabOrigin) {
+                token = await this.gitlabTokenManager.ensureTokenForUrl(gitlabOrigin);
+              }
+              if (!token) {
+                vscode.window.showWarningMessage('No GitLab token available; cannot create MR automatically');
+              } else {
+                const mr = await this.apiService.submitStudentAssignment(String(itemOrSubmissionGroup?.courseContent?.id || ""), {
+                  branch_name: submissionBranch,
+                  gitlab_token: token,
+                  title: `Submission: ${assignmentTitle}`,
+                  description: commitMessage
+                });
+                if (mr?.web_url) {
+                  submissionOk = true;
+                  await vscode.env.openExternal(vscode.Uri.parse(mr.web_url));
+                }
+              }
+            } catch (e) {
+              throw e;
+            }
           });
-          if (!commitMessage) return;
-
-          // Commit and push
-          await this.gitBranchManager.stageAll(repoPath);
-          await this.gitBranchManager.commitChanges(repoPath, commitMessage);
-          await this.gitBranchManager.pushAssignmentBranch(repoPath, assignmentPath);
-
-          // Offer to create Merge Request
-          const createMR = await vscode.window.showInformationMessage(
-            'Assignment pushed. Create merge request?',
-            'Yes',
-            'No'
-          );
-          if (createMR === 'Yes') {
-            await this.gitBranchManager.createMergeRequest(repoPath, assignmentPath);
+          if (submissionOk) {
+            vscode.window.showInformationMessage('Assignment submitted successfully.');
           }
-
-          vscode.window.showInformationMessage('Assignment submitted successfully.');
         } catch (error: any) {
           console.error('Failed to submit assignment:', error);
           vscode.window.showErrorMessage(`Failed to submit assignment: ${error?.message || error}`);
@@ -300,11 +394,11 @@ export class StudentCommands {
       })
     );
 
-    // View submission group details (accepts tree item or raw submission group)
+    // View submission group details (accepts tree item || raw submission group)
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.student.viewSubmissionGroup', async (arg: any) => {
         try {
-          // Resolve submission group from tree item or direct arg
+          // Resolve submission group from tree item || direct arg
           const submissionGroup: SubmissionGroupStudentList | undefined = arg?.submissionGroup
             ? (arg.submissionGroup as SubmissionGroupStudentList)
             : (arg as SubmissionGroupStudentList);
@@ -382,25 +476,36 @@ export class StudentCommands {
           }, async (progress) => {
             progress.report({ increment: 0, message: 'Checking branch...' });
 
+            // Find repository root
+            const repoPath = await this.findRepoRoot(directory);
+            if (!repoPath) {
+              throw new Error('Could not determine repository root');
+            }
+
             // Ensure we're on the main branch
-            const currentBranch = await this.gitBranchManager.getCurrentBranch(directory);
-            const mainBranch = await this.gitBranchManager.getMainBranch(directory);
+            const currentBranch = await this.gitBranchManager.getCurrentBranch(repoPath);
+            const mainBranch = await this.gitBranchManager.getMainBranch(repoPath);
             
             if (currentBranch !== mainBranch) {
               progress.report({ increment: 20, message: `Switching to ${mainBranch} branch...` });
-              await this.gitBranchManager.checkoutBranch(directory, mainBranch);
+              await this.gitBranchManager.checkoutBranch(repoPath, mainBranch);
             }
 
             progress.report({ increment: 40, message: 'Committing changes...' });
-            // Stage all changes in the assignment directory
-            await this.gitBranchManager.stageAll(directory);
+            // Stage only the assignment directory
+            const relAssignmentPath = path.relative(repoPath, directory);
+            await execAsync(`git add ${JSON.stringify(relAssignmentPath)}`, { cwd: repoPath });
             
-            // Commit the changes
-            await this.gitBranchManager.commitChanges(directory, commitMessage);
+            // Commit only if something is staged
+            const { stdout: staged } = await execAsync('git diff --cached --name-only', { cwd: repoPath });
+            if (staged.trim().length === 0) {
+              throw new Error('No changes to commit in the assignment folder');
+            }
+            await execAsync(`git commit -m ${JSON.stringify(commitMessage)}`, { cwd: repoPath });
 
             progress.report({ increment: 60, message: 'Pushing to remote...' });
             // Push to main branch
-            await this.gitBranchManager.pushCurrentBranch(directory);
+            await this.gitBranchManager.pushCurrentBranch(repoPath);
 
             progress.report({ increment: 100, message: 'Successfully committed and pushed!' });
           });
@@ -507,7 +612,7 @@ export class StudentCommands {
               false // Don't auto-submit, just test
             );
           } else {
-            vscode.window.showWarningMessage('Could not submit test: missing commit hash or content ID');
+            vscode.window.showWarningMessage('Could not submit test: missing commit hash || content ID');
           }
 
           // Optionally refresh the tree to update any status indicators
@@ -537,6 +642,7 @@ export class StudentCommands {
 export interface StudentCommands {
   openReadmeIfExists(dir: string, silent?: boolean): Promise<boolean>;
   findRepoRoot(startPath: string): Promise<string | undefined>;
+  copyDirectory(src: string, dest: string): Promise<void>;
 }
 
 StudentCommands.prototype.openReadmeIfExists = async function (dir: string, silent: boolean = false): Promise<boolean> {
@@ -558,6 +664,31 @@ StudentCommands.prototype.openReadmeIfExists = async function (dir: string, sile
   }
 };
 
+// Extract GitLab origin (protocol + host) from a git remote URL
+(StudentCommands.prototype as any).extractGitLabOrigin = function(remote: string): string | undefined {
+  try {
+    if (remote.startsWith('http://') || remote.startsWith('https://')) {
+      const u = new URL(remote);
+      return `${u.protocol}//${u.host}`;
+    }
+    // git@host:group/repo.git
+    if (remote.startsWith('git@')) {
+      const at = remote.indexOf('@');
+      const colon = remote.indexOf(':');
+      if (at !== -1 && colon !== -1 && colon > at) {
+        const host = remote.substring(at + 1, colon);
+        return `https://${host}`;
+      }
+    }
+  } catch {}
+  try {
+    const u = new URL(remote);
+    return `${u.protocol}//${u.host}`;
+  } catch {}
+  return undefined;
+};
+
+
 StudentCommands.prototype.findRepoRoot = async function (startPath: string): Promise<string | undefined> {
   try {
     let current = startPath;
@@ -575,5 +706,25 @@ StudentCommands.prototype.findRepoRoot = async function (startPath: string): Pro
     return undefined;
   } catch {
     return undefined;
+  }
+};
+
+StudentCommands.prototype.copyDirectory = async function (src: string, dest: string): Promise<void> {
+  const stat = await fs.promises.stat(src);
+  if (!stat.isDirectory()) {
+    throw new Error('Source is not a directory');
+  }
+  await fs.promises.rm(dest, { recursive: true, force: true });
+  await fs.promises.mkdir(dest, { recursive: true });
+
+  const entries = await fs.promises.readdir(src, { withFileTypes: true });
+  for (const entry of entries) {
+    const s = path.join(src, entry.name);
+    const d = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      await this.copyDirectory(s, d);
+    } else if (entry.isFile()) {
+      await fs.promises.copyFile(s, d);
+    }
   }
 };
