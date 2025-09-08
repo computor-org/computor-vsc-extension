@@ -525,19 +525,35 @@ class ComputorStudentExtension extends ComputorExtension {
     }
   }
 
-  private createStudentMarkerFile(workspaceRoot: string): void {
+  private createStudentMarkerFile(workspaceRoot: string, courseId?: string): void {
     const markerFile = path.join(workspaceRoot, '.computor_student');
-    if (!fs.existsSync(markerFile)) {
-      try {
-        fs.writeFileSync(markerFile, JSON.stringify({
-          created: new Date().toISOString(),
-          type: 'student_workspace',
-          version: '1.0'
-        }, null, 2));
-        console.log(`Created student marker file at: ${markerFile}`);
-      } catch (error) {
-        console.error('Failed to create marker file:', error);
+    try {
+      let markerData: any = {
+        type: 'student_workspace',
+        version: '1.0',
+        created: new Date().toISOString(),
+        lastUpdated: new Date().toISOString()
+      };
+
+      // If file exists, preserve some data
+      if (fs.existsSync(markerFile)) {
+        try {
+          const existing = JSON.parse(fs.readFileSync(markerFile, 'utf8'));
+          markerData.created = existing.created || markerData.created;
+        } catch (e) {
+          // If can't parse existing file, use new data
+        }
       }
+
+      // Add or update course ID if provided
+      if (courseId) {
+        markerData.courseId = courseId;
+      }
+
+      fs.writeFileSync(markerFile, JSON.stringify(markerData, null, 2));
+      console.log(`Updated student marker file at: ${markerFile} with course ID: ${courseId || 'none'}`);
+    } catch (error) {
+      console.error('Failed to create/update marker file:', error);
     }
   }
 
@@ -588,8 +604,27 @@ class ComputorStudentExtension extends ComputorExtension {
           );
         }
       } else {
-        // No course detected, check if we have a saved course
-        selectedCourseId = await this.workspaceManager.loadSavedCourseId();
+        // No course detected, check if we have a saved course in marker file
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (workspaceFolders && workspaceFolders.length > 0 && workspaceFolders[0]) {
+          const markerFile = path.join(workspaceFolders[0].uri.fsPath, '.computor_student');
+          if (fs.existsSync(markerFile)) {
+            try {
+              const markerData = JSON.parse(fs.readFileSync(markerFile, 'utf8'));
+              if (markerData.courseId && courses.find(c => c.id === markerData.courseId)) {
+                selectedCourseId = markerData.courseId;
+                console.log(`Loaded course ID from marker file: ${selectedCourseId}`);
+              }
+            } catch (e) {
+              console.error('Failed to read course ID from marker file:', e);
+            }
+          }
+        }
+        
+        // If still no course, try legacy storage
+        if (!selectedCourseId) {
+          selectedCourseId = await this.workspaceManager.loadSavedCourseId();
+        }
         
         if (!selectedCourseId || !courses.find(c => c.id === selectedCourseId)) {
           // Need to select a course
@@ -622,6 +657,11 @@ class ComputorStudentExtension extends ComputorExtension {
       // Save the selected course
       if (selectedCourseId) {
         this.workspaceManager.setCurrentCourseId(selectedCourseId);
+        // Update marker file with course ID
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (workspaceFolders && workspaceFolders.length > 0 && workspaceFolders[0]) {
+          this.createStudentMarkerFile(workspaceFolders[0].uri.fsPath, selectedCourseId);
+        }
       }
 
       // Initialize tree view with proper styling
