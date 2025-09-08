@@ -57,7 +57,7 @@
       },
       {
         "command": "computor.student.viewSubmissionGroup",
-        "title": "View Submission Group",
+        "title": "View Details",
         "icon": "$(info)",
         "category": "Computor Student"
       },

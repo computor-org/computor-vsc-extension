@@ -300,29 +300,43 @@ export class StudentCommands {
       })
     );
 
-    // View submission group details
+    // View submission group details (accepts tree item or raw submission group)
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.student.viewSubmissionGroup', async (submissionGroup: SubmissionGroupStudentList) => {
-        if (!submissionGroup) {
-          return;
+      vscode.commands.registerCommand('computor.student.viewSubmissionGroup', async (arg: any) => {
+        try {
+          // Resolve submission group from tree item or direct arg
+          const submissionGroup: SubmissionGroupStudentList | undefined = arg?.submissionGroup
+            ? (arg.submissionGroup as SubmissionGroupStudentList)
+            : (arg as SubmissionGroupStudentList);
+
+          if (!submissionGroup) {
+            vscode.window.showWarningMessage('No details available for this item');
+            return;
+          }
+
+          const title = submissionGroup.course_content_title || 'Assignment';
+          const pathStr = submissionGroup.course_content_path || '';
+          const groupStr = `${submissionGroup.current_group_size || 0}/${submissionGroup.max_group_size || 1}`;
+          const repoStr = submissionGroup.repository?.web_url || submissionGroup.repository?.full_path || 'No repository';
+          const members = submissionGroup.members || [];
+          const gradeVal = submissionGroup.latest_grading?.grading;
+          const gradeStr = typeof gradeVal === 'number' ? `${Math.round(gradeVal * 100)}%` : 'Not graded yet';
+
+          const info = [
+            `• ${title}`,
+            `• Path: ${pathStr}`,
+            `• Group: ${groupStr}`,
+            `• Repository: ${repoStr}`,
+            members.length ? '• Members:' : undefined,
+            ...members.map(m => `   - ${m.full_name || m.username}`),
+            `• Latest Grade: ${gradeStr}`
+          ].filter(Boolean).join('\n');
+
+          vscode.window.showInformationMessage(info, { modal: true });
+        } catch (e: any) {
+          console.error('Failed to show submission group details:', e);
+          vscode.window.showErrorMessage('Failed to show details');
         }
-
-        const info = [
-          `**${submissionGroup.course_content_title}**`,
-          '',
-          `Path: ${submissionGroup.course_content_path}`,
-          `Group Size: ${submissionGroup.current_group_size}/${submissionGroup.max_group_size}`,
-          submissionGroup.repository ? `Repository: ${submissionGroup.repository.web_url}` : 'No repository',
-          '',
-          '**Members:**',
-          ...submissionGroup.members?.map(m => `- ${m.full_name || m.username}`) || [],
-          '',
-          submissionGroup.latest_grading ? 
-            `**Latest Grade:** ${submissionGroup.latest_grading.grading}` : 
-            'Not graded yet'
-        ].join('\n');
-
-        vscode.window.showInformationMessage(info, { modal: true });
       })
     );
 
