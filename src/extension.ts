@@ -553,6 +553,26 @@ class ComputorStudentExtension extends ComputorExtension {
       return;
     }
     console.log(`Student workspace root: ${workspaceRoot}`);
+
+    // If this workspace contains a .computor_student with a courseId, ask user to confirm login against that course
+    try {
+      const markerFile = path.join(workspaceRoot, '.computor_student');
+      if (fs.existsSync(markerFile)) {
+        const marker = JSON.parse(fs.readFileSync(markerFile, 'utf8'));
+        if (marker && marker.courseId) {
+          const choice = await vscode.window.showInformationMessage(
+            'This workspace is linked to a Computor course. Continue login for this course?',
+            'Continue',
+            'Cancel'
+          );
+          if (choice === 'Cancel') {
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      console.log('Could not read .computor_student marker pre-login:', e);
+    }
     
     // Try to restore session first
     const restored = await this.restoreSession();
@@ -732,9 +752,26 @@ class ComputorStudentExtension extends ComputorExtension {
         await this.courseSelectionService.selectCourse(selectedCourseId);
         console.log(`Course set, current course ID in service:`, this.courseSelectionService.getCurrentCourseId());
         
-        // Force a refresh after setting the course
-        console.log('Refreshing tree provider after course selection');
-        this.treeProvider.refresh();
+        // After course selection, clone and update all repositories for the course with progress UI
+        if (this.repositoryManager) {
+          await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: 'Preparing course repositories... ',
+            cancellable: false
+          }, async (progress) => {
+            progress.report({ message: 'Starting...' });
+            try {
+              await this.repositoryManager!.autoSetupRepositories(selectedCourseId!, (msg) => progress.report({ message: msg }));
+            } catch (e) {
+              console.error('Repository setup failed:', e);
+              vscode.window.showErrorMessage('Failed to prepare course repositories. You can try cloning from the tree.');
+            }
+            // Refresh tree to reflect cloned repos and mapped directories
+            if (this.treeProvider) {
+              this.treeProvider.refresh();
+            }
+          });
+        }
       } else {
         console.warn('No course selected - tree will show empty');
       }

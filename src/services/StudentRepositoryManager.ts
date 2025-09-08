@@ -42,8 +42,10 @@ export class StudentRepositoryManager {
   /**
    * Auto-clone or update all repositories for a student's courses
    */
-  async autoSetupRepositories(courseId?: string): Promise<void> {
+  async autoSetupRepositories(courseId?: string, onProgress?: (message: string) => void): Promise<void> {
+    const report = onProgress || (() => {});
     console.log('[StudentRepositoryManager] Starting auto-setup of repositories');
+    report('Discovering course contents...');
     
     try {
       // Ensure workspace directory exists
@@ -54,6 +56,7 @@ export class StudentRepositoryManager {
       
       if (!courseContents || courseContents.length === 0) {
         console.log('[StudentRepositoryManager] No course contents found');
+        report('No course contents found');
         return;
       }
       
@@ -62,10 +65,12 @@ export class StudentRepositoryManager {
       
       if (repositories.length === 0) {
         console.log('[StudentRepositoryManager] No repositories to clone');
+        report('No repositories to clone');
         return;
       }
       
       console.log(`[StudentRepositoryManager] Found ${repositories.length} repositories to process`);
+      report(`Found ${repositories.length} repositories to process`);
       
       // Group by course
       const reposByCourse = new Map<string, RepositoryInfo[]>();
@@ -82,10 +87,12 @@ export class StudentRepositoryManager {
       
       // Process each course's repositories
       for (const [courseIdForRepo, repos] of reposByCourse) {
-        await this.processRepositoriesForCourse(courseIdForRepo, repos, courseContents);
+        report(`Processing repositories for course ${courseIdForRepo} (${repos.length})`);
+        await this.processRepositoriesForCourse(courseIdForRepo, repos, courseContents, report);
       }
       
       console.log('[StudentRepositoryManager] Repository setup completed');
+      report('Repository setup completed');
       
     } catch (error) {
       console.error('[StudentRepositoryManager] Failed to auto-setup repositories:', error);
@@ -139,8 +146,10 @@ export class StudentRepositoryManager {
   private async processRepositoriesForCourse(
     courseId: string, 
     repositories: RepositoryInfo[],
-    courseContents: any[]
+    courseContents: any[],
+    onProgress?: (message: string) => void
   ): Promise<void> {
+    const report = onProgress || (() => {});
     if (repositories.length === 0) return;
     
     // Get GitLab token
@@ -184,10 +193,14 @@ export class StudentRepositoryManager {
     }
     
     console.log(`[StudentRepositoryManager] Found ${uniqueRepos.size} unique repositories for course ${courseId}`);
+    report(`Found ${uniqueRepos.size} unique repositories`);
     
     // Clone/update each unique repository only once
     for (const [cloneUrl, repoInfos] of uniqueRepos) {
-      await this.setupUniqueRepository(courseId, cloneUrl, repoInfos, token, courseContents, upstreamUrl);
+      const urlParts = cloneUrl.replace(/\.git$/, '').split('/');
+      const repoName = urlParts[urlParts.length - 1] || 'repository';
+      report(`Setting up ${repoName}...`);
+      await this.setupUniqueRepository(courseId, cloneUrl, repoInfos, token, courseContents, upstreamUrl, onProgress);
     }
     
     // Also check for any existing repositories that might not have their directory field set
@@ -204,8 +217,10 @@ export class StudentRepositoryManager {
     repoInfos: RepositoryInfo[],
     token: string,
     courseContents: any[],
-    upstreamUrl?: string
+    upstreamUrl?: string,
+    onProgress?: (message: string) => void
   ): Promise<void> {
+    const report = onProgress || (() => {});
     // Create a unique directory name for this repository based on the URL
     // Extract repository name from clone URL
     const urlParts = cloneUrl.replace(/\.git$/, '').split('/');
@@ -218,6 +233,7 @@ export class StudentRepositoryManager {
     
     if (!repoExists) {
       console.log(`[StudentRepositoryManager] Cloning repository ${cloneUrl}`);
+      report(`Cloning ${repoName}...`);
       const authenticatedUrl = this.addTokenToUrl(cloneUrl, token);
       
       try {
@@ -258,16 +274,19 @@ export class StudentRepositoryManager {
       }
     } else {
       console.log(`[StudentRepositoryManager] Repository exists at ${repoPath}, updating`);
+      report(`Updating ${repoName}...`);
       await this.updateRepository(repoPath);
     }
     
     // Sync fork with upstream if available
     if (upstreamUrl) {
       console.log('[StudentRepositoryManager] Checking if fork needs update from upstream');
+      report('Checking for upstream updates...');
       const updated = await this.syncForkWithUpstream(repoPath, upstreamUrl, token);
       
       if (updated) {
         console.log('[StudentRepositoryManager] Fork was updated');
+        report('Upstream updates merged; pushing to origin...');
         // Push the update to origin
         try {
           await execAsync('git push origin', {

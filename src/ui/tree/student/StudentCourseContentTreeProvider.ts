@@ -712,8 +712,7 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
     
     private setupTooltip(): void {
         const lines: string[] = [
-            this.courseContent.title || 'Course Content',
-            `Path: ${this.courseContent.path}`
+            this.courseContent.title || 'Course Content'
         ];
         
         if (this.contentType) {
