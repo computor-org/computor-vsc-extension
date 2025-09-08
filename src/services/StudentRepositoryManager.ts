@@ -358,21 +358,16 @@ export class StudentRepositoryManager {
    * Update directory paths for existing repositories
    */
   public updateExistingRepositoryPaths(courseId: string, courseContents: any[]): void {
-    const coursePath = path.join(this.workspaceRoot, 'courses', courseId);
+    void courseId; // Not used in new flat structure
     
-    // Check if course directory exists
-    if (!fs.existsSync(coursePath)) {
-      return;
-    }
-    
-    // List all directories in the course folder
+    // List all directories in the workspace root that are git repositories
     try {
-      const dirs = fs.readdirSync(coursePath).filter(file => {
-        const filePath = path.join(coursePath, file);
+      const dirs = fs.readdirSync(this.workspaceRoot).filter(file => {
+        const filePath = path.join(this.workspaceRoot, file);
         return fs.statSync(filePath).isDirectory() && fs.existsSync(path.join(filePath, '.git'));
       });
       
-      console.log(`[StudentRepositoryManager] Found existing repositories: ${dirs.join(', ')}`);
+      console.log(`[StudentRepositoryManager] Found existing repositories in workspace: ${dirs.join(', ')}`);
       
       // For each content item, check if its directory exists
       for (const content of courseContents) {
@@ -385,10 +380,10 @@ export class StudentRepositoryManager {
         const isAssignment = content.course_content_type?.course_content_kind_id === 'assignment' || 
                             content.example_id;
         
-        if (isAssignment && content.submission_group?.repository) {
+        if (isAssignment) {
           // Look for a matching repository directory
           for (const dir of dirs) {
-            const repoPath = path.join(coursePath, dir);
+            const repoPath = path.join(this.workspaceRoot, dir);
             
             // Check if this content's subdirectory exists within this repository
             // Use only example_identifier as the subdirectory, not content.directory which might be a full path
@@ -401,10 +396,20 @@ export class StudentRepositoryManager {
                 console.log(`[StudentRepositoryManager] Found existing directory for ${content.title}: ${fullPath}`);
                 break;
               }
-            } else {
-              // No subdirectory specified, use the repository root
-              content.directory = repoPath;
-              console.log(`[StudentRepositoryManager] Set directory for ${content.title} to repository root: ${repoPath}`);
+            } else if (content.submission_group?.repository) {
+              // Check if this repository matches the assignment's repository
+              // Extract repo name from the submission group repository URL
+              const repoUrl = content.submission_group.repository.ssh_url_to_repo || 
+                             content.submission_group.repository.http_url_to_repo || '';
+              const urlParts = repoUrl.replace(/\.git$/, '').split('/');
+              const expectedRepoName = urlParts[urlParts.length - 1] || '';
+              
+              if (dir === expectedRepoName) {
+                // No subdirectory specified, use the repository root
+                content.directory = repoPath;
+                console.log(`[StudentRepositoryManager] Set directory for ${content.title} to repository root: ${repoPath}`);
+                break;
+              }
             }
           }
         }

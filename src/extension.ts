@@ -14,6 +14,7 @@ import { StudentCourseContentTreeProvider } from './ui/tree/student/StudentCours
 import { StudentRepositoryManager } from './services/StudentRepositoryManager';
 import { CourseSelectionService } from './services/CourseSelectionService';
 import { StatusBarService } from './ui/StatusBarService';
+import { StudentCommands } from './commands/StudentCommands';
 import { TutorTreeDataProvider } from './ui/tree/tutor/TutorTreeDataProvider';
 import { TutorCommands } from './commands/TutorCommands';
 import { IconGenerator } from './utils/IconGenerator';
@@ -437,6 +438,49 @@ class ComputorTutorExtension extends ComputorExtension {
   }
 }
 
+
+
+// async function autoLoginStudent(context: vscode.ExtensionContext) {
+//   // Check if this is a student workspace
+//   const workspaceFolders = vscode.workspace.workspaceFolders;
+//   if (workspaceFolders && workspaceFolders.length > 0 && workspaceFolders[0]) {
+//     const workspaceRoot = workspaceFolders[0].uri.fsPath;
+//     const markerFile = path.join(workspaceRoot, '.computor_student');
+    
+//     if (fs.existsSync(markerFile)) {
+//       console.log('Detected student workspace marker file');
+
+//       // Check if already logged in as any role
+//       if (extensions.length > 0) {
+//         console.log('Already logged in, skipping auto-login prompt');
+//         return;
+//       }
+      
+//       // Check if we have stored credentials to auto-login
+//       const settings = vscode.workspace.getConfiguration('computor');
+//       const backendUrl = settings.get<string>('backendUrl');
+//       const hasStoredCredentials = backendUrl && 
+//         await context.secrets.get('computor.api.token');
+      
+//       if (hasStoredCredentials) {
+//         // Auto-login silently if we have credentials
+//         console.log('Auto-logging in as student with stored credentials');
+//         await vscode.commands.executeCommand('computor.student.login');
+//       } else {
+//         // Otherwise show the prompt
+//         const answer = await vscode.window.showInformationMessage(
+//           'Student workspace detected. Would you like to login as a student?',
+//           'Login as Student',
+//           'Not Now'
+//         );
+        
+//         if (answer === 'Login as Student') {
+//           await vscode.commands.executeCommand('computor.student.login');
+//         }
+//       }
+//     }
+//   }
+// }
 /**
  * Student Extension with course selection, repository management, and tree view
  */
@@ -695,12 +739,9 @@ class ComputorStudentExtension extends ComputorExtension {
         console.warn('No course selected - tree will show empty');
       }
 
-      // Register refresh command
-      this.disposables.push(
-        vscode.commands.registerCommand('computor.student.refresh', () => {
-          this.treeProvider?.refresh();
-        })
-      );
+      // Register student commands
+      const commands = new StudentCommands(this.context, this.treeProvider, this.apiService, this.repositoryManager);
+      commands.registerCommands();
 
       // Show student view
       await vscode.commands.executeCommand('setContext', 'computor.student.show', true);
@@ -736,49 +777,7 @@ type ComputorExtensionConstructor = new (context: any) => ComputorExtension;
 
 let extensionClasses: Array<{id: string, extensionClass: ComputorExtensionConstructor}> = [];
 let extensions: Array<ComputorExtension> = [];
-let autoLoginTimeout: NodeJS.Timeout | undefined;
 
-async function autoLoginStudent(context: vscode.ExtensionContext) {
-  // Check if this is a student workspace
-  const workspaceFolders = vscode.workspace.workspaceFolders;
-  if (workspaceFolders && workspaceFolders.length > 0 && workspaceFolders[0]) {
-    const workspaceRoot = workspaceFolders[0].uri.fsPath;
-    const markerFile = path.join(workspaceRoot, '.computor_student');
-    
-    if (fs.existsSync(markerFile)) {
-      console.log('Detected student workspace marker file');
-
-      // Check if already logged in as any role
-      if (extensions.length > 0) {
-        console.log('Already logged in, skipping auto-login prompt');
-        return;
-      }
-      
-      // Check if we have stored credentials to auto-login
-      const settings = vscode.workspace.getConfiguration('computor');
-      const backendUrl = settings.get<string>('backendUrl');
-      const hasStoredCredentials = backendUrl && 
-        await context.secrets.get('computor.api.token');
-      
-      if (hasStoredCredentials) {
-        // Auto-login silently if we have credentials
-        console.log('Auto-logging in as student with stored credentials');
-        await vscode.commands.executeCommand('computor.student.login');
-      } else {
-        // Otherwise show the prompt
-        const answer = await vscode.window.showInformationMessage(
-          'Student workspace detected. Would you like to login as a student?',
-          'Login as Student',
-          'Not Now'
-        );
-        
-        if (answer === 'Login as Student') {
-          await vscode.commands.executeCommand('computor.student.login');
-        }
-      }
-    }
-  }
-}
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   console.log('Computor extension is now active');
@@ -791,12 +790,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   for (const { id, extensionClass } of extensionClasses) {
     context.subscriptions.push(vscode.commands.registerCommand(id, async () => {
-      // Cancel any pending auto-login popup
-      if (autoLoginTimeout) {
-        clearTimeout(autoLoginTimeout);
-        autoLoginTimeout = undefined;
-        console.log('Cancelled auto-login timeout due to manual login');
-      }
       
       // Check if this extension type is already active
       const existingExtension = extensions.find(ext => ext.constructor === extensionClass);
@@ -837,8 +830,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.commands.executeCommand('workbench.action.openSettings', 'computor');
     })
   );
-
-  await autoLoginStudent(context);
 }
 
 export function deactivate(): void {

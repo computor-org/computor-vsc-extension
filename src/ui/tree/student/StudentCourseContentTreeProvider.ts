@@ -345,6 +345,10 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                         }
                     } else {
                         console.log('[StudentTree] Using cached course contents:', courseContents.length, 'items');
+                        // Still need to update directory paths in case repositories were cloned since last refresh
+                        if (this.repositoryManager) {
+                            this.repositoryManager.updateExistingRepositoryPaths(selectedCourseId, courseContents);
+                        }
                     }
                     
                     if (courseContents.length === 0) {
