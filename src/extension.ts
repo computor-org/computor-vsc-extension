@@ -607,20 +607,13 @@ class ComputorStudentExtension extends ComputorExtension {
             const markerData = JSON.parse(fs.readFileSync(markerFile, 'utf8'));
             if (markerData.courseId && courses.find(c => c.id === markerData.courseId)) {
               selectedCourseId = markerData.courseId;
-              console.log(`Loaded course ID from marker file: ${selectedCourseId}`);
-              
-              // Confirm with user that they want to continue with this course
               const course = courses.find(c => c.id === selectedCourseId);
-              const continueWithCourse = await vscode.window.showQuickPick(
-                ['Yes, continue with this course', 'No, select a different course'],
-                {
-                  placeHolder: `Continue with course: ${course?.title || course?.path || 'Unknown'}?`
-                }
-              );
+              console.log(`Auto-selected course from marker file: ${course?.title || course?.path} (${selectedCourseId})`);
               
-              if (continueWithCourse === 'No, select a different course') {
-                selectedCourseId = undefined;
-              }
+              // Show info message about which course was auto-selected
+              vscode.window.showInformationMessage(
+                `Working with course: ${course?.title || course?.path}`
+              );
             }
           } catch (e) {
             console.error('Failed to read course ID from marker file:', e);
