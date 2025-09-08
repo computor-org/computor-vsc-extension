@@ -598,6 +598,7 @@ class CourseContentPathItem extends TreeItem {
         const count = this.countItems(node);
         this.description = `${count} item${count !== 1 ? 's' : ''}`;
         this.tooltip = `Unit: ${name}\n${count} items`;
+        this.tooltip = `Type: ${node.contentType?.title}`;
     }
     
     private countItems(node: ContentNode): number {
@@ -687,27 +688,28 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
     }
     
     private setupDescription(): void {
-        const parts: string[] = [];
-        
-        // Content type
-        if (this.contentType?.title) {
-            parts.push(this.contentType.title);
+        // New compact metrics in brackets: Tests, Submissions, Points
+        const entries: string[] = [];
+
+        const testCount = (this.courseContent as any)?.result_count as number | undefined;
+        const maxTests = (this.courseContent as any)?.max_test_runs as number | undefined;
+        if (typeof testCount === 'number') {
+            entries.push(`${typeof maxTests === 'number' ? `[${testCount}/${maxTests}]` : `[${testCount}]`}`);
         }
-        
-        // Team indicator
-        if (this.submissionGroup && this.submissionGroup.max_group_size && this.submissionGroup.max_group_size > 1) {
-            parts.push(`👥 ${this.submissionGroup.current_group_size}/${this.submissionGroup.max_group_size}`);
+
+        const submitCount = this.submissionGroup?.count as number | undefined;
+        const maxSubmits = this.submissionGroup?.max_submissions as number | undefined;
+        if (typeof submitCount === 'number') {
+            entries.push(`${typeof maxSubmits === 'number' ? `[${submitCount}/${maxSubmits}]` : `[${submitCount}]`}`);
         }
-        
-        // Grade
-        if (this.submissionGroup?.latest_grading) {
-            const grade = Math.round(this.submissionGroup.latest_grading.grading * 100);
-            parts.push(`📊 ${grade}%`);
-        } else if (hasExampleAssigned(this.courseContent)) {
-            parts.push('📝 Assignment');
+
+        const rawGrade = (this.submissionGroup?.latest_grading?.grading ?? this.submissionGroup?.grading) as number | undefined;
+        if (typeof rawGrade === 'number') {
+            const pts = Math.round(rawGrade * 100);
+            entries.push(`[${pts}]`);
         }
-        
-        this.description = parts.length > 0 ? parts.join(' • ') : undefined;
+
+        this.description = entries.length > 0 ? `${entries.join('')}` : undefined;
     }
     
     private setupTooltip(): void {
@@ -730,23 +732,40 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         
         if (this.submissionGroup?.repository) {
             lines.push(`Repository: ${this.submissionGroup.repository.full_path}`);
-            
-            if (this.submissionGroup.latest_grading) {
-                const grade = Math.round(this.submissionGroup.latest_grading.grading * 100);
-                lines.push(`Grade: ${grade}%`);
-                if (this.submissionGroup.latest_grading.status) {
-                    lines.push(`Status: ${this.submissionGroup.latest_grading.status}`);
-                }
-                if (this.submissionGroup.latest_grading.graded_by) {
-                    lines.push(`Graded by: ${this.submissionGroup.latest_grading.graded_by}`);
-                }
+        }
+
+        // Attempts and points
+        const testCount = (this.courseContent as any)?.result_count as number | undefined;
+        const maxTests = (this.courseContent as any)?.max_test_runs as number | undefined;
+        if (typeof testCount === 'number') {
+            lines.push(`Tests: ${typeof maxTests === 'number' ? `${testCount} of ${maxTests}` : `${testCount}`}`);
+        }
+
+        const submitCount = this.submissionGroup?.count as number | undefined;
+        const maxSubmits = this.submissionGroup?.max_submissions as number | undefined;
+        if (typeof submitCount === 'number') {
+            lines.push(`Submissions: ${typeof maxSubmits === 'number' ? `${submitCount} of ${maxSubmits}` : `${submitCount}`}`);
+        }
+
+        const rawGrade = (this.submissionGroup?.latest_grading?.grading ?? this.submissionGroup?.grading) as number | undefined;
+        if (typeof rawGrade === 'number') {
+            const pts = Math.round(rawGrade * 100);
+            lines.push(`Points: ${pts}`);
+        }
+
+        // Additional grading details and team members
+        if (this.submissionGroup?.latest_grading) {
+            if (this.submissionGroup.latest_grading.status) {
+                lines.push(`Status: ${this.submissionGroup.latest_grading.status}`);
             }
-            
-            if (this.submissionGroup.members && this.submissionGroup.members.length > 1) {
-                lines.push('Team members:');
-                for (const member of this.submissionGroup.members) {
-                    lines.push(`  - ${member.full_name || member.username}`);
-                }
+            if (this.submissionGroup.latest_grading.graded_by) {
+                lines.push(`Graded by: ${this.submissionGroup.latest_grading.graded_by}`);
+            }
+        }
+        if (this.submissionGroup?.members && this.submissionGroup.members.length > 1) {
+            lines.push('Team members:');
+            for (const member of this.submissionGroup.members) {
+                lines.push(`  - ${member.full_name || member.username}`);
             }
         }
         
