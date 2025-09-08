@@ -88,30 +88,6 @@
         "category": "Computor Tree"
       },
       {
-        "command": "computor.groupTestsBy",
-        "title": "Group By...",
-        "icon": "$(group-by-ref-type)",
-        "category": "Computor Tree"
-      },
-      {
-        "command": "computor.toggleShowOnlyFailures",
-        "title": "Toggle Show Only Failures",
-        "icon": "$(filter)",
-        "category": "Computor Tree"
-      },
-      {
-        "command": "computor.showTestSummary",
-        "title": "Show Summary",
-        "icon": "$(info)",
-        "category": "Computor Tree"
-      },
-      {
-        "command": "computor.exportTestResults",
-        "title": "Export Results",
-        "icon": "$(export)",
-        "category": "Computor Tree"
-      },
-      {
         "command": "computor.selectWorkspaceDirectory",
         "title": "Select Workspace Directory",
         "category": "Computor"
@@ -235,6 +211,12 @@
         "title": "Show README Preview",
         "icon": "$(open-preview)",
         "category": "Computor Student"
+      },
+      {
+        "command": "computor.showTestResults",
+        "title": "Show Test Results",
+        "icon": "$(beaker)",
+        "category": "Computor Test Results"
       },
       {
         "command": "computor.tutor.refresh",
@@ -521,12 +503,6 @@
           "name": "JSON Explorer",
           "icon": "$(json)",
           "contextualTitle": "JSON Data Explorer"
-        },
-        {
-          "id": "computor.testResultsView",
-          "name": "Test Results",
-          "icon": "$(beaker)",
-          "contextualTitle": "Test Results Explorer"
         }
       ],
       "computor-test-results": [
@@ -534,6 +510,12 @@
           "id": "computor.testResultsPanel",
           "type": "webview",
           "name": "Test Results",
+          "icon": "$(beaker)",
+          "contextualTitle": "Test Results"
+        },
+        {
+          "id": "computor.testResultsView",
+          "name": "Results",
           "icon": "$(beaker)",
           "contextualTitle": "Test Results"
         }
@@ -545,26 +527,6 @@
           "command": "computor.lecturer.refreshExamples",
           "when": "view == computor.lecturer.examples",
           "group": "navigation@1"
-        },
-        {
-          "command": "computor.groupTestsBy",
-          "when": "view == computor.testResultsView",
-          "group": "navigation@1"
-        },
-        {
-          "command": "computor.toggleShowOnlyFailures",
-          "when": "view == computor.testResultsView",
-          "group": "navigation@2"
-        },
-        {
-          "command": "computor.showTestSummary",
-          "when": "view == computor.testResultsView",
-          "group": "navigation@3"
-        },
-        {
-          "command": "computor.exportTestResults",
-          "when": "view == computor.testResultsView",
-          "group": "navigation@4"
         },
         {
           "command": "computor.lecturer.refresh",
@@ -818,42 +780,47 @@
           "when": "view == computor.lecturer.examples && (viewItem == example || viewItem == exampleDownloaded)",
           "group": "2_course@1"
         },
-      {
-        "command": "computor.lecturer.revealExampleInExplorer",
-        "when": "view == computor.lecturer.examples && viewItem == exampleDownloaded",
-        "group": "1_actions@3"
-      },
-      {
-        "command": "computor.student.showPreview",
-        "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment/",
-        "group": "inline@1"
-      },
-      {
-        "command": "computor.student.cloneRepository",
-        "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment\\..*withRepository.*notCloned/",
-        "group": "inline@2"
-      },
-      {
-        "command": "computor.student.commitAssignment",
-        "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment\\..*withRepository.*cloned/",
-        "group": "inline@3"
-      },
-      {
-        "command": "computor.student.testAssignment",
-        "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment\\..*withRepository.*cloned/",
-        "group": "inline@4"
-      },
-      {
-        "command": "computor.student.submitAssignment",
-        "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment\\..*withRepository.*cloned/",
-        "group": "inline@5"
-      },
-      {
-        "command": "computor.student.viewSubmissionGroup",
-        "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment/",
-        "group": "2_details@1"
-      }
-    ]
+        {
+          "command": "computor.lecturer.revealExampleInExplorer",
+          "when": "view == computor.lecturer.examples && viewItem == exampleDownloaded",
+          "group": "1_actions@3"
+        },
+        {
+          "command": "computor.student.showPreview",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment/",
+          "group": "inline@1"
+        },
+        {
+          "command": "computor.showTestResults",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment/",
+          "group": "1_details@9"
+        },
+        {
+          "command": "computor.student.cloneRepository",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment\\..*withRepository.*notCloned/",
+          "group": "inline@2"
+        },
+        {
+          "command": "computor.student.commitAssignment",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment\\..*withRepository.*cloned/",
+          "group": "inline@3"
+        },
+        {
+          "command": "computor.student.testAssignment",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment\\..*withRepository.*cloned/",
+          "group": "inline@4"
+        },
+        {
+          "command": "computor.student.submitAssignment",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment\\..*withRepository.*cloned/",
+          "group": "inline@5"
+        },
+        {
+          "command": "computor.student.viewSubmissionGroup",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment/",
+          "group": "2_details@1"
+        }
+      ]
     }
   },
   "scripts": {

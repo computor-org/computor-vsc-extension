@@ -776,9 +776,51 @@ class ComputorStudentExtension extends ComputorExtension {
         console.warn('No course selected - tree will show empty');
       }
 
-      // Register student commands
-      const commands = new StudentCommands(this.context, this.treeProvider, this.apiService, this.repositoryManager);
-      commands.registerCommands();
+  // Register student commands
+  const commands = new StudentCommands(this.context, this.treeProvider, this.apiService, this.repositoryManager);
+  commands.registerCommands();
+
+  // Command to show/focus the Test Results panel and tree
+  this.disposables.push(
+    vscode.commands.registerCommand('computor.showTestResults', async () => {
+      try {
+        await vscode.commands.executeCommand('computor.testResultsPanel.focus');
+      } catch (e) {
+        console.log('Could not focus test results panel:', e);
+      }
+      try {
+        await vscode.commands.executeCommand('computor.testResultsView.focus');
+      } catch (e) {
+        console.log('Could not focus test results tree:', e);
+      }
+    })
+  );
+
+      // Wire up Test Results view and panel (legacy style) for students
+      const testResultsPanelProvider = new (require('./ui/panels/TestResultsPanel') as any).TestResultsPanelProvider(this.context.extensionUri);
+      this.disposables.push(
+        vscode.window.registerWebviewViewProvider(
+          (require('./ui/panels/TestResultsPanel') as any).TestResultsPanelProvider.viewType,
+          testResultsPanelProvider
+        )
+      );
+      const TestResultsTreeDataProvider = (require('./ui/panels/TestResultsPanel') as any).TestResultsTreeDataProvider;
+      const testResultsTreeProvider = new TestResultsTreeDataProvider([]);
+      this.disposables.push(
+        vscode.window.registerTreeDataProvider('computor.testResultsView', testResultsTreeProvider)
+      );
+      // Connect providers to service
+      const testResultService = (require('./services/TestResultService') as any).TestResultService.getInstance();
+      testResultService.setApiService(this.apiService);
+      testResultService.setTestResultsPanelProvider(testResultsPanelProvider);
+      testResultService.setTestResultsTreeProvider(testResultsTreeProvider);
+      // Bridge command to update panel when clicking tree entries
+      this.disposables.push(
+        vscode.commands.registerCommand('computor.results.panel.update', (item: any) => {
+          testResultsPanelProvider.updateTestResults(item);
+          testResultsTreeProvider.refresh([]);
+        })
+      );
 
       // Show student view
       await vscode.commands.executeCommand('setContext', 'computor.student.show', true);
