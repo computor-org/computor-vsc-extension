@@ -460,7 +460,7 @@
       "panel": [
         {
           "id": "computor-test-results",
-          "title": "Test Results",
+          "title": "Results",
           "icon": "$(beaker)"
         }
       ]
@@ -492,7 +492,7 @@
       "computor-student": [
         {
           "id": "computor.student.courses",
-          "name": "Course Content",
+          "name": "Course View",
           "icon": "$(book)",
           "contextualTitle": "Student Course Content"
         }
@@ -509,13 +509,13 @@
         {
           "id": "computor.testResultsPanel",
           "type": "webview",
-          "name": "Test Results",
+          "name": "Result Details",
           "icon": "$(beaker)",
           "contextualTitle": "Test Results"
         },
         {
           "id": "computor.testResultsView",
-          "name": "Results",
+          "name": "Result Tree",
           "icon": "$(beaker)",
           "contextualTitle": "Test Results"
         }

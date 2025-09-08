@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { ComputorApiService } from './ComputorApiService';
-import { TestResultsPanelProvider, TestResultsTreeDataProvider } from '../ui/panels/TestResultsPanel';
+//import { TestResultsPanelProvider, TestResultsTreeDataProvider } from '../ui/panels/TestResultsPanel';
 
 /**
  * Service for managing test results polling and display
@@ -8,8 +8,8 @@ import { TestResultsPanelProvider, TestResultsTreeDataProvider } from '../ui/pan
 export class TestResultService {
   private static instance: TestResultService;
   private apiService?: ComputorApiService;
-  private testResultsPanelProvider?: TestResultsPanelProvider;
-  private testResultsTreeProvider?: TestResultsTreeDataProvider;
+  //private testResultsPanelProvider?: TestResultsPanelProvider;
+
   private pollingIntervals: Map<string, NodeJS.Timer> = new Map();
   private readonly POLL_INTERVAL = 2000; // 2 seconds
   private readonly MAX_POLL_DURATION = 300000; // 5 minutes
@@ -35,20 +35,19 @@ export class TestResultService {
   /**
    * Set the test results panel provider
    */
-  setTestResultsPanelProvider(provider: TestResultsPanelProvider): void {
-    this.testResultsPanelProvider = provider;
-  }
+  // setTestResultsPanelProvider(provider: TestResultsPanelProvider): void {
+  //   this.testResultsPanelProvider = provider;
+  // }
 
   /**
    * Set the test results tree provider (for the tree view in panel)
    */
-  setTestResultsTreeProvider(provider: TestResultsTreeDataProvider): void {
-    this.testResultsTreeProvider = provider;
-    // Link tree provider to panel
-    if (this.testResultsPanelProvider) {
-      this.testResultsPanelProvider.setTreeProvider(provider);
-    }
-  }
+  // setTestResultsTreeProvider(provider: TestResultsTreeDataProvider): void {
+  //   // Link tree provider to panel only (no local reference needed)
+  //   if (this.testResultsPanelProvider) {
+  //     this.testResultsPanelProvider.setTreeProvider(provider);
+  //   }
+  // }
 
   /**
    * Submit a test and display results
@@ -231,33 +230,10 @@ export class TestResultService {
    */
   private async displayTestResults(result: any, assignmentTitle: string): Promise<void> {
     try {
-      // Parse the result_json if it exists
+      // Use legacy-style wiring: open results in tree, panel updates on selection
       const resultJson = result.result_json || result;
-      
-      // Update panel provider
-      if (this.testResultsPanelProvider) {
-        // Update the test results panel
-        this.testResultsPanelProvider.updateTestResults(result);
-        
-        // Show the test results panel
-        await vscode.commands.executeCommand('computor.testResultsPanel.focus');
-      }
-      
-      // Also update tree provider if available
-      if (this.testResultsTreeProvider) {
-        const testResults = this.parseTestResults(resultJson, assignmentTitle);
-        this.testResultsTreeProvider.refresh(testResults);
-      }
-      
-      // Fallback: show results in output channel if no panel
-      if (!this.testResultsPanelProvider) {
-        const outputChannel = vscode.window.createOutputChannel('Computor Test Results');
-        outputChannel.clear();
-        outputChannel.appendLine(`Test Results for ${assignmentTitle}`);
-        outputChannel.appendLine('='.repeat(50));
-        outputChannel.appendLine(JSON.stringify(resultJson, null, 2));
-        outputChannel.show();
-      }
+      await vscode.commands.executeCommand('computor.results.open', resultJson);
+      await vscode.commands.executeCommand('computor.testResultsPanel.focus');
     } catch (error) {
       console.error('[TestResultService] Error displaying test results:', error);
       
@@ -274,85 +250,9 @@ export class TestResultService {
   /**
    * Parse test results from backend format to tree provider format
    */
-  private parseTestResults(resultJson: any, assignmentTitle: string): any[] {
-    const testResults: any[] = [];
+  // Parsing is not needed with legacy-style panel/tree; selection drives panel content
 
-    try {
-      // Check if resultJson has a specific structure
-      if (resultJson.tests && Array.isArray(resultJson.tests)) {
-        // Parse individual test results
-        for (const test of resultJson.tests) {
-          testResults.push({
-            name: test.name || test.test_name || 'Unnamed Test',
-            status: this.mapTestStatus(test.status || test.result),
-            duration: test.duration || test.time || 0,
-            error: test.error || test.message || null,
-            file: test.file || assignmentTitle,
-            suite: test.suite || assignmentTitle,
-            output: test.output || test.stdout || null
-          });
-        }
-      } else if (resultJson.test_results) {
-        // Alternative format
-        for (const [testName, testData] of Object.entries(resultJson.test_results)) {
-          testResults.push({
-            name: testName,
-            status: this.mapTestStatus((testData as any).passed ? 'passed' : 'failed'),
-            duration: (testData as any).duration || 0,
-            error: (testData as any).error || null,
-            file: assignmentTitle,
-            suite: assignmentTitle,
-            output: (testData as any).output || null
-          });
-        }
-      } else {
-        // Fallback: create a single test result from the overall result
-        testResults.push({
-          name: 'Overall Test',
-          status: resultJson.success || resultJson.passed ? 'passed' : 'failed',
-          duration: resultJson.duration || 0,
-          error: resultJson.error || resultJson.message || null,
-          file: assignmentTitle,
-          suite: assignmentTitle,
-          output: JSON.stringify(resultJson, null, 2)
-        });
-      }
-    } catch (error) {
-      console.error('[TestResultService] Error parsing test results:', error);
-      
-      // Create a single result showing the raw data
-      testResults.push({
-        name: 'Test Results',
-        status: 'unknown',
-        duration: 0,
-        error: null,
-        file: assignmentTitle,
-        suite: assignmentTitle,
-        output: JSON.stringify(resultJson, null, 2)
-      });
-    }
 
-    return testResults;
-  }
+  // Mapping no longer used
 
-  /**
-   * Map backend test status to frontend status
-   */
-  private mapTestStatus(status: any): 'passed' | 'failed' | 'skipped' | 'unknown' {
-    if (!status) {
-      return 'unknown';
-    }
-
-    const statusStr = String(status).toLowerCase();
-    
-    if (statusStr.includes('pass') || statusStr.includes('success') || statusStr === 'true') {
-      return 'passed';
-    } else if (statusStr.includes('fail') || statusStr.includes('error') || statusStr === 'false') {
-      return 'failed';
-    } else if (statusStr.includes('skip')) {
-      return 'skipped';
-    } else {
-      return 'unknown';
-    }
-  }
 }

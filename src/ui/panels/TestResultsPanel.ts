@@ -211,7 +211,7 @@ export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'computor.testResultsPanel';
     private view?: vscode.WebviewView;
     private value?: any;
-    private testResultsTreeProvider?: TestResultsTreeDataProvider;
+    //private testResultsTreeProvider?: TestResultsTreeDataProvider;
 
     constructor(private readonly extensionUri: vscode.Uri) {
         this.value = this.buildMessage(undefined);
@@ -219,9 +219,9 @@ export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
 
     public updateTestResults(testResults: any): void {
         // Update tree provider if it exists
-        if (this.testResultsTreeProvider) {
-            this.testResultsTreeProvider.refresh(testResults);
-        }
+        // if (this.testResultsTreeProvider && testResults !== undefined) {
+        //     this.testResultsTreeProvider.refresh(testResults);
+        // }
         
         // Update webview content
         this.value = this.buildMessage(testResults);
@@ -236,9 +236,9 @@ export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
         }
     }
 
-    public setTreeProvider(provider: TestResultsTreeDataProvider): void {
-        this.testResultsTreeProvider = provider;
-    }
+    // public setTreeProvider(provider: TestResultsTreeDataProvider): void {
+    //     this.testResultsTreeProvider = provider;
+    // }
 
     private buildMessage(value: any): { label: string; message: string } {
         let message = "No test results available";
@@ -261,7 +261,8 @@ export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
                     console.error('Error parsing test results:', error);
                 }
             } else if (typeof value === 'object') {
-                message = `<pre>${JSON.stringify(value, null, 2)}</pre>`;
+                // message = `<pre>${JSON.stringify(value, null, 2)}</pre>`;
+                message = '-';
             }
             
             if ('label' in value) {
