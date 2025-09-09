@@ -17,6 +17,30 @@
   "contributes": {
     "commands": [
       {
+        "command": "computor.tutor.cloneStudentRepository",
+        "title": "Clone Student Repository",
+        "icon": "$(cloud-download)",
+        "category": "Computor Tutor"
+      },
+      {
+        "command": "computor.tutor.resetFilters",
+        "title": "Tutor: Reset Filters",
+        "icon": "$(discard)",
+        "category": "Computor Tutor"
+      },
+      {
+        "command": "computor.tutor.checkoutAssignment",
+        "title": "Checkout Assignment Submission",
+        "icon": "$(git-branch)",
+        "category": "Computor Tutor"
+      },
+      {
+        "command": "computor.tutor.downloadStudentExample",
+        "title": "Download Example for Comparison",
+        "icon": "$(repo)",
+        "category": "Computor Tutor"
+      },
+      {
         "command": "computor.logout",
         "title": "Computor: Logout",
         "category": "Computor"
@@ -488,6 +512,13 @@
       ],
       "computor-tutor": [
         {
+          "id": "computor.tutor.filters",
+          "type": "webview",
+          "name": "Tutor Filters",
+          "icon": "$(filter)",
+          "contextualTitle": "Tutor Filters"
+        },
+        {
           "id": "computor.tutor.courses",
           "name": "Courses",
           "icon": "$(person)",
@@ -729,6 +760,21 @@
           "command": "computor.tutor.viewCourse",
           "when": "view == computor.tutor.courses && viewItem == tutorCourse",
           "group": "1_details@1"
+        },
+        {
+          "command": "computor.tutor.cloneStudentRepository",
+          "when": "view == computor.tutor.courses && viewItem =~ /^tutorStudentContent\\.assignment/",
+          "group": "inline@1"
+        },
+        {
+          "command": "computor.tutor.checkoutAssignment",
+          "when": "view == computor.tutor.courses && viewItem =~ /^tutorStudentContent\\.assignment/",
+          "group": "inline@2"
+        },
+        {
+          "command": "computor.tutor.downloadStudentExample",
+          "when": "view == computor.tutor.courses && viewItem =~ /^tutorStudentContent\\.assignment/",
+          "group": "3_external@1"
         },
         {
           "command": "computor.tutor.setupWorkspace",

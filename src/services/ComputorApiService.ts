@@ -1323,6 +1323,38 @@ export class ComputorApiService {
     }
   }
 
+  // Placeholder Tutor API for course groups and members (to be aligned with backend)
+  async getTutorCourseGroups(courseId: string): Promise<any[]> {
+    void courseId;
+    return [];
+  }
+
+  async getTutorCourseMembers(courseId: string, groupId?: string): Promise<any[]> {
+    void courseId; void groupId;
+    return [];
+  }
+
+  // Tutor: course contents for a specific member in a course
+  async getTutorCourseContents(courseId: string, memberId: string): Promise<any[]> {
+    void courseId; void memberId;
+    // TODO: Replace with backend route (e.g., /tutors/course-contents?course_id=..&member_id=..)
+    return [];
+  }
+
+  // Tutor: student repository metadata for a course/member pair
+  async getTutorStudentRepository(courseId: string, memberId: string): Promise<{ remote_url: string } | undefined> {
+    void courseId; void memberId;
+    // TODO: Replace with backend route (e.g., /tutors/repositories?course_id=..&member_id=..)
+    return undefined;
+  }
+
+  // Tutor: submission branch for a student's assignment
+  async getTutorSubmissionBranch(courseId: string, memberId: string, courseContentId: string): Promise<string | undefined> {
+    void courseId; void memberId; void courseContentId;
+    // TODO: Replace with backend route returning a branch/ref name for the student's assignment submission
+    return undefined;
+  }
+
   /**
    * Submit a test for an assignment
    * @param testData The test submission data

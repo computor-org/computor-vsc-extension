@@ -20,7 +20,7 @@ import { StudentRepositoryManager } from './services/StudentRepositoryManager';
 import { CourseSelectionService } from './services/CourseSelectionService';
 import { StudentCommands } from './commands/StudentCommands';
 
-import { TutorTreeDataProvider } from './ui/tree/tutor/TutorTreeDataProvider';
+// import { TutorTreeDataProvider } from './ui/tree/tutor/TutorTreeDataProvider';
 import { TutorCommands } from './commands/TutorCommands';
 
 import { TestResultsPanelProvider, TestResultsTreeDataProvider } from './ui/panels/TestResultsPanel';
@@ -141,9 +141,16 @@ async function ensureCourseMarker(role: Extract<Role, 'Student' | 'Tutor'>, api:
   }
   const file = path.join(root, role === 'Student' ? STUDENT_MARKER : TUTOR_MARKER);
   const existing = await readMarker(file);
+  if (role === 'Tutor') {
+    // For Tutor: just ensure marker file exists; no course binding here.
+    if (!existing) {
+      await writeMarker(file, { courseId: '' as any });
+    }
+    return undefined;
+  }
   if (existing?.courseId) return existing.courseId;
 
-  const courses = role === 'Student' ? await api.getStudentCourses() : await api.getTutorCourses();
+  const courses = await api.getStudentCourses();
   if (!courses || courses.length === 0) {
     vscode.window.showWarningMessage(`No ${role.toLowerCase()} courses found for your account.`);
     return undefined;
@@ -237,7 +244,7 @@ class LecturerController extends BaseRoleController {
 }
 
 class TutorController extends BaseRoleController {
-  private tree?: TutorTreeDataProvider;
+  private tree?: any;
 
   async activate(client: ReturnType<typeof buildHttpClient>): Promise<void> {
     const api = await this.setupApi(client);
@@ -252,15 +259,42 @@ class TutorController extends BaseRoleController {
       throw e;
     }
 
-    const courseId = await ensureCourseMarker('Tutor', api);
-    if (!courseId) throw new Error('Tutor course selection cancelled.');
+    // Ensure tutor marker exists (no course binding)
+    await ensureCourseMarker('Tutor', api);
 
-    this.tree = new TutorTreeDataProvider(this.context, api);
+    // Register filter panel and tree
+    const { TutorFilterPanelProvider } = await import('./ui/panels/TutorFilterPanel');
+    const { TutorSelectionService } = await import('./services/TutorSelectionService');
+    const { TutorStatusBarService } = await import('./ui/TutorStatusBarService');
+    const selection = TutorSelectionService.initialize(this.context, api);
+    const filterProvider = new TutorFilterPanelProvider(this.context.extensionUri, api, selection);
+    this.disposables.push(vscode.window.registerWebviewViewProvider(TutorFilterPanelProvider.viewType, filterProvider));
+
+    const { TutorStudentTreeProvider } = await import('./ui/tree/tutor/TutorStudentTreeProvider');
+    this.tree = new TutorStudentTreeProvider(api, selection);
     this.disposables.push(vscode.window.registerTreeDataProvider('computor.tutor.courses', this.tree));
     const treeView = vscode.window.createTreeView('computor.tutor.courses', { treeDataProvider: this.tree, showCollapseAll: true });
     this.disposables.push(treeView);
 
-    const commands = new TutorCommands(this.context, this.tree, api);
+    // Status bar: show selection and allow reset
+    const tutorStatus = TutorStatusBarService.initialize();
+    const updateStatus = async () => {
+      const courseLabel = selection.getCurrentCourseLabel() || selection.getCurrentCourseId();
+      const groupLabel = selection.getCurrentGroupLabel() || selection.getCurrentGroupId();
+      const memberLabel = selection.getCurrentMemberLabel() || selection.getCurrentMemberId();
+      tutorStatus.updateSelection(courseLabel, groupLabel, memberLabel);
+    };
+    this.disposables.push(selection.onDidChangeSelection(() => { void updateStatus(); }));
+    void updateStatus();
+
+    // Reset filters command
+    this.disposables.push(vscode.commands.registerCommand('computor.tutor.resetFilters', async () => {
+      await selection.selectCourse(null);
+      await selection.selectGroup(null);
+      await selection.selectMember(null);
+    }));
+
+    const commands = new TutorCommands(this.context, this.tree as any, api);
     commands.registerCommands();
 
     await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);

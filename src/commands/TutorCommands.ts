@@ -2,19 +2,22 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { TutorTreeDataProvider, TutorCourseTreeItem, TutorExampleRepositoryTreeItem, TutorExampleTreeItem } from '../ui/tree/tutor/TutorTreeDataProvider';
+import { TutorStudentTreeProvider } from '../ui/tree/tutor/TutorStudentTreeProvider';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { WorkspaceManager } from '../services/WorkspaceManager';
+import { TutorSelectionService } from '../services/TutorSelectionService';
+import simpleGit from 'simple-git';
 // Import interfaces from generated types (interfaces removed to avoid duplication)
 
 export class TutorCommands {
   private context: vscode.ExtensionContext;
-  private treeDataProvider: TutorTreeDataProvider;
+  private treeDataProvider: TutorTreeDataProvider | TutorStudentTreeProvider;
   private apiService: ComputorApiService;
   private workspaceManager: WorkspaceManager;
 
   constructor(
     context: vscode.ExtensionContext, 
-    treeDataProvider: TutorTreeDataProvider,
+    treeDataProvider: TutorTreeDataProvider | TutorStudentTreeProvider,
     apiService?: ComputorApiService
   ) {
     this.context = context;
@@ -162,6 +165,93 @@ export class TutorCommands {
         }
 
         await this.downloadAllExamples(item);
+      })
+    );
+
+    // Tutor: Clone student repository (scaffold)
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.tutor.cloneStudentRepository', async (_item: any) => {
+        try {
+          const sel = TutorSelectionService.getInstance();
+          let courseId = sel.getCurrentCourseId() || '';
+          let memberId = sel.getCurrentMemberId() || '';
+          if (!courseId) courseId = (await vscode.window.showInputBox({ title: 'Course ID', prompt: 'Enter course ID', ignoreFocusOut: true })) || '';
+          if (!memberId) memberId = (await vscode.window.showInputBox({ title: 'Course Member ID', prompt: 'Enter course member ID', ignoreFocusOut: true })) || '';
+          if (!courseId || !memberId) { return; }
+          const remoteUrl = await vscode.window.showInputBox({ title: 'Student Repo URL', prompt: 'Enter remote URL (temporary until backend integration)', ignoreFocusOut: true });
+          if (!remoteUrl) { return; }
+          const dir = await this.workspaceManager.registerTutorStudentRepository(courseId, memberId, remoteUrl);
+          // Git clone into the student workspace path if empty
+          const exists = await fs.promises.readdir(dir).then(list => list.length > 0).catch(() => false);
+          if (exists) {
+            vscode.window.showWarningMessage(`Directory not empty: ${dir}. Skipping clone.`);
+          } else {
+            await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Cloning student repository...', cancellable: false }, async () => {
+              await simpleGit().clone(remoteUrl, dir);
+            });
+            vscode.window.showInformationMessage(`Student repository cloned to ${dir}`);
+          }
+          // Optionally add to workspace
+          const folders = vscode.workspace.workspaceFolders || [];
+          if (!folders.some(f => f.uri.fsPath === dir)) {
+            vscode.workspace.updateWorkspaceFolders(folders.length, 0, { uri: vscode.Uri.file(dir), name: `Student ${memberId}` });
+          }
+        } catch (e: any) {
+          vscode.window.showErrorMessage(`Failed to clone student repository: ${e?.message || e}`);
+        }
+      })
+    );
+
+    // Tutor: Checkout assignment submission into workspace root (scaffold)
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.tutor.checkoutAssignment', async (_item: any) => {
+        try {
+          const sel = TutorSelectionService.getInstance();
+          const courseId = sel.getCurrentCourseId() || (await vscode.window.showInputBox({ title: 'Course ID', prompt: 'Enter course ID', ignoreFocusOut: true })) || '';
+          const memberId = sel.getCurrentMemberId() || (await vscode.window.showInputBox({ title: 'Course Member ID', prompt: 'Enter course member ID', ignoreFocusOut: true })) || '';
+          if (!courseId || !memberId) return;
+          const repoPath = await this.workspaceManager.getTutorStudentWorkspacePath(courseId, memberId);
+          const git = simpleGit(repoPath);
+          await git.fetch();
+          const branch = await vscode.window.showInputBox({ title: 'Submission Branch', prompt: 'Enter submission branch to checkout', value: 'main', ignoreFocusOut: true });
+          if (!branch) return;
+          await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Checking out ${branch}...`, cancellable: false }, async () => {
+            await git.checkout(branch);
+          });
+          const src = await vscode.window.showInputBox({ title: 'Assignment Path', prompt: 'Relative path in repo to copy', ignoreFocusOut: true });
+          const dest = await vscode.window.showInputBox({ title: 'Destination Path', prompt: 'Destination directory (workspace root)', value: (vscode.workspace.workspaceFolders?.[0]?.uri.fsPath) || '', ignoreFocusOut: true });
+          if (!src || !dest) return;
+          const absSrc = path.isAbsolute(src) ? src : path.join(repoPath, src);
+          await fs.promises.mkdir(dest, { recursive: true });
+          await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Checking out assignment...', cancellable: false }, async () => {
+            // Shallow copy directory (simple implementation)
+            const copy = async (s: string, d: string) => {
+              const entries = await fs.promises.readdir(s, { withFileTypes: true });
+              for (const e of entries) {
+                const sp = path.join(s, e.name);
+                const dp = path.join(d, e.name);
+                if (e.isDirectory()) { await fs.promises.mkdir(dp, { recursive: true }); await copy(sp, dp); }
+                else if (e.isFile()) { await fs.promises.copyFile(sp, dp); }
+              }
+            };
+            await copy(absSrc, dest);
+          });
+          vscode.window.showInformationMessage('Assignment checked out to workspace.');
+        } catch (e: any) {
+          vscode.window.showErrorMessage(`Failed to checkout assignment: ${e?.message || e}`);
+        }
+      })
+    );
+
+    // Tutor: Download example for comparison (scaffold)
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.tutor.downloadStudentExample', async (_item: any) => {
+        try {
+          // TODO: Implement endpoint to download example matching assignment for comparison
+          vscode.window.showInformationMessage('Download Example: backend route TBD.');
+        } catch (e: any) {
+          vscode.window.showErrorMessage(`Failed to download example: ${e?.message || e}`);
+        }
       })
     );
   }

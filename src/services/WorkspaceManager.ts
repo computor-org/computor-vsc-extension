@@ -220,6 +220,33 @@ export class WorkspaceManager {
     return path.join(tutorWorkspace, 'repository');
   }
 
+  async getTutorStudentWorkspacePath(courseId: string, courseMemberId: string): Promise<string> {
+    const tutorWorkspace = await this.getTutorWorkspacePath(courseId);
+    return path.join(tutorWorkspace, 'students', courseMemberId);
+  }
+
+  async ensureTutorStudentWorkspace(courseId: string, courseMemberId: string): Promise<string> {
+    const studentPath = await this.getTutorStudentWorkspacePath(courseId, courseMemberId);
+    await fs.promises.mkdir(studentPath, { recursive: true });
+    return studentPath;
+  }
+
+  async registerTutorStudentRepository(courseId: string, courseMemberId: string, remoteUrl: string): Promise<string> {
+    if (!this.config) { await this.initializeWorkspace(); }
+    const studentPath = await this.ensureTutorStudentWorkspace(courseId, courseMemberId);
+    const cfg = this.config as WorkspaceConfig;
+    if (!cfg.courses[courseId]) {
+      (cfg.courses as any)[courseId] = { title: '', studentRepositories: {}, examples: {} };
+    }
+    (cfg.courses as any)[courseId].studentRepositories[courseMemberId] = {
+        localPath: studentPath,
+        remoteUrl,
+        type: 'individual',
+      } as any;
+    await this.saveWorkspaceConfig();
+    return studentPath;
+  }
+
   async cloneTutorRepository(
     courseId: string,
     providerUrl: string,
