@@ -1,934 +1,447 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import { IconGenerator } from './utils/IconGenerator';
+
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
 import { ComputorApiService } from './services/ComputorApiService';
+
 import { BasicAuthHttpClient } from './http/BasicAuthHttpClient';
+import { ApiKeyHttpClient } from './http/ApiKeyHttpClient';
+import { JwtHttpClient } from './http/JwtHttpClient';
+
 import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataProvider';
 import { LecturerExampleTreeProvider } from './ui/tree/lecturer/LecturerExampleTreeProvider';
 import { LecturerCommands } from './commands/LecturerCommands';
-import { LecturerExampleCommands } from './commands/LecturerExampleCommands';
-// Student-related imports
-import { StudentWorkspaceManager } from './services/StudentWorkspaceManager';
+// import { LecturerExampleCommands } from './commands/LecturerExampleCommands';
+
 import { StudentCourseContentTreeProvider } from './ui/tree/student/StudentCourseContentTreeProvider';
 import { StudentRepositoryManager } from './services/StudentRepositoryManager';
 import { CourseSelectionService } from './services/CourseSelectionService';
-import { StatusBarService } from './ui/StatusBarService';
 import { StudentCommands } from './commands/StudentCommands';
+
 import { TutorTreeDataProvider } from './ui/tree/tutor/TutorTreeDataProvider';
 import { TutorCommands } from './commands/TutorCommands';
-import { IconGenerator } from './utils/IconGenerator';
+
 import { TestResultsPanelProvider, TestResultsTreeDataProvider } from './ui/panels/TestResultsPanel';
 import { TestResultService } from './services/TestResultService';
 
-interface AuthenticationData {
-  backendUrl: string;
-  username: string;
-  password: string;
+type Role = 'Lecturer' | 'Student' | 'Tutor';
+type AuthType = 'basic' | 'apiKey' | 'jwt';
+
+interface StoredAuth {
+  type: AuthType;
+  username?: string;
+  password?: string;
+  apiKey?: string;
+  token?: string;
+  headerName?: string;
+  headerPrefix?: string;
 }
 
-abstract class ComputorExtension {
+interface ActiveSession {
+  role: Role;
+  deactivate: () => Promise<void>;
+}
+
+const STUDENT_MARKER = '.computor_student';
+const TUTOR_MARKER = '.computor_tutor';
+
+function getWorkspaceRoot(): string | undefined {
+  const ws = vscode.workspace.workspaceFolders;
+  if (!ws || ws.length === 0) return undefined;
+  return ws[0]?.uri.fsPath;
+}
+
+async function ensureBaseUrl(settings: ComputorSettingsManager): Promise<string | undefined> {
+  const current = await settings.getBaseUrl();
+  if (current) return current;
+  const url = await vscode.window.showInputBox({
+    title: 'Computor Backend URL',
+    prompt: 'Enter the Computor backend URL',
+    placeHolder: 'http://localhost:8000',
+    ignoreFocusOut: true,
+    validateInput: (value) => {
+      try { new URL(value); return undefined; } catch { return 'Enter a valid URL'; }
+    }
+  });
+  if (!url) return undefined;
+  await settings.setBaseUrl(url);
+  return url;
+}
+
+async function chooseAuthType(settings: ComputorSettingsManager, defaultType?: AuthType): Promise<AuthType | undefined> {
+  const choice = await vscode.window.showQuickPick([
+    { label: 'Basic (username/password)', value: 'basic', picked: defaultType === 'basic' },
+    { label: 'API Key', value: 'apiKey', picked: defaultType === 'apiKey' },
+    { label: 'JWT Token (SSO)', value: 'jwt', picked: defaultType === 'jwt' }
+  ], { title: 'Choose authentication method', placeHolder: 'Select auth method' });
+  if (!choice) return undefined;
+  await settings.setAuthProvider(choice.value);
+  return choice.value as AuthType;
+}
+
+async function promptCredentials(role: Role, auth: AuthType, settings: ComputorSettingsManager, previous?: StoredAuth): Promise<StoredAuth | undefined> {
+  switch (auth) {
+    case 'basic': {
+      const username = await vscode.window.showInputBox({ title: `${role} Login`, prompt: 'Username', value: previous?.username, ignoreFocusOut: true });
+      if (!username) return undefined;
+      const password = await vscode.window.showInputBox({ title: `${role} Login`, prompt: 'Password', value: previous?.password, password: true, ignoreFocusOut: true });
+      if (!password) return undefined;
+      return { type: 'basic', username, password };
+    }
+    case 'apiKey': {
+      const apiKey = await vscode.window.showInputBox({ title: `${role} Login`, prompt: 'API Key', value: previous?.apiKey, password: true, ignoreFocusOut: true });
+      if (!apiKey) return undefined;
+      const tokenSettings = await settings.getTokenSettings();
+      return { type: 'apiKey', apiKey, headerName: tokenSettings.headerName, headerPrefix: tokenSettings.headerPrefix };
+    }
+    case 'jwt': {
+      const token = await vscode.window.showInputBox({ title: `${role} Login`, prompt: 'Paste JWT/OAuth access token', value: previous?.token, password: true, ignoreFocusOut: true });
+      if (!token) return undefined;
+      return { type: 'jwt', token };
+    }
+  }
+}
+
+function buildHttpClient(baseUrl: string, auth: StoredAuth): BasicAuthHttpClient | ApiKeyHttpClient | JwtHttpClient {
+  if (auth.type === 'basic') {
+    return new BasicAuthHttpClient(baseUrl, auth.username!, auth.password!, 5000);
+  } else if (auth.type === 'apiKey') {
+    return new ApiKeyHttpClient(baseUrl, auth.apiKey!, auth.headerName || 'X-API-Key', auth.headerPrefix || '', 5000);
+  } else {
+    const jwt = new JwtHttpClient(baseUrl, { serverUrl: baseUrl, realm: 'computor', clientId: 'computor-vscode', redirectUri: '' }, 5000);
+    jwt.setTokens(auth.token!);
+    return jwt;
+  }
+}
+
+async function readMarker(file: string): Promise<{ courseId?: string } | undefined> {
+  try {
+    if (!fs.existsSync(file)) return undefined;
+    const raw = await fs.promises.readFile(file, 'utf8');
+    return JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+}
+
+async function writeMarker(file: string, data: { courseId: string }): Promise<void> {
+  await fs.promises.writeFile(file, JSON.stringify(data, null, 2), 'utf8');
+}
+
+async function ensureCourseMarker(role: Extract<Role, 'Student' | 'Tutor'>, api: ComputorApiService): Promise<string | undefined> {
+  const root = getWorkspaceRoot();
+  if (!root) {
+    const action = await vscode.window.showErrorMessage(`${role} login requires an open workspace.`, 'Open Folder');
+    if (action === 'Open Folder') {
+      await vscode.commands.executeCommand('vscode.openFolder');
+    }
+    return undefined;
+  }
+  const file = path.join(root, role === 'Student' ? STUDENT_MARKER : TUTOR_MARKER);
+  const existing = await readMarker(file);
+  if (existing?.courseId) return existing.courseId;
+
+  const courses = role === 'Student' ? await api.getStudentCourses() : await api.getTutorCourses();
+  if (!courses || courses.length === 0) {
+    vscode.window.showWarningMessage(`No ${role.toLowerCase()} courses found for your account.`);
+    return undefined;
+  }
+  const pick = await vscode.window.showQuickPick(
+    courses.map((c: any) => ({ label: c.title || c.path || c.name || c.id, description: c.path || '', course: c })),
+    { title: `${role}: Select Course`, placeHolder: 'Pick your course' }
+  );
+  if (!pick) return undefined;
+  await writeMarker(file, { courseId: pick.course.id });
+  return pick.course.id as string;
+}
+
+abstract class BaseRoleController {
   protected context: vscode.ExtensionContext;
-  protected settingsManager: ComputorSettingsManager;
-  protected apiService?: ComputorApiService;
-  protected httpClient?: BasicAuthHttpClient;
-  protected authData?: AuthenticationData;
+  protected settings: ComputorSettingsManager;
+  protected api?: ComputorApiService;
+  protected client?: ReturnType<typeof buildHttpClient>;
   protected disposables: vscode.Disposable[] = [];
-  protected statusBar: vscode.StatusBarItem;
-  protected roleIdentifier: string;
-
-  constructor(context: vscode.ExtensionContext, roleIdentifier: string) {
-    this.context = context;
-    this.roleIdentifier = roleIdentifier;
-    this.settingsManager = new ComputorSettingsManager(context);
-    this.statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-    this.statusBar.show();
-    this.context.subscriptions.push(this.statusBar);
-  }
-
-  abstract activate(): Promise<void>;
-
-  abstract deactivate(): Promise<void>;
-
-  async initialize(): Promise<void> {
-    const restored = await this.restoreSession();
-    if (restored) {
-      this.statusBar.text = `$(account) ${this.roleIdentifier}: Restored`;
-      this.statusBar.command = undefined;
-      this.statusBar.tooltip = `Session restored. Click to activate ${this.roleIdentifier} view`;
-    } else {
-      this.statusBar.text = `$(sign-in) ${this.roleIdentifier}: Click to login`;
-      this.statusBar.command = `computor.${this.roleIdentifier.toLowerCase()}.login`;
-      this.statusBar.tooltip = `Click to sign in to Computor as ${this.roleIdentifier}`;
-    }
-  }
-
-  protected async performLogin(): Promise<boolean> {
-    try {
-      const backendUrl = await vscode.window.showInputBox({
-        title: `Computor ${this.roleIdentifier} Login`,
-        prompt: 'Enter the backend API URL (realm)',
-        placeHolder: 'http://localhost:8000',
-        value: (await this.settingsManager.getSettings()).authentication.baseUrl || 'http://localhost:8000',
-        validateInput: (value: string | URL) => {
-          if (!value) {
-            return 'Backend URL is required';
-          }
-          try {
-            new URL(value);
-            return null;
-          } catch {
-            return 'Please enter a valid URL';
-          }
-        }
-      });
-
-      if (!backendUrl) {
-        return false;
-      }
-
-      const username = await vscode.window.showInputBox({
-        title: `Computor ${this.roleIdentifier} Login`,
-        prompt: 'Enter your username',
-        placeHolder: 'Username',
-        validateInput: (value: any) => {
-          if (!value) {
-            return 'Username is required';
-          }
-          return null;
-        }
-      });
-
-      if (!username) {
-        return false;
-      }
-
-      const password = await vscode.window.showInputBox({
-        title: `Computor ${this.roleIdentifier} Login`,
-        prompt: 'Enter your password',
-        placeHolder: 'Password',
-        password: true,
-        validateInput: (value: any) => {
-          if (!value) {
-            return 'Password is required';
-          }
-          return null;
-        }
-      });
-
-      if (!password) {
-        return false;
-      }
-
-      this.authData = { backendUrl, username, password };
-
-      if (this.apiService) {
-        this.apiService.clearHttpClient();
-      }
-
-      this.httpClient = new BasicAuthHttpClient(backendUrl, username, password, 5000);
-
-      const settings = await this.settingsManager.getSettings();
-      settings.authentication.baseUrl = backendUrl;
-      await this.settingsManager.saveSettings(settings);
-
-      await this.context.secrets.store(`computor.${this.roleIdentifier}.username`, username);
-      await this.context.secrets.store(`computor.${this.roleIdentifier}.password`, password);
-
-      vscode.window.showInformationMessage(`Successfully logged in to Computor as ${this.roleIdentifier}`);
-      return true;
-    } catch (error) {
-      console.error('Login failed:', error);
-      vscode.window.showErrorMessage(`Login failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      return false;
-    }
-  }
-
-  protected async restoreSession(): Promise<boolean> {
-    try {
-      const settings = await this.settingsManager.getSettings();
-      const backendUrl = settings.authentication.baseUrl;
-      const username = await this.context.secrets.get(`computor.${this.roleIdentifier}.username`);
-      const password = await this.context.secrets.get(`computor.${this.roleIdentifier}.password`);
-
-      if (!backendUrl || !username || !password) {
-        return false;
-      }
-
-      this.authData = { backendUrl, username, password };
-      this.httpClient = new BasicAuthHttpClient(backendUrl, username, password, 5000);
-      
-      await this.httpClient.get('/health');
-      
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  protected async logout(): Promise<void> {
-    console.log(`[${this.roleIdentifier}] Logging out...`);
-    
-    await vscode.commands.executeCommand('setContext', `computor.${this.roleIdentifier.toLowerCase()}.show`, false);
-    
-    await this.context.secrets.delete(`computor.${this.roleIdentifier}.username`);
-    await this.context.secrets.delete(`computor.${this.roleIdentifier}.password`);
-
-    this.authData = undefined;
-    this.httpClient = undefined;
-    if (this.apiService) {
-      this.apiService.clearHttpClient();
-    }
-    this.apiService = undefined;
-
-    this.statusBar.text = `$(sign-in) ${this.roleIdentifier}: Click to login`;
-    this.statusBar.command = `computor.${this.roleIdentifier.toLowerCase()}.login`;
-    this.statusBar.tooltip = `Click to sign in to Computor as ${this.roleIdentifier}`;
-
-    vscode.window.showInformationMessage(`Successfully logged out from Computor ${this.roleIdentifier}`);
-  }
-
-  protected disposeAll(): void {
-    for (const disposable of this.disposables) {
-      disposable.dispose();
-    }
-    this.disposables = [];
-  }
-}
-
-class ComputorLecturerExtension extends ComputorExtension {
-  private treeDataProvider?: LecturerTreeDataProvider;
-  private exampleTreeProvider?: LecturerExampleTreeProvider;
 
   constructor(context: vscode.ExtensionContext) {
-    super(context, 'Lecturer');
+    this.context = context;
+    this.settings = new ComputorSettingsManager(context);
   }
 
-  async activate(): Promise<void> {
-    console.log('Activating Lecturer extension...');
-    
-    const restored = await this.restoreSession();
-    if (restored) {
-      await this.initializeLecturerView();
-      this.registerCommands();
-    } else {
-      const success = await this.performLogin();
-      if (success) {
-        await this.initializeLecturerView();
-        this.registerCommands();
-      }
-    }
+  abstract activate(client: ReturnType<typeof buildHttpClient>): Promise<void>;
+
+  protected async setupApi(client: ReturnType<typeof buildHttpClient>): Promise<ComputorApiService> {
+    const api = new ComputorApiService(this.context);
+    (api as any).httpClient = client;
+    this.api = api;
+    this.client = client;
+    return api;
   }
 
-  private registerCommands(): void {
-    this.disposables.push(
-      vscode.commands.registerCommand('computor.lecturer.logout', async () => {
-        await this.logout();
-        await this.deactivate();
-      })
-    );
+  async dispose(): Promise<void> {
+    for (const d of this.disposables) d.dispose();
+    this.disposables = [];
+    if (this.api) this.api.clearHttpClient();
+    this.api = undefined;
+    this.client = undefined;
   }
+}
 
-  private async initializeLecturerView(): Promise<void> {
-    if (!this.httpClient) return;
+class LecturerController extends BaseRoleController {
+  private tree?: LecturerTreeDataProvider;
+  private exampleTree?: LecturerExampleTreeProvider;
 
+  async activate(client: ReturnType<typeof buildHttpClient>): Promise<void> {
+    const api = await this.setupApi(client);
     try {
-      console.log('Checking lecturer role...');
-      const response = await this.httpClient.get<any[]>('/lecturers/courses');
-      const courses = response.data as any[];
-
-      if (!courses || courses.length === 0) {
-        vscode.window.showWarningMessage('No lecturer courses found');
-        return;
+      const resp = await client.get<any[]>('/lecturers/courses');
+      if (!resp.data || resp.data.length === 0) {
+        vscode.window.showWarningMessage('No lecturer courses found.');
       }
-
-      console.log(`User has ${courses.length} lecturer courses`);
-    } catch (error) {
-      console.log('Lecturer role not available:', error);
-      vscode.window.showErrorMessage('Lecturer role not available');
-      return;
+    } catch (e) {
+      vscode.window.showErrorMessage('Lecturer role not available.');
+      throw e;
     }
 
-    if (!this.apiService) {
-      this.apiService = new ComputorApiService(this.context);
-      if (this.httpClient) {
-        (this.apiService as any).httpClient = this.httpClient;
-      }
-    }
+    this.tree = new LecturerTreeDataProvider(this.context, api);
+    this.disposables.push(vscode.window.registerTreeDataProvider('computor.lecturer.courses', this.tree));
 
-    this.treeDataProvider = new LecturerTreeDataProvider(this.context, this.apiService);
-
-    this.disposables.push(vscode.window.registerTreeDataProvider(
-      "computor.lecturer.courses",
-      this.treeDataProvider
-    ));
-    
     const treeView = vscode.window.createTreeView('computor.lecturer.courses', {
-      treeDataProvider: this.treeDataProvider,
+      treeDataProvider: this.tree,
       showCollapseAll: true,
       canSelectMany: false,
-      dragAndDropController: this.treeDataProvider
+      dragAndDropController: this.tree
     });
     this.disposables.push(treeView);
 
-    this.exampleTreeProvider = new LecturerExampleTreeProvider(this.context, this.apiService);
-    
+    this.exampleTree = new LecturerExampleTreeProvider(this.context, api);
     const exampleTreeView = vscode.window.createTreeView('computor.lecturer.examples', {
-      treeDataProvider: this.exampleTreeProvider,
+      treeDataProvider: this.exampleTree,
       showCollapseAll: true,
       canSelectMany: true,
-      dragAndDropController: this.exampleTreeProvider
+      dragAndDropController: this.exampleTree
     });
     this.disposables.push(exampleTreeView);
 
-    const commands = new LecturerCommands(this.context, this.treeDataProvider, this.apiService);
+    const commands = new LecturerCommands(this.context, this.tree, api);
     commands.registerCommands();
-    
-    const exampleCommands = new LecturerExampleCommands(this.context, this.apiService, this.exampleTreeProvider);
-    void exampleCommands;
 
-    treeView.onDidExpandElement(async (e: { element: any; }) => {
-      const item = e.element as any;
-      if (item.id) {
-        await this.treeDataProvider?.setNodeExpanded(item.id, true);
-      }
-    });
-
-    treeView.onDidCollapseElement(async (e: { element: any; }) => {
-      const item = e.element as any;
-      if (item.id) {
-        await this.treeDataProvider?.setNodeExpanded(item.id, false);
-      }
-    });
-
-    console.log('[Lecturer] Setting context and showing view...');
     await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', true);
-    await vscode.commands.executeCommand('workbench.view.extension.computor-lecturer');
-    
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
-    try {
-      await vscode.commands.executeCommand('workbench.view.extension.computor-lecturer');
-      console.log('[Lecturer] View container shown');
-    } catch (error) {
-      console.error('[Lecturer] Failed to show view container:', error);
-    }
-    
-    try {
-      await vscode.commands.executeCommand('computor.lecturer.courses.focus');
-      console.log('[Lecturer] View focused');
-    } catch (error) {
-      console.error('[Lecturer] Failed to focus view:', error);
-    }
-
-    this.statusBar.text = '$(account) Active: Lecturer';
-    this.statusBar.command = undefined;
-    this.statusBar.tooltip = 'Logged in as Lecturer';
-  }
-
-  async deactivate(): Promise<void> {
-    console.log('Deactivating Lecturer extension...');
-    this.disposeAll();
-    await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
-  }
-}
-
-class ComputorTutorExtension extends ComputorExtension {
-  private treeDataProvider?: TutorTreeDataProvider;
-
-  constructor(context: vscode.ExtensionContext) {
-    super(context, 'Tutor');
-  }
-
-  async activate(): Promise<void> {
-    console.log('Activating Tutor extension...');
-    
-    const restored = await this.restoreSession();
-    if (restored) {
-      await this.initializeTutorView();
-      this.registerCommands();
-    } else {
-      const success = await this.performLogin();
-      if (success) {
-        await this.initializeTutorView();
-        this.registerCommands();
-      }
-    }
-  }
-
-  private registerCommands(): void {
-    this.disposables.push(
-      vscode.commands.registerCommand('computor.tutor.logout', async () => {
-        await this.logout();
-        await this.deactivate();
-      })
-    );
-  }
-
-  private async initializeTutorView(): Promise<void> {
-    if (!this.httpClient) return;
-
-    try {
-      console.log('Checking tutor role...');
-      const response = await this.httpClient.get<any[]>('/tutors/courses');
-      const courses = response.data as any[];
-
-      if (!courses || courses.length === 0) {
-        vscode.window.showWarningMessage('No tutor courses found');
-        return;
-      }
-
-      console.log(`User has ${courses.length} tutor courses`);
-    } catch (error) {
-      console.log('Tutor role not available:', error);
-      vscode.window.showErrorMessage('Tutor role not available');
-      return;
-    }
-
-    if (!this.apiService) {
-      this.apiService = new ComputorApiService(this.context);
-      if (this.httpClient) {
-        (this.apiService as any).httpClient = this.httpClient;
-      }
-    }
-
-    this.treeDataProvider = new TutorTreeDataProvider(this.context, this.apiService);
-
-    this.disposables.push(vscode.window.registerTreeDataProvider(
-      "computor.tutor.courses",
-      this.treeDataProvider
-    ));
-    
-    const treeView = vscode.window.createTreeView('computor.tutor.courses', {
-      treeDataProvider: this.treeDataProvider,
-      showCollapseAll: true,
-      canSelectMany: false
-    });
-    this.disposables.push(treeView);
-
-    const commands = new TutorCommands(this.context, this.treeDataProvider, this.apiService);
-    commands.registerCommands();
-
-    console.log('[Tutor] Setting context and showing view...');
-    await vscode.commands.executeCommand('setContext', 'computor.tutor.show', true);
-    
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
-    try {
-      await vscode.commands.executeCommand('workbench.view.extension.computor-tutor');
-      console.log('[Tutor] View container shown');
-    } catch (error) {
-      console.error('[Tutor] Failed to show view container:', error);
-    }
-    
-    try {
-      await vscode.commands.executeCommand('computor.tutor.courses.focus');
-      console.log('[Tutor] View focused');
-    } catch (error) {
-      console.error('[Tutor] Failed to focus view:', error);
-    }
-
-    this.statusBar.text = '$(account) Active: Tutor';
-    this.statusBar.command = undefined;
-    this.statusBar.tooltip = 'Logged in as Tutor';
-  }
-
-  async deactivate(): Promise<void> {
-    console.log('Deactivating Tutor extension...');
-    this.disposeAll();
+    await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
     await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
+
+    try { await vscode.commands.executeCommand('workbench.view.extension.computor-lecturer'); } catch {}
+    try { await vscode.commands.executeCommand('computor.lecturer.courses.focus'); } catch {}
   }
 }
 
+class TutorController extends BaseRoleController {
+  private tree?: TutorTreeDataProvider;
 
+  async activate(client: ReturnType<typeof buildHttpClient>): Promise<void> {
+    const api = await this.setupApi(client);
 
-// async function autoLoginStudent(context: vscode.ExtensionContext) {
-//   // Check if this is a student workspace
-//   const workspaceFolders = vscode.workspace.workspaceFolders;
-//   if (workspaceFolders && workspaceFolders.length > 0 && workspaceFolders[0]) {
-//     const workspaceRoot = workspaceFolders[0].uri.fsPath;
-//     const markerFile = path.join(workspaceRoot, '.computor_student');
-    
-//     if (fs.existsSync(markerFile)) {
-//       console.log('Detected student workspace marker file');
-
-//       // Check if already logged in as any role
-//       if (extensions.length > 0) {
-//         console.log('Already logged in, skipping auto-login prompt');
-//         return;
-//       }
-      
-//       // Check if we have stored credentials to auto-login
-//       const settings = vscode.workspace.getConfiguration('computor');
-//       const backendUrl = settings.get<string>('backendUrl');
-//       const hasStoredCredentials = backendUrl && 
-//         await context.secrets.get('computor.api.token');
-      
-//       if (hasStoredCredentials) {
-//         // Auto-login silently if we have credentials
-//         console.log('Auto-logging in as student with stored credentials');
-//         await vscode.commands.executeCommand('computor.student.login');
-//       } else {
-//         // Otherwise show the prompt
-//         const answer = await vscode.window.showInformationMessage(
-//           'Student workspace detected. Would you like to login as a student?',
-//           'Login as Student',
-//           'Not Now'
-//         );
-        
-//         if (answer === 'Login as Student') {
-//           await vscode.commands.executeCommand('computor.student.login');
-//         }
-//       }
-//     }
-//   }
-// }
-/**
- * Student Extension with course selection, repository management, and tree view
- */
-class ComputorStudentExtension extends ComputorExtension {
-  private workspaceManager?: StudentWorkspaceManager;
-  private treeProvider?: StudentCourseContentTreeProvider;
-  private repositoryManager?: StudentRepositoryManager;
-  private courseSelectionService?: CourseSelectionService;
-  private statusBarService?: StatusBarService;
-
-  constructor(context: vscode.ExtensionContext) {
-    super(context, 'Student');
-  }
-
-  async activate(): Promise<void> {
-    console.log('Activating Student extension...');
-    
-    // Check if a workspace is open - required for students
-    const workspaceFolders = vscode.workspace.workspaceFolders;
-    if (!workspaceFolders || workspaceFolders.length === 0) {
-      const action = await vscode.window.showErrorMessage(
-        'Student login requires an open workspace folder. This folder will be used to store all your course repositories.',
-        'Open Folder',
-        'Cancel'
-      );
-      
-      if (action === 'Open Folder') {
-        // Ask user to select a folder for course repositories
-        const folderUri = await vscode.window.showOpenDialog({
-          canSelectFolders: true,
-          canSelectFiles: false,
-          canSelectMany: false,
-          openLabel: 'Select Course Workspace',
-          title: 'Select a folder where all course repositories will be stored'
-        });
-        
-        if (folderUri && folderUri[0]) {
-          const selectedPath = folderUri[0].fsPath;
-          
-          // Create marker file to indicate this is a student workspace
-          const markerFile = path.join(selectedPath, '.computor_student');
-          try {
-            fs.writeFileSync(markerFile, JSON.stringify({
-              created: new Date().toISOString(),
-              type: 'student_workspace',
-              version: '1.0'
-            }, null, 2));
-            console.log(`Created student marker file at: ${markerFile}`);
-          } catch (error) {
-            console.error('Failed to create marker file:', error);
-          }
-          
-          // Open the folder as workspace
-          await vscode.commands.executeCommand('vscode.openFolder', folderUri[0], false);
-          // VS Code will reload with the new workspace, so we return here
-          return;
-        }
-      }
-      
-      console.error('No workspace folder open - student login cancelled');
-      vscode.window.showInformationMessage(
-        'To use Computor as a student: 1) Open a folder (File → Open Folder), 2) Try logging in again'
-      );
-      return;
-    }
-    
-    const workspaceRoot = workspaceFolders[0]?.uri.fsPath;
-    if (!workspaceRoot) {
-      vscode.window.showErrorMessage('Unable to determine workspace folder path');
-      return;
-    }
-    console.log(`Student workspace root: ${workspaceRoot}`);
-
-    // If this workspace contains a .computor_student with a courseId, ask user to confirm login against that course
     try {
-      const markerFile = path.join(workspaceRoot, '.computor_student');
-      if (fs.existsSync(markerFile)) {
-        const marker = JSON.parse(fs.readFileSync(markerFile, 'utf8'));
-        if (marker && marker.courseId) {
-          const choice = await vscode.window.showInformationMessage(
-            'This workspace is linked to a Computor course. Continue login for this course?',
-            'Continue',
-            'Cancel'
-          );
-          if (choice === 'Cancel') {
-            return;
-          }
-        }
+      const courses = await api.getTutorCourses();
+      if (!courses || courses.length === 0) {
+        vscode.window.showWarningMessage('No tutor courses found.');
       }
     } catch (e) {
-      console.log('Could not read .computor_student marker pre-login:', e);
-    }
-    
-    // Try to restore session first
-    const restored = await this.restoreSession();
-    if (restored) {
-      console.log('Student session restored');
-      // Create initial marker file if it doesn't exist (without course ID yet)
-      this.createStudentMarkerFile(workspaceRoot);
-      await this.initializeStudentView();
-    } else {
-      // Perform login
-      const success = await this.performLogin();
-      if (success) {
-        console.log('Student login successful');
-        // Create initial marker file if it doesn't exist (without course ID yet)
-        this.createStudentMarkerFile(workspaceRoot);
-        await this.initializeStudentView();
-      }
-    }
-  }
-
-  private createStudentMarkerFile(workspaceRoot: string, courseId?: string): void {
-    const markerFile = path.join(workspaceRoot, '.computor_student');
-    try {
-      let markerData: any = {
-        type: 'student_workspace',
-        version: '1.0',
-        created: new Date().toISOString(),
-        lastUpdated: new Date().toISOString()
-      };
-
-      // If file exists, preserve some data
-      if (fs.existsSync(markerFile)) {
-        try {
-          const existing = JSON.parse(fs.readFileSync(markerFile, 'utf8'));
-          markerData.created = existing.created || markerData.created;
-          // Preserve existing course ID if no new one provided
-          if (!courseId && existing.courseId) {
-            markerData.courseId = existing.courseId;
-          }
-        } catch (e) {
-          // If can't parse existing file, use new data
-        }
-      }
-
-      // Add or update course ID if provided
-      if (courseId) {
-        markerData.courseId = courseId;
-      }
-
-      fs.writeFileSync(markerFile, JSON.stringify(markerData, null, 2));
-      console.log(`Updated student marker file at: ${markerFile} with course ID: ${courseId || 'none'}`);
-    } catch (error) {
-      console.error('Failed to create/update marker file:', error);
-    }
-  }
-
-  private async initializeStudentView(): Promise<void> {
-    if (!this.httpClient) {
-      console.error('No HTTP client available');
-      return;
+      vscode.window.showErrorMessage('Tutor role not available.');
+      throw e;
     }
 
-    try {
-      // Verify student role and get courses
-      console.log('Checking student role...');
-      const response = await this.httpClient.get<any[]>('/students/courses');
-      const courses = response.data as any[];
+    const courseId = await ensureCourseMarker('Tutor', api);
+    if (!courseId) throw new Error('Tutor course selection cancelled.');
 
-      if (!courses || courses.length === 0) {
-        vscode.window.showWarningMessage('No student courses found');
-        return;
-      }
+    this.tree = new TutorTreeDataProvider(this.context, api);
+    this.disposables.push(vscode.window.registerTreeDataProvider('computor.tutor.courses', this.tree));
+    const treeView = vscode.window.createTreeView('computor.tutor.courses', { treeDataProvider: this.tree, showCollapseAll: true });
+    this.disposables.push(treeView);
 
-      console.log(`Student has ${courses.length} courses available`);
-      
-      // Initialize API service
-      if (!this.apiService) {
-        this.apiService = new ComputorApiService(this.context);
-        if (this.httpClient) {
-          (this.apiService as any).httpClient = this.httpClient;
-        }
-      }
+    const commands = new TutorCommands(this.context, this.tree, api);
+    commands.registerCommands();
 
-      // Initialize services and managers
-      this.statusBarService = StatusBarService.initialize(this.context);
-      this.courseSelectionService = CourseSelectionService.initialize(this.context, this.apiService, this.statusBarService);
-      
-      // Clear any old course IDs from global state to prevent using stale IDs
-      await this.courseSelectionService.clearStoredCourseIds();
-      await this.context.globalState.update('studentCurrentCourseId', undefined);
-      console.log('Cleared all stored course IDs from global state');
-      
-      this.workspaceManager = new StudentWorkspaceManager(this.context, this.apiService);
-      this.repositoryManager = new StudentRepositoryManager(this.context, this.apiService);
-
-      // First, check if we have a saved course ID in the marker file
-      let selectedCourseId: string | undefined;
-      const workspaceFolders = vscode.workspace.workspaceFolders;
-      
-      if (workspaceFolders && workspaceFolders.length > 0 && workspaceFolders[0]) {
-        const markerFile = path.join(workspaceFolders[0].uri.fsPath, '.computor_student');
-        if (fs.existsSync(markerFile)) {
-          try {
-            const markerData = JSON.parse(fs.readFileSync(markerFile, 'utf8'));
-            if (markerData.courseId && courses.find(c => c.id === markerData.courseId)) {
-              selectedCourseId = markerData.courseId;
-              const course = courses.find(c => c.id === selectedCourseId);
-              console.log(`Auto-selected course from marker file: ${course?.title || course?.path} (${selectedCourseId})`);
-              
-              // Show info message about which course was auto-selected
-              vscode.window.showInformationMessage(
-                `Working with course: ${course?.title || course?.path}`
-              );
-            }
-          } catch (e) {
-            console.error('Failed to read course ID from marker file:', e);
-          }
-        }
-      }
-      
-      // If no course selected yet, prompt user to select one
-      if (!selectedCourseId) {
-        // Show course selection
-        const courseItems = courses.map(course => ({
-          label: course.title || course.path,
-          description: course.path,
-          detail: `Course ID: ${course.id}`,
-          course
-        }));
-        
-        const selected = await vscode.window.showQuickPick(courseItems, {
-          placeHolder: 'Select a course to work on',
-          title: 'Course Selection'
-        });
-        
-        if (!selected) {
-          vscode.window.showWarningMessage('No course selected. You must select a course to continue.');
-          return;
-        }
-        
-        selectedCourseId = selected.course.id;
-      }
-
-      // Save the selected course
-      if (selectedCourseId) {
-        this.workspaceManager.setCurrentCourseId(selectedCourseId);
-        // Update marker file with course ID - this is critical!
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        if (workspaceFolders && workspaceFolders.length > 0 && workspaceFolders[0]) {
-          this.createStudentMarkerFile(workspaceFolders[0].uri.fsPath, selectedCourseId);
-          console.log(`Updated marker file with course ID: ${selectedCourseId}`);
-        } else {
-          console.error('Failed to update marker file - no workspace folder found!');
-        }
-      } else {
-        console.error('No course selected - marker file not updated');
-      }
-
-      // Initialize tree view with proper styling
-      this.treeProvider = new StudentCourseContentTreeProvider(this.apiService, this.courseSelectionService, this.repositoryManager, this.context);
-      
-      // Register tree data provider
-      this.disposables.push(
-        vscode.window.registerTreeDataProvider('computor.student.courses', this.treeProvider)
-      );
-
-      // Create tree view
-      const treeView = vscode.window.createTreeView('computor.student.courses', {
-        treeDataProvider: this.treeProvider,
-        showCollapseAll: true
-      });
-      this.disposables.push(treeView);
-
-      // Set the course in course selection service
-      if (selectedCourseId) {
-        console.log(`Setting course in CourseSelectionService with ID:`, selectedCourseId);
-        await this.courseSelectionService.selectCourse(selectedCourseId);
-        console.log(`Course set, current course ID in service:`, this.courseSelectionService.getCurrentCourseId());
-        
-        // After course selection, clone and update all repositories for the course with progress UI
-        if (this.repositoryManager) {
-          await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: 'Preparing course repositories... ',
-            cancellable: false
-          }, async (progress) => {
-            progress.report({ message: 'Starting...' });
-            try {
-              await this.repositoryManager!.autoSetupRepositories(selectedCourseId!, (msg) => progress.report({ message: msg }));
-            } catch (e) {
-              console.error('Repository setup failed:', e);
-              vscode.window.showErrorMessage('Failed to prepare course repositories. You can try cloning from the tree.');
-            }
-            // Refresh tree to reflect cloned repos and mapped directories
-            if (this.treeProvider) {
-              this.treeProvider.refresh();
-            }
-          });
-        }
-      } else {
-        console.warn('No course selected - tree will show empty');
-      }
-
-      // Register student commands
-      const commands = new StudentCommands(this.context, this.treeProvider, this.apiService, this.repositoryManager);
-      commands.registerCommands();
-
-      // Command to show/focus the Test Results panel and tree
-      this.disposables.push(
-        vscode.commands.registerCommand('computor.showTestResults', async () => {
-          try {
-            await vscode.commands.executeCommand('computor.testResultsPanel.focus');
-          } catch (e) {
-            console.log('Could not focus test results panel:', e);
-          }
-          try {
-            await vscode.commands.executeCommand('computor.testResultsView.focus');
-          } catch (e) {
-            console.log('Could not focus test results tree:', e);
-          }
-        })
-      );
-
-      // Wire up Test Results view and panel (legacy style) for students
-      const testResultsPanelProvider = new TestResultsPanelProvider(this.context.extensionUri);
-      this.disposables.push(
-        vscode.window.registerWebviewViewProvider(
-          TestResultsPanelProvider.viewType,
-          testResultsPanelProvider
-        )
-      );
-
-      const testResultsTreeProvider = new TestResultsTreeDataProvider([]);
-      this.disposables.push(
-        vscode.window.registerTreeDataProvider('computor.testResultsView', testResultsTreeProvider)
-      );
-      // Connect providers to service
-      const testResultService = TestResultService.getInstance();
-      testResultService.setApiService(this.apiService);
-      // testResultService.setTestResultsPanelProvider(testResultsPanelProvider);
-      // testResultService.setTestResultsTreeProvider(testResultsTreeProvider);
-      // Command to open results: populate tree and reset panel (selection drives panel content)
-      this.disposables.push(
-        vscode.commands.registerCommand('computor.results.open', async (results: any) => {
-          try {
-            testResultsTreeProvider.refresh(results || {});
-            //testResultsPanelProvider.updateTestResults({});
-            await vscode.commands.executeCommand('computor.testResultsPanel.focus');
-          } catch (e) {
-            console.error('Failed to open test results:', e);
-          }
-        })
-      );
-      // Bridge command to update panel when clicking tree entries
-      this.disposables.push(
-        vscode.commands.registerCommand('computor.results.panel.update', (item: any) => {
-          testResultsPanelProvider.updateTestResults(item);
-        })
-      );
-
-      // Show student view
-      await vscode.commands.executeCommand('setContext', 'computor.student.show', true);
-      
-      // Try to focus the view
-      setTimeout(async () => {
-        try {
-          await vscode.commands.executeCommand('workbench.view.extension.computor-student');
-        } catch (error) {
-          console.log('Could not focus student view:', error);
-        }
-      }, 100);
-
-      // Update status bar
-      this.statusBar.text = '$(account) Active: Student';
-      this.statusBar.command = undefined;
-      this.statusBar.tooltip = 'Logged in as Student';
-
-    } catch (error) {
-      console.error('Failed to initialize student view:', error);
-      vscode.window.showErrorMessage('Failed to initialize student view');
-    }
-  }
-
-  async deactivate(): Promise<void> {
-    console.log('Deactivating Student extension...');
-    this.disposeAll();
+    await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
     await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
+    await vscode.commands.executeCommand('setContext', 'computor.tutor.show', true);
+
+    try { await vscode.commands.executeCommand('workbench.view.extension.computor-tutor'); } catch {}
+    try { await vscode.commands.executeCommand('computor.tutor.courses.focus'); } catch {}
   }
 }
 
-type ComputorExtensionConstructor = new (context: any) => ComputorExtension;
+class StudentController extends BaseRoleController {
+  private tree?: StudentCourseContentTreeProvider;
+  private repositoryManager?: StudentRepositoryManager;
+  private courseSelectionService?: CourseSelectionService;
 
-let extensionClasses: Array<{id: string, extensionClass: ComputorExtensionConstructor}> = [];
-let extensions: Array<ComputorExtension> = [];
+  async activate(client: ReturnType<typeof buildHttpClient>): Promise<void> {
+    const api = await this.setupApi(client);
 
+    // Ensure course marker exists / choose course
+    const courseId = await ensureCourseMarker('Student', api);
+    if (!courseId) throw new Error('Student course selection cancelled.');
 
-export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  console.log('Computor extension is now active');
+    this.repositoryManager = new StudentRepositoryManager(this.context, api);
+    const statusBar = (await import('./ui/StatusBarService')).StatusBarService.initialize(this.context);
+    this.courseSelectionService = CourseSelectionService.initialize(this.context, api, statusBar);
 
-  IconGenerator.initialize(context);
+    // Initialize tree view
+    this.tree = new StudentCourseContentTreeProvider(api, this.courseSelectionService!, this.repositoryManager, this.context);
+    this.disposables.push(vscode.window.registerTreeDataProvider('computor.student.courses', this.tree));
+    const treeView = vscode.window.createTreeView('computor.student.courses', { treeDataProvider: this.tree, showCollapseAll: true });
+    this.disposables.push(treeView);
 
-  extensionClasses.push({id: "computor.lecturer.login", extensionClass: ComputorLecturerExtension});
-  extensionClasses.push({id: "computor.tutor.login", extensionClass: ComputorTutorExtension});
-  extensionClasses.push({id: "computor.student.login", extensionClass: ComputorStudentExtension});
+    // Set selected course into service
+    await this.courseSelectionService!.selectCourse(courseId);
 
-  for (const { id, extensionClass } of extensionClasses) {
-    context.subscriptions.push(vscode.commands.registerCommand(id, async () => {
-      
-      // Check if this extension type is already active
-      const existingExtension = extensions.find(ext => ext.constructor === extensionClass);
-      if (existingExtension) {
-        vscode.window.showWarningMessage(`Already logged in as ${id.split('.')[1]}. Please logout first.`);
-        return;
-      }
-      
-      const extension = new extensionClass(context);
-      try {
-        await extension.initialize();
-        await extension.activate();
-        extensions.push(extension);
-      } catch (error) {
-        console.error(`Failed to activate ${id}:`, error);
-        vscode.window.showErrorMessage(`Failed to login as ${id.split('.')[1]}: ${error}`);
-        // Clean up the partially initialized extension
-        try {
-          await extension.deactivate();
-        } catch (e) {
-          console.error('Failed to deactivate after error:', e);
-        }
-      }
+    // Auto-setup repositories
+    await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Preparing course repositories...', cancellable: false }, async (progress) => {
+      progress.report({ message: 'Starting...' });
+      try { await this.repositoryManager!.autoSetupRepositories(courseId, (msg) => progress.report({ message: msg })); } catch (e) { console.error(e); }
+      this.tree?.refresh();
+    });
+
+    // Student commands
+    const commands = new StudentCommands(this.context, this.tree, api, this.repositoryManager);
+    commands.registerCommands();
+
+    // Results panel + tree
+    const panelProvider = new TestResultsPanelProvider(this.context.extensionUri);
+    this.disposables.push(vscode.window.registerWebviewViewProvider(TestResultsPanelProvider.viewType, panelProvider));
+    const resultsTree = new TestResultsTreeDataProvider([]);
+    this.disposables.push(vscode.window.registerTreeDataProvider('computor.testResultsView', resultsTree));
+    TestResultService.getInstance().setApiService(api);
+    this.disposables.push(vscode.commands.registerCommand('computor.results.open', async (results: any) => {
+      try { resultsTree.refresh(results || {}); await vscode.commands.executeCommand('computor.testResultsPanel.focus'); } catch (e) { console.error(e); }
     }));
+    this.disposables.push(vscode.commands.registerCommand('computor.results.panel.update', (item: any) => panelProvider.updateTestResults(item)));
+
+    await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
+    await vscode.commands.executeCommand('setContext', 'computor.student.show', true);
+    await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
+
+    try { await vscode.commands.executeCommand('workbench.view.extension.computor-student'); } catch {}
+  }
+}
+
+let activeSession: ActiveSession | null = null;
+let isAuthenticating = false;
+
+async function loginFlow(context: vscode.ExtensionContext, role: Role): Promise<void> {
+  if (isAuthenticating) { vscode.window.showInformationMessage('Login already in progress.'); return; }
+  isAuthenticating = true;
+  // Require an open workspace for all roles before proceeding
+  const root = getWorkspaceRoot();
+  if (!root) {
+    const action = await vscode.window.showErrorMessage('Login requires an open workspace.', 'Open Folder');
+    if (action === 'Open Folder') {
+      await vscode.commands.executeCommand('vscode.openFolder');
+    }
+    isAuthenticating = false;
+    return;
   }
 
-  context.subscriptions.push(
-    vscode.commands.registerCommand('computor.logout', async () => {
-      for (const extension of extensions) {
-        await extension.deactivate();
-      }
-      vscode.window.showInformationMessage('Logged out from all Computor roles');
-    })
-  );
+  const settings = new ComputorSettingsManager(context);
+  const baseUrl = await ensureBaseUrl(settings);
+  if (!baseUrl) { isAuthenticating = false; return; }
 
-  context.subscriptions.push(
-    vscode.commands.registerCommand('computor.settings', async () => {
-      vscode.commands.executeCommand('workbench.action.openSettings', 'computor');
-    })
-  );
+  // Enforce single role at a time
+  if (activeSession && activeSession.role !== role) {
+    const answer = await vscode.window.showWarningMessage(`You are logged in as ${activeSession.role}. Switch to ${role}?`, 'Switch', 'Cancel');
+    if (answer !== 'Switch') return;
+    await activeSession.deactivate();
+    activeSession = null;
+  }
+
+  // Prompt for authentication with stored values prefilled (if any)
+  const secretKey = `computor.${role}.auth`;
+  const storedRaw = await context.secrets.get(secretKey);
+  const previous: StoredAuth | undefined = storedRaw ? JSON.parse(storedRaw) as StoredAuth : undefined;
+  const type = await chooseAuthType(settings, previous?.type);
+  if (!type) { isAuthenticating = false; return; }
+  const creds = await promptCredentials(role, type, settings, previous);
+  if (!creds) { isAuthenticating = false; return; }
+  const auth: StoredAuth = creds;
+
+  const client = buildHttpClient(baseUrl, auth);
+  // Try a light probe to verify connectivity
+  try { await client.get('/health'); } catch {
+    // continue; some backends may not expose /health, validation occurs lazily
+  }
+
+  let controller: BaseRoleController;
+  if (role === 'Lecturer') controller = new LecturerController(context);
+  else if (role === 'Tutor') controller = new TutorController(context);
+  else controller = new StudentController(context);
+
+  try {
+    await controller.activate(client as any);
+    activeSession = { role, deactivate: () => controller.dispose().then(async () => {
+      await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
+      await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
+      await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
+    }) };
+    await context.secrets.store(secretKey, JSON.stringify(auth));
+    vscode.window.showInformationMessage(`Logged in as ${role}.`);
+  } catch (error: any) {
+    await controller.dispose();
+    vscode.window.showErrorMessage(`Failed to activate ${role}: ${error?.message || error}`);
+  } finally {
+    isAuthenticating = false;
+  }
+}
+
+// Removed automatic marker-based login prompts per user request
+
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  console.log('Computor extension activated');
+  IconGenerator.initialize(context);
+
+  // Commands: per-role logins
+  context.subscriptions.push(vscode.commands.registerCommand('computor.lecturer.login', async () => loginFlow(context, 'Lecturer')));
+  context.subscriptions.push(vscode.commands.registerCommand('computor.student.login', async () => loginFlow(context, 'Student')));
+  context.subscriptions.push(vscode.commands.registerCommand('computor.tutor.login', async () => loginFlow(context, 'Tutor')));
+
+  // Logout command
+  context.subscriptions.push(vscode.commands.registerCommand('computor.logout', async () => {
+    if (!activeSession) { vscode.window.showInformationMessage('Not logged in.'); return; }
+    const role = activeSession.role;
+    await activeSession.deactivate();
+    activeSession = null;
+    vscode.window.showInformationMessage(`Logged out from ${role}.`);
+  }));
+
+  // Change backend URL command
+  context.subscriptions.push(vscode.commands.registerCommand('computor.changeRealmUrl', async () => {
+    const settings = new ComputorSettingsManager(context);
+    const url = await vscode.window.showInputBox({
+      title: 'Set Computor Backend URL',
+      value: await settings.getBaseUrl(),
+      prompt: 'Enter the base URL of the Computor API',
+      ignoreFocusOut: true,
+      validateInput: (v) => { try { new URL(v); return undefined; } catch { return 'Enter a valid URL'; } }
+    });
+    if (!url) return;
+    await settings.setBaseUrl(url);
+    vscode.window.showInformationMessage('Computor backend URL updated.');
+  }));
+
+  // Detect marker files on startup and when workspace changes
+  // Disabled: no automatic login prompt based on marker files
+
+  // Maintain legacy settings command to open extension settings scope
+  context.subscriptions.push(vscode.commands.registerCommand('computor.settings', async () => {
+    await vscode.commands.executeCommand('workbench.action.openSettings', 'computor');
+  }));
 }
 
 export function deactivate(): void {
-
-  for (const extension of extensions) {
-    extension.deactivate();
+  if (activeSession) {
+    void activeSession.deactivate();
+    activeSession = null;
   }
-
   IconGenerator.cleanup();
 }

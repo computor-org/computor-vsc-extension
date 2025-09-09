@@ -22,6 +22,11 @@
         "category": "Computor"
       },
       {
+        "command": "computor.changeRealmUrl",
+        "title": "Computor: Change Backend URL",
+        "category": "Computor"
+      },
+      {
         "command": "computor.settings",
         "title": "Computor: Settings",
         "category": "Computor"
