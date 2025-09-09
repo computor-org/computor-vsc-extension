@@ -801,7 +801,25 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             // Determine shape based on course_content_kind_id
             // 'assignment' gets square, 'unit' (or anything else) gets circle
             const shape = this.contentType?.course_content_kind_id === 'assignment' ? 'square' : 'circle';
-            this.iconPath = IconGenerator.getColoredIcon(color, shape);
+
+            // Determine success/failure badge for assignments with grading info
+            let badge: 'success' | 'failure' | 'none' = 'none';
+            let corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none';
+            if (shape === 'square') {
+                const grade = (this.submissionGroup?.latest_grading?.grading ?? this.submissionGroup?.grading) as number | undefined;
+                if (typeof grade === 'number') {
+                    if (grade >= 0.999) badge = 'success';
+                    else if (grade >= 0) badge = 'failure';
+                }
+                const status = this.submissionGroup?.latest_grading?.status?.toLowerCase();
+                if (status === 'corrected') corner = 'corrected';
+                else if (status === 'correction_necessary') corner = 'correction_necessary';
+                else if (status === 'correction_possible') corner = 'correction_possible';
+            }
+
+            this.iconPath = (badge === 'none' && corner === 'none')
+                ? IconGenerator.getColoredIcon(color, shape)
+                : IconGenerator.getColoredIconWithBadge(color, shape, badge, corner);
         } catch {
             // Fallback to default theme icons if icon generation fails
             if (hasExampleAssigned(this.courseContent)) {

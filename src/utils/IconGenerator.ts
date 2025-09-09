@@ -44,7 +44,37 @@ export class IconGenerator {
     return uri;
   }
 
-  private static generateSvg(color: string, shape: 'circle' | 'square'): string {
+  static getColoredIconWithBadge(
+    color: string,
+    shape: 'circle' | 'square' = 'circle',
+    badge: 'success' | 'failure' | 'none' = 'none',
+    corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none'
+  ): vscode.Uri | vscode.ThemeIcon {
+    const normalizedColor = this.normalizeColor(color);
+    if (!normalizedColor) {
+      return new vscode.ThemeIcon('symbol-enum');
+    }
+
+    const cacheKey = `${shape}-${normalizedColor}-${badge}-${corner}`;
+    if (this.iconCache.has(cacheKey)) {
+      return this.iconCache.get(cacheKey)!;
+    }
+
+    const svg = this.generateSvg(normalizedColor, shape, badge, corner);
+    const fileName = `${cacheKey}.svg`;
+    const filePath = path.join(this.iconDir, fileName);
+    fs.writeFileSync(filePath, svg);
+    const uri = vscode.Uri.file(filePath);
+    this.iconCache.set(cacheKey, uri);
+    return uri;
+  }
+
+  private static generateSvg(
+    color: string,
+    shape: 'circle' | 'square',
+    badge: 'success' | 'failure' | 'none' = 'none',
+    corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none'
+  ): string {
     const size = 16;
     const padding = 2;
     const shapeSize = size - (padding * 2);
@@ -59,9 +89,37 @@ export class IconGenerator {
       shapeElement = `<rect x="${padding}" y="${padding}" width="${shapeSize}" height="${shapeSize}" fill="${color}" rx="2" />`;
     }
 
+    // Main badge overlay (with black outline for contrast)
+    let badgeElement = '';
+    if (badge === 'success') {
+      badgeElement = `
+        <path d="M4 8.5 L7 11 L12 6" stroke="#000000" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M4 8.5 L7 11 L12 6" stroke="#ffffff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      `;
+    } else if (badge === 'failure') {
+      badgeElement = `
+        <path d="M5 5 L11 11" stroke="#000000" stroke-width="3" stroke-linecap="round"/>
+        <path d="M11 5 L5 11" stroke="#000000" stroke-width="3" stroke-linecap="round"/>
+        <path d="M5 5 L11 11" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+        <path d="M11 5 L5 11" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+      `;
+    }
+
+    // Corner status dot
+    let cornerElement = '';
+    if (corner !== 'none') {
+      const cornerColor = corner === 'corrected' ? '#2e7d32' : corner === 'correction_necessary' ? '#d32f2f' : '#f9a825';
+      const cx = size - 3.5;
+      const cy = size - 3.5;
+      const r = 3;
+      cornerElement = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${cornerColor}" stroke="#ffffff" stroke-width="1.5" />`;
+    }
+
     return `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg">
   ${shapeElement}
+  ${badgeElement}
+  ${cornerElement}
 </svg>`;
   }
 
