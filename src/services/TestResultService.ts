@@ -56,7 +56,8 @@ export class TestResultService {
     courseContentId: string,
     versionIdentifier: string,
     assignmentTitle: string,
-    submit: boolean = false
+    submit: boolean = false,
+    options?: { progress?: vscode.Progress<{ message?: string; increment?: number }>; token?: vscode.CancellationToken; showProgress?: boolean }
   ): Promise<void> {
     if (!this.apiService) {
       vscode.window.showErrorMessage('Test service not properly initialized');
@@ -64,19 +65,16 @@ export class TestResultService {
     }
 
     try {
-      // Show progress while submitting test
-      await vscode.window.withProgress({
-        location: vscode.ProgressLocation.Notification,
-        title: `Submitting test for ${assignmentTitle}...`,
-        cancellable: false
-      }, async (progress) => {
-        progress.report({ message: 'Sending test request...' });
-        
-        // Submit the test
+      const runWithProgress = async (
+        progress: vscode.Progress<{ message?: string; increment?: number }>,
+        token?: vscode.CancellationToken
+      ) => {
+        progress.report({ message: 'Submitting test request...' });
+
         const testResult = await this.apiService!.submitTest({
           course_content_id: courseContentId,
           version_identifier: versionIdentifier,
-          submit
+          submit,
         });
 
         console.log("[Debug] " + JSON.stringify(testResult,null,2));
@@ -115,12 +113,8 @@ export class TestResultService {
           const resultId = testResult.id;
           console.log(`[TestResultService] Test submitted with result ID: ${resultId}, starting polling...`);
 
-          // Show progress notification
-          await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: `Running tests for ${assignmentTitle}...`,
-            cancellable: true
-          }, async (progress, token) => {
+          // Use provided progress to poll; if no token provided, create a dummy
+          await (async () => {
             return new Promise<void>((resolve) => {
               const startTime = Date.now();
               let pollCount = 0;
@@ -133,7 +127,7 @@ export class TestResultService {
                 pollCount++;
 
                 // Check if cancelled
-                if (token.isCancellationRequested) {
+                if (token && token.isCancellationRequested) {
                   this.stopPolling(resultId);
                   resolve();
                   return;
@@ -149,9 +143,7 @@ export class TestResultService {
 
                 // Update progress
                 const elapsed = Math.floor((Date.now() - startTime) / 1000);
-                progress.report({ 
-                  message: `Waiting for results... (${elapsed}s)` 
-                });
+                progress.report({ message: `Running tests... (${elapsed}s)` });
 
                 // Check status
                 const status = await this.apiService!.getResultStatus(resultId) as unknown as number;
@@ -193,9 +185,29 @@ export class TestResultService {
 
               this.pollingIntervals.set(resultId, interval);
             });
-          });
+          })();
         }
-      });
+      };
+
+      // If caller provided a progress handle, reuse it; otherwise open our own
+      if (options?.progress) {
+        await runWithProgress(options.progress, options.token);
+      } else {
+        const show = options?.showProgress !== false;
+        if (show) {
+          await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `Testing ${assignmentTitle}...`,
+            cancellable: true,
+          }, async (progress, token) => {
+            await runWithProgress(progress, token);
+          });
+        } else {
+          // No progress at all
+          const dummy: vscode.Progress<{ message?: string; increment?: number }> = { report: () => void 0 };
+          await runWithProgress(dummy);
+        }
+      }
     } catch (error: any) {
       console.error('[TestResultService] Error in submitTestAndAwaitResults:', error);
       vscode.window.showErrorMessage(`Test submission failed: ${error.message}`);

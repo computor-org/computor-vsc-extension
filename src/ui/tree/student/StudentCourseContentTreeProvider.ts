@@ -37,6 +37,8 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     private courseContentsCache: Map<string, CourseContentStudentList[]> = new Map(); // Cache course contents per course
     private contentKinds: CourseContentKindList[] = [];
     private expandedStates: Record<string, boolean> = {};
+    private itemIndex: Map<string, TreeItem> = new Map();
+    // private courseCache: { id: string; title: string } | null = null;
     
     constructor(
         apiService: ComputorApiService, 
@@ -67,6 +69,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     refresh(): void {
         this.courseContentsCache.clear();
         this.contentKinds = [];
+        this.itemIndex.clear();
         // Don't clear expanded states on refresh - preserve them
         this._onDidChangeTreeData.fire(undefined);
     }
@@ -78,11 +81,61 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     /**
      * Refresh only the specific course content item without affecting the entire tree
      */
-    refreshContentItem(contentId: string): void {
-        void contentId; // TODO: Implement targeted refresh using contentId
-        // Find and refresh the specific content item without collapsing the tree
-        // This is a targeted refresh that preserves tree state
-        this._onDidChangeTreeData.fire(null);
+    async refreshContentItem(contentId: string): Promise<void> {
+        try {
+            const selectedCourseId = this.courseSelection.getCurrentCourseId();
+            const updated = await this.apiService.getStudentCourseContent(contentId);
+            if (!updated) { this._onDidChangeTreeData.fire(undefined); return; }
+
+            if (selectedCourseId) {
+                let list = this.courseContentsCache.get(selectedCourseId);
+                if (!list) {
+                    list = await this.apiService.getStudentCourseContents(selectedCourseId) || [];
+                }
+                const idx = list.findIndex(c => c.id === contentId);
+                if (idx >= 0) list[idx] = updated; else list.push(updated);
+                this.courseContentsCache.set(selectedCourseId, list);
+            }
+
+            const ti = this.itemIndex.get(contentId);
+            if (ti && ti instanceof CourseContentItem) {
+                ti.applyUpdate(updated);
+                this._onDidChangeTreeData.fire(ti);
+                // Also refresh parent unit if possible
+                const parentPath = (updated.path || '').split('.').slice(0, -1).join('.');
+                if (parentPath && selectedCourseId) {
+                    const list = this.courseContentsCache.get(selectedCourseId) || [];
+                    const parent = list.find(c => c.path === parentPath);
+                    if (parent && parent.id) {
+                        const parentItem = this.itemIndex.get(parent.id);
+                        if (parentItem && parentItem instanceof CourseContentPathItem) {
+                            // Rebuild fresh node and update parent item
+                            const tree = this.buildContentTree(list, [], [], this.contentKinds);
+                            const freshNode = this.findNodeByPath(tree, parentPath);
+                            if (freshNode) {
+                                parentItem.updateFromNode(freshNode);
+                                this._onDidChangeTreeData.fire(parentItem);
+                            }
+                        }
+                    }
+                }
+                // Also update course root counts
+                const courseId = selectedCourseId;
+                if (courseId) {
+                    const rootItem = this.itemIndex.get(`course-${courseId}`);
+                    if (rootItem && rootItem instanceof CourseRootItem) {
+                        const list = this.courseContentsCache.get(courseId) || [];
+                        rootItem.updateCounts(list.length);
+                        this._onDidChangeTreeData.fire(rootItem);
+                    }
+                }
+                return;
+            }
+            this._onDidChangeTreeData.fire(undefined);
+        } catch (e) {
+            console.error('refreshContentItem failed:', e);
+            this._onDidChangeTreeData.fire(undefined);
+        }
     }
     
     /**
@@ -318,65 +371,107 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         }
         
         if (!element) {
-            // Root level - check if we have a selected course (when running in course workspace)
+            // Root level - show a single node representing the current course
             const selectedCourseId = this.courseSelection.getCurrentCourseId();
-            console.log('[StudentTree] Getting children for root, selected course ID:', selectedCourseId);
-            
-            if (selectedCourseId) {
-                // We're in a course workspace - show course contents directly
-                try {
-                    // Fetch content kinds if not already loaded
-                    if (this.contentKinds.length === 0) {
-                        this.contentKinds = await this.apiService.getCourseContentKinds() || [];
-                    }
-                    
-                    // Fetch course contents for the selected course
-                    let courseContents = this.courseContentsCache.get(selectedCourseId);
-                    
-                    if (!courseContents) {
-                        console.log('[StudentTree] Fetching course contents from API for course:', selectedCourseId);
-                        courseContents = await this.apiService.getStudentCourseContents(selectedCourseId) || [];
-                        console.log('[StudentTree] Received course contents:', courseContents.length, 'items');
-                        this.courseContentsCache.set(selectedCourseId, courseContents);
-                        
-                        // Update directory paths for existing repositories
-                        if (this.repositoryManager) {
-                            this.repositoryManager.updateExistingRepositoryPaths(selectedCourseId, courseContents);
-                        }
-                    } else {
-                        console.log('[StudentTree] Using cached course contents:', courseContents.length, 'items');
-                        // Still need to update directory paths in case repositories were cloned since last refresh
-                        if (this.repositoryManager) {
-                            this.repositoryManager.updateExistingRepositoryPaths(selectedCourseId, courseContents);
-                        }
-                    }
-                    
-                    if (courseContents.length === 0) {
-                        console.log('[StudentTree] No course content available for course:', selectedCourseId);
-                        return [new MessageItem('No course content available', 'info')];
-                    }
-                    
-                    // Build tree structure from course content
-                    const tree = this.buildContentTree(courseContents, [], [], this.contentKinds);
-                    return this.createTreeItems(tree);
-                } catch (error: any) {
-                    console.error('Failed to load course content:', error);
-                    const message = error?.response?.data?.message || error?.message || 'Unknown error';
-                    return [new MessageItem(`Error loading content: ${message}`, 'error')];
-                }
-            } else {
-                // No course selected - this shouldn't happen with proper marker file
+            if (!selectedCourseId) {
                 console.log('[StudentTree] No course selected - tree will be empty');
                 return [new MessageItem('No course selected. Please restart the extension.', 'warning')];
             }
+
+            try {
+                // Fetch course info for title
+                const course = await this.apiService.getStudentCourse(selectedCourseId);
+                const title = (course?.title || course?.name || `Course ${selectedCourseId}`) as string;
+
+                // Ensure content kinds cached
+                if (this.contentKinds.length === 0) {
+                    this.contentKinds = await this.apiService.getCourseContentKinds() || [];
+                }
+
+                // Ensure contents cached (for counts)
+                let courseContents = this.courseContentsCache.get(selectedCourseId);
+                if (!courseContents) {
+                    courseContents = await this.apiService.getStudentCourseContents(selectedCourseId) || [];
+                    this.courseContentsCache.set(selectedCourseId, courseContents);
+                    if (this.repositoryManager) this.repositoryManager.updateExistingRepositoryPaths(selectedCourseId, courseContents);
+                }
+
+                const itemCount = courseContents.length;
+                const courseItem = new CourseRootItem(title, selectedCourseId, itemCount, true);
+                const rootId = `course-${selectedCourseId}`;
+                courseItem.id = rootId;
+                this.itemIndex.set(rootId, courseItem);
+                return [courseItem];
+            } catch (error: any) {
+                console.error('Failed to load course root:', error);
+                const message = error?.response?.data?.message || error?.message || 'Unknown error';
+                return [new MessageItem(`Error loading course: ${message}`, 'error')];
+            }
         }
         
+        // Handle course root node
+        if (element instanceof CourseRootItem) {
+            const selectedCourseId = element.courseId;
+            try {
+                // Ensure kinds and contents
+                if (this.contentKinds.length === 0) this.contentKinds = await this.apiService.getCourseContentKinds() || [];
+                let courseContents = this.courseContentsCache.get(selectedCourseId);
+                if (!courseContents) {
+                    courseContents = await this.apiService.getStudentCourseContents(selectedCourseId) || [];
+                    this.courseContentsCache.set(selectedCourseId, courseContents);
+                }
+                if (this.repositoryManager) this.repositoryManager.updateExistingRepositoryPaths(selectedCourseId, courseContents);
+
+                // Build and present under course root
+                const tree = this.buildContentTree(courseContents, [], [], this.contentKinds);
+                // Optionally update root item description
+                element.updateCounts(courseContents.length);
+                return this.createTreeItems(tree);
+            } catch (e) {
+                console.error('Failed to load children for course root:', e);
+                return [];
+            }
+        }
+
         // Handle content items (units/folders)
         if (element instanceof CourseContentPathItem) {
-            return this.createTreeItems(element.node);
+            try {
+                const selectedCourseId = this.courseSelection.getCurrentCourseId();
+                if (!selectedCourseId) return this.createTreeItems(element.node);
+                let courseContents = this.courseContentsCache.get(selectedCourseId);
+                if (!courseContents) {
+                    courseContents = await this.apiService.getStudentCourseContents(selectedCourseId) || [];
+                    this.courseContentsCache.set(selectedCourseId, courseContents);
+                }
+                const tree = this.buildContentTree(courseContents, [], [], this.contentKinds);
+                const targetPath = element.node.courseContent?.path;
+                if (!targetPath) return this.createTreeItems(element.node);
+                const refreshedNode = this.findNodeByPath(tree, targetPath);
+                if (refreshedNode) {
+                    element.updateFromNode(refreshedNode);
+                    return this.createTreeItems(refreshedNode);
+                }
+                return this.createTreeItems(element.node);
+            } catch (e) {
+                console.error('Failed to refresh unit children:', e);
+                return this.createTreeItems(element.node);
+            }
         }
         
         return [];
+    }
+
+    // Find a node in the built tree by its content path
+    private findNodeByPath(root: ContentNode, pathStr: string): ContentNode | undefined {
+        if (!pathStr) return undefined;
+        // Depth-first traversal to match the courseContent.path
+        const stack: ContentNode[] = [root];
+        while (stack.length > 0) {
+            const node = stack.pop()!;
+            if (node.courseContent?.path === pathStr) return node;
+            for (const child of node.children.values()) stack.push(child);
+        }
+        return undefined;
     }
     
     /**
@@ -496,20 +591,24 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
             if (child.isUnit) {
                 // Unit node - containers for other content items
                 const nodeId = child.courseContent ? child.courseContent.id : `unit-${name}`;
-                items.push(new CourseContentPathItem(
-                    child.name || name, 
+                const unitItem = new CourseContentPathItem(
+                    child.name || name,
                     child,
                     this.getExpandedState(nodeId)
-                ));
+                );
+                if (unitItem.id) this.itemIndex.set(unitItem.id, unitItem);
+                items.push(unitItem);
             } else if (child.courseContent) {
                 // Leaf node - actual course content (assignment, reading, etc.)
-                items.push(new CourseContentItem(
+                const contentItem = new CourseContentItem(
                     child.courseContent,
                     child.submissionGroup,
                     child.contentType,
                     this.courseSelection,
                     this.getExpandedState(child.courseContent.id)
-                ));
+                );
+                if (contentItem.id) this.itemIndex.set(contentItem.id, contentItem);
+                items.push(contentItem);
             }
         });
         
@@ -555,6 +654,26 @@ abstract class TreeItem extends vscode.TreeItem {
     }
 }
 
+class CourseRootItem extends TreeItem {
+    constructor(
+        public readonly title: string,
+        public readonly courseId: string,
+        itemCount: number,
+        expanded: boolean = true
+    ) {
+        super(title, expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
+        this.iconPath = new vscode.ThemeIcon('book');
+        this.contextValue = 'studentCourseRoot';
+        this.updateCounts(itemCount);
+        this.tooltip = `Course: ${title}`;
+    }
+
+    updateCounts(itemCount: number): void {
+        // Intentionally no item count in the root title/description
+        this.description = undefined;
+    }
+}
+
 class MessageItem extends TreeItem {
     constructor(message: string, severity: 'info' | 'warning' | 'error') {
         super(message, vscode.TreeItemCollapsibleState.None);
@@ -575,7 +694,7 @@ class MessageItem extends TreeItem {
 class CourseContentPathItem extends TreeItem {
     constructor(
         public readonly name: string,
-        public readonly node: ContentNode,
+        public node: ContentNode,
         expanded: boolean = false
     ) {
         super(name, expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
@@ -598,6 +717,14 @@ class CourseContentPathItem extends TreeItem {
         const count = this.countItems(node);
         this.description = `${count} item${count !== 1 ? 's' : ''}`;
         this.tooltip = `Unit: ${name}\n${count} items`;
+        this.tooltip = `Type: ${node.contentType?.title}`;
+    }
+    
+    public updateFromNode(node: ContentNode): void {
+        this.node = node;
+        const count = this.countItems(node);
+        this.description = `${count} item${count !== 1 ? 's' : ''}`;
+        // Keep tooltip type in sync
         this.tooltip = `Type: ${node.contentType?.title}`;
     }
     
@@ -652,6 +779,18 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         
         // Don't add commands to assignments since they are now expandable to show filesystem
         // Commands will be shown as child items when expanded
+    }
+
+    // Update this item's data from a fresh course content object
+    public applyUpdate(updatedContent: CourseContentStudentList): void {
+        // Overwrite backing fields (readonly at type-level only)
+        (this as any).courseContent = updatedContent;
+        (this as any).submissionGroup = updatedContent.submission_group;
+        // Recompute visual aspects
+        this.setupIcon();
+        this.setupDescription();
+        this.setupTooltip();
+        this.setupContextValue();
     }
     
     private setupIcon(): void {

@@ -541,82 +541,57 @@ export class StudentCommands {
         const assignmentTitle = item.courseContent.title || assignmentPath;
 
         try {
-          // Check if there are any changes to commit
-          const hasChanges = await this.gitBranchManager.hasChanges(directory);
-          if (!hasChanges) {
-            // No changes to commit, but we can still test with the current commit
-            const currentCommitHash = await this.gitBranchManager.getLatestCommitHash(directory);
-            if (currentCommitHash && item.courseContent.id) {
-              // Use TestResultService for polling and displaying results
-              await this.testResultService.submitTestAndAwaitResults(
-                item.courseContent.id,
-                currentCommitHash,
-                assignmentTitle,
-                false // Don't auto-submit, just test
-              );
-            } else {
-              vscode.window.showWarningMessage('Could not determine commit hash for testing');
-            }
-            return;
-          }
-
-          // Generate automatic commit message
-          const now = new Date();
-          const timestamp = now.toISOString().replace('T', ' ').split('.')[0];
-          const commitMessage = `Update ${assignmentTitle} - ${timestamp}`;
-
-          // Variable to hold commit hash
-          let commitHash: string | null = null;
-
-          // Show progress while committing, pushing, and testing
+          // Always show a single progress for the entire test flow
           await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
             title: `Testing ${assignmentTitle}...`,
-            cancellable: false
-          }, async (progress) => {
-            progress.report({ increment: 0, message: 'Checking branch...' });
+            cancellable: true
+          }, async (progress, token) => {
+            // Check if there are any changes to commit
+            const hasChanges = await this.gitBranchManager.hasChanges(directory);
+            let commitHash: string | null = null;
 
-            // Ensure we're on the main branch
-            const currentBranch = await this.gitBranchManager.getCurrentBranch(directory);
-            const mainBranch = await this.gitBranchManager.getMainBranch(directory);
-            
-            if (currentBranch !== mainBranch) {
-              progress.report({ increment: 10, message: `Switching to ${mainBranch} branch...` });
-              await this.gitBranchManager.checkoutBranch(directory, mainBranch);
+            if (hasChanges) {
+              progress.report({ message: 'Checking branch...' });
+              const currentBranch = await this.gitBranchManager.getCurrentBranch(directory);
+              const mainBranch = await this.gitBranchManager.getMainBranch(directory);
+              if (currentBranch !== mainBranch) {
+                progress.report({ message: `Switching to ${mainBranch} branch...` });
+                await this.gitBranchManager.checkoutBranch(directory, mainBranch);
+              }
+
+              progress.report({ message: 'Committing changes...' });
+              await this.gitBranchManager.stageAll(directory);
+              const now = new Date();
+              const timestamp = now.toISOString().replace('T', ' ').split('.')[0];
+              const commitMessage = `Update ${assignmentTitle} - ${timestamp}`;
+              await this.gitBranchManager.commitChanges(directory, commitMessage);
+
+              progress.report({ message: 'Pushing to remote...' });
+              await this.gitBranchManager.pushCurrentBranch(directory);
+              progress.report({ message: 'Getting commit hash...' });
+              commitHash = await this.gitBranchManager.getLatestCommitHash(directory);
+            } else {
+              // No changes: get current commit hash
+              commitHash = await this.gitBranchManager.getLatestCommitHash(directory);
             }
 
-            progress.report({ increment: 20, message: 'Committing changes...' });
-            // Stage all changes in the assignment directory
-            await this.gitBranchManager.stageAll(directory);
-            
-            // Commit the changes
-            await this.gitBranchManager.commitChanges(directory, commitMessage);
-
-            progress.report({ increment: 40, message: 'Pushing to remote...' });
-            // Push to main branch
-            await this.gitBranchManager.pushCurrentBranch(directory);
-
-            progress.report({ increment: 60, message: 'Getting commit hash...' });
-            // Get the latest commit hash for test submission
-            commitHash = await this.gitBranchManager.getLatestCommitHash(directory);
-            
-            progress.report({ increment: 100, message: 'Code pushed successfully!' });
+            if (commitHash && item.courseContent.id) {
+              // Submit test and reuse the same progress indicator for polling
+              await this.testResultService.submitTestAndAwaitResults(
+                item.courseContent.id,
+                commitHash,
+                assignmentTitle,
+                false,
+                { progress, token, showProgress: false }
+              );
+            } else {
+              vscode.window.showWarningMessage('Could not determine commit hash or content ID for testing');
+            }
           });
-          
-          // Now submit test and await results with polling
-          if (commitHash && item.courseContent.id) {
-            await this.testResultService.submitTestAndAwaitResults(
-              item.courseContent.id,
-              commitHash,
-              assignmentTitle,
-              false // Don't auto-submit, just test
-            );
-          } else {
-            vscode.window.showWarningMessage('Could not submit test: missing commit hash || content ID');
-          }
 
-          // Optionally refresh the tree to update any status indicators
-          this.treeDataProvider.refreshNode(item);
+          // Refresh just this course content from API after results
+          await this.treeDataProvider.refreshContentItem(item.courseContent.id);
         } catch (error: any) {
           console.error('Failed to test assignment:', error);
           vscode.window.showErrorMessage(`Failed to test assignment: ${error.message}`);
