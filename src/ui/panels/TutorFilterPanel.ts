@@ -19,6 +19,12 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
       localResourceRoots: [this.extensionUri]
     };
 
+    webviewView.onDidChangeVisibility(() => {
+      if (webviewView.visible) {
+        void this.postCourses();
+      }
+    });
+
     webviewView.webview.onDidReceiveMessage(async (message) => {
       switch (message.command) {
         case 'course-select':
@@ -37,10 +43,8 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
     });
 
     this.updateHtml();
-    // Initial data
+    // Initial data: load courses, then groups and members based on selection
     void this.postCourses();
-    void this.postCourseGroups();
-    void this.postCourseMembers();
   }
 
   private async updateHtml(): Promise<void> {
@@ -83,7 +87,7 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
               groupSel.innerHTML = '<option value="">All groups</option>' + data.map(c => '<option value="' + c.id + '" ' + (selected===c.id?'selected':'') + '>' + (c.title||c.name||c.id) + '</option>').join('');
             } else if (command === 'members') {
               const label = (m) => (m.user && (m.user.full_name || m.user.username)) || m.id;
-              memberSel.innerHTML = '<option value="">All members</option>' + data.map(c => '<option value="' + c.id + '" ' + (selected===c.id?'selected':'') + '>' + label(c) + '</option>').join('');
+              memberSel.innerHTML = data.map(c => '<option value="' + c.id + '" ' + (selected===c.id?'selected':'') + '>' + label(c) + '</option>').join('');
             }
           });
           courseSel.addEventListener('change', () => {
@@ -106,7 +110,17 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
 
   private async postCourses(): Promise<void> {
     const courses = await this.api.getTutorCourses();
-    this._view?.webview.postMessage({ command: 'courses', data: courses || [], selected: this.selection.getCurrentCourseId() });
+    let selected = this.selection.getCurrentCourseId();
+    if ((!selected || selected === '') && courses && courses.length > 0) {
+      const first = courses[0];
+      const label = first.title || first.name || first.path || first.id;
+      await this.selection.selectCourse(first.id, label);
+      selected = first.id;
+    }
+    this._view?.webview.postMessage({ command: 'courses', data: courses || [], selected });
+    // After courses are posted and selection ensured, load dependent filters
+    await this.postCourseGroups();
+    await this.postCourseMembers();
   }
 
   private async postCourseGroups(): Promise<void> {
@@ -123,8 +137,15 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
     const groupId = this.selection.getCurrentGroupId();
     let members: any[] = [];
     if (courseId) {
-      members = await (this.api as any).getTutorCourseMembers?.(courseId, groupId || undefined) || [];
+      members = await this.api.getTutorCourseMembers(courseId, groupId || undefined) || [];
     }
-    this._view?.webview.postMessage({ command: 'members', data: members, selected: this.selection.getCurrentMemberId() });
+    let selected = this.selection.getCurrentMemberId();
+    if ((!selected || selected === '') && members && members.length > 0) {
+      const first = members[0];
+      const label = (first.user && (first.user.full_name || first.user.username)) || first.id;
+      await this.selection.selectMember(first.id, label);
+      selected = first.id;
+    }
+    this._view?.webview.postMessage({ command: 'members', data: members, selected });
   }
 }

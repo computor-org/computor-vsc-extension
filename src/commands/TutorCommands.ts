@@ -170,16 +170,36 @@ export class TutorCommands {
 
     // Tutor: Clone student repository (scaffold)
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.cloneStudentRepository', async (_item: any) => {
+      vscode.commands.registerCommand('computor.tutor.cloneStudentRepository', async (item: any) => {
         try {
+          // Prefer repository information from the clicked assignment's submission_group
+          const content: any = item?.content || item?.courseContent || item;
+          const contentCourseId: string | undefined = content?.course_id;
+          const submissionRepo = content?.submission_group?.repository;
+
           const sel = TutorSelectionService.getInstance();
-          let courseId = sel.getCurrentCourseId() || '';
+          let courseId = contentCourseId || sel.getCurrentCourseId() || '';
           let memberId = sel.getCurrentMemberId() || '';
-          if (!courseId) courseId = (await vscode.window.showInputBox({ title: 'Course ID', prompt: 'Enter course ID', ignoreFocusOut: true })) || '';
-          if (!memberId) memberId = (await vscode.window.showInputBox({ title: 'Course Member ID', prompt: 'Enter course member ID', ignoreFocusOut: true })) || '';
+          if (!courseId || !memberId) {
+            // Fallback prompts only if selection is missing
+            if (!courseId) courseId = (await vscode.window.showInputBox({ title: 'Course ID', prompt: 'Enter course ID', ignoreFocusOut: true })) || '';
+            if (!memberId) memberId = (await vscode.window.showInputBox({ title: 'Course Member ID', prompt: 'Enter course member ID', ignoreFocusOut: true })) || '';
+          }
           if (!courseId || !memberId) { return; }
-          const remoteUrl = await vscode.window.showInputBox({ title: 'Student Repo URL', prompt: 'Enter remote URL (temporary until backend integration)', ignoreFocusOut: true });
+
+          // Build remote URL: prefer clone_url, fallback to url/web_url
+          let remoteUrl: string | undefined = submissionRepo?.clone_url || submissionRepo?.url || submissionRepo?.web_url;
+          if (!remoteUrl) {
+            // Try backend member repository endpoint
+            const repoMeta = await this.apiService.getTutorStudentRepository(courseId, memberId);
+            remoteUrl = repoMeta?.remote_url;
+          }
+          if (!remoteUrl) {
+            // Last resort: ask the user
+            remoteUrl = await vscode.window.showInputBox({ title: 'Student Repo URL', prompt: 'Enter remote URL', ignoreFocusOut: true }) || undefined;
+          }
           if (!remoteUrl) { return; }
+
           const dir = await this.workspaceManager.registerTutorStudentRepository(courseId, memberId, remoteUrl);
           // Git clone into the student workspace path if empty
           const exists = await fs.promises.readdir(dir).then(list => list.length > 0).catch(() => false);
@@ -187,7 +207,7 @@ export class TutorCommands {
             vscode.window.showWarningMessage(`Directory not empty: ${dir}. Skipping clone.`);
           } else {
             await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Cloning student repository...', cancellable: false }, async () => {
-              await simpleGit().clone(remoteUrl, dir);
+              await simpleGit().clone(remoteUrl!, dir);
             });
             vscode.window.showInformationMessage(`Student repository cloned to ${dir}`);
           }
@@ -213,7 +233,8 @@ export class TutorCommands {
           const repoPath = await this.workspaceManager.getTutorStudentWorkspacePath(courseId, memberId);
           const git = simpleGit(repoPath);
           await git.fetch();
-          const branch = await vscode.window.showInputBox({ title: 'Submission Branch', prompt: 'Enter submission branch to checkout', value: 'main', ignoreFocusOut: true });
+          const inferredBranch = await this.apiService.getTutorSubmissionBranch(courseId, memberId, _item?.id || '');
+          const branch = inferredBranch || await vscode.window.showInputBox({ title: 'Submission Branch', prompt: 'Enter submission branch to checkout', value: 'main', ignoreFocusOut: true });
           if (!branch) return;
           await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Checking out ${branch}...`, cancellable: false }, async () => {
             await git.checkout(branch);

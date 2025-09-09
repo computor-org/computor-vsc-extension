@@ -1296,63 +1296,113 @@ export class ComputorApiService {
   // Tutor API methods
   async getTutorCourses(): Promise<any[]> {
     const cacheKey = 'tutorCourses';
-    
-    // Check cache first
     const cached = multiTierCache.get<any[]>(cacheKey);
-    if (cached) {
-      return cached;
-    }
-    
+    if (cached) return cached;
     try {
       const result = await errorRecoveryService.executeWithRecovery(async () => {
         const client = await this.getHttpClient();
-        // For now use regular courses endpoint - this might need to be updated when tutor endpoint is available
-        const response = await client.get<any[]>('/courses');
+        const response = await client.get<any[]>('/tutors/courses');
         return response.data;
-      }, {
-        maxRetries: 2,
-        exponentialBackoff: true
-      });
-      
-      // Cache in warm tier
+      }, { maxRetries: 2, exponentialBackoff: true });
       multiTierCache.set(cacheKey, result, 'warm');
-      return result;
+      return result || [];
     } catch (error) {
       console.error('Failed to get tutor courses:', error);
       return [];
     }
   }
 
+  async getTutorCourse(courseId: string): Promise<any | undefined> {
+    const cacheKey = `tutorCourse-${courseId}`;
+    const cached = multiTierCache.get<any>(cacheKey);
+    if (cached) return cached;
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const response = await client.get<any>(`/tutors/courses/${courseId}`);
+        return response.data;
+      }, { maxRetries: 2, exponentialBackoff: true });
+      multiTierCache.set(cacheKey, result, 'warm');
+      return result;
+    } catch (e) {
+      console.error('Failed to get tutor course:', e);
+      return undefined;
+    }
+  }
+
   // Placeholder Tutor API for course groups and members (to be aligned with backend)
   async getTutorCourseGroups(courseId: string): Promise<any[]> {
-    void courseId;
-    return [];
+    // Use generic course groups endpoint with course filter
+    return await this.getCourseGroups(courseId);
   }
 
   async getTutorCourseMembers(courseId: string, groupId?: string): Promise<any[]> {
-    void courseId; void groupId;
-    return [];
+    const cacheKey = groupId ? `tutorCourseMembers-${courseId}-${groupId}` : `tutorCourseMembers-${courseId}`;
+    const cached = multiTierCache.get<any[]>(cacheKey);
+    if (cached) return cached;
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const params = new URLSearchParams();
+        if (courseId) params.append('course_id', courseId);
+        if (groupId) params.append('course_group_id', groupId);
+        const url = params.toString() ? `/tutors/course-members?${params.toString()}` : '/tutors/course-members';
+        const response = await client.get<any[]>(url);
+        return response.data;
+      }, { maxRetries: 2, exponentialBackoff: true });
+      multiTierCache.set(cacheKey, result, 'warm');
+      return result || [];
+    } catch (e) {
+      console.error('Failed to get tutor course members:', e);
+      return [];
+    }
   }
 
   // Tutor: course contents for a specific member in a course
   async getTutorCourseContents(courseId: string, memberId: string): Promise<any[]> {
-    void courseId; void memberId;
-    // TODO: Replace with backend route (e.g., /tutors/course-contents?course_id=..&member_id=..)
-    return [];
+    const cacheKey = `tutorContents-${memberId}`;
+    const cached = multiTierCache.get<any[]>(cacheKey);
+    if (cached) return cached.filter(c => !courseId || c.course_id === courseId);
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const response = await client.get<any[]>(`/tutors/course-members/${memberId}/course-contents`);
+        return response.data;
+      }, { maxRetries: 2, exponentialBackoff: true });
+      multiTierCache.set(cacheKey, result, 'warm');
+      return (result || []).filter((c: any) => !courseId || c.course_id === courseId);
+    } catch (e) {
+      console.error('Failed to get tutor member course contents:', e);
+      return [];
+    }
   }
 
   // Tutor: student repository metadata for a course/member pair
   async getTutorStudentRepository(courseId: string, memberId: string): Promise<{ remote_url: string } | undefined> {
-    void courseId; void memberId;
-    // TODO: Replace with backend route (e.g., /tutors/repositories?course_id=..&member_id=..)
-    return undefined;
+    void courseId; // Not yet used if backend returns scoped by member
+    try {
+      const client = await this.getHttpClient();
+      // Pending backend path: guessing /tutors/course-members/{id}
+      const response = await client.get<any>(`/tutors/course-members/${memberId}`);
+      const repoUrl = response.data?.repository?.clone_url || response.data?.repository?.url || response.data?.repository?.web_url;
+      return repoUrl ? { remote_url: repoUrl } : undefined;
+    } catch (e) {
+      // Keep silent; command will prompt for URL
+      return undefined;
+    }
   }
 
   // Tutor: submission branch for a student's assignment
   async getTutorSubmissionBranch(courseId: string, memberId: string, courseContentId: string): Promise<string | undefined> {
-    void courseId; void memberId; void courseContentId;
-    // TODO: Replace with backend route returning a branch/ref name for the student's assignment submission
-    return undefined;
+    void courseId;
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<any>(`/tutors/course-members/${memberId}/course-contents/${courseContentId}`);
+      const branch = response.data?.submission_branch || response.data?.latest_submission?.branch;
+      return branch;
+    } catch {
+      return undefined;
+    }
   }
 
   /**

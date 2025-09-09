@@ -4,8 +4,9 @@ import { ComputorApiService } from './ComputorApiService';
 export class TutorSelectionService {
   private static instance: TutorSelectionService | null = null;
 
+  // Store context for persistence
+  private context: vscode.ExtensionContext;
   // private api: ComputorApiService;
-  // private context: vscode.ExtensionContext;
 
   private courseId: string | null = null;
   private groupId: string | null = null;
@@ -17,8 +18,20 @@ export class TutorSelectionService {
   private emitter = new vscode.EventEmitter<void>();
   public readonly onDidChangeSelection = this.emitter.event;
 
-  private constructor(_context: vscode.ExtensionContext, _api: ComputorApiService) {
-    // reserved for future use
+  private constructor(context: vscode.ExtensionContext, _api: ComputorApiService) {
+    this.context = context;
+    // Load persisted selection if present
+    try {
+      const persisted = this.context.globalState.get<any>('computor.tutor.selection');
+      if (persisted) {
+        this.courseId = persisted.courseId ?? null;
+        this.groupId = persisted.groupId ?? null;
+        this.memberId = persisted.memberId ?? null;
+        this.courseLabel = persisted.courseLabel ?? null;
+        this.groupLabel = persisted.groupLabel ?? null;
+        this.memberLabel = persisted.memberLabel ?? null;
+      }
+    } catch {}
   }
 
   static initialize(context: vscode.ExtensionContext, api: ComputorApiService): TutorSelectionService {
@@ -46,6 +59,7 @@ export class TutorSelectionService {
     this.memberId = null;
     this.groupLabel = null;
     this.memberLabel = null;
+    await this.persist();
     this.emitter.fire();
   }
 
@@ -55,12 +69,27 @@ export class TutorSelectionService {
     // Reset member selection
     this.memberId = null;
     this.memberLabel = null;
+    await this.persist();
     this.emitter.fire();
   }
 
   async selectMember(memberId: string | null, label?: string | null): Promise<void> {
     this.memberId = memberId;
     this.memberLabel = label ?? this.memberLabel ?? null;
+    await this.persist();
     this.emitter.fire();
+  }
+
+  private async persist(): Promise<void> {
+    try {
+      await this.context.globalState.update('computor.tutor.selection', {
+        courseId: this.courseId,
+        groupId: this.groupId,
+        memberId: this.memberId,
+        courseLabel: this.courseLabel,
+        groupLabel: this.groupLabel,
+        memberLabel: this.memberLabel
+      });
+    } catch {}
   }
 }
