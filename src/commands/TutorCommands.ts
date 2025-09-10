@@ -7,6 +7,7 @@ import { ComputorApiService } from '../services/ComputorApiService';
 import { WorkspaceManager } from '../services/WorkspaceManager';
 import { TutorSelectionService } from '../services/TutorSelectionService';
 import simpleGit from 'simple-git';
+import { GitLabTokenManager } from '../services/GitLabTokenManager';
 // Import interfaces from generated types (interfaces removed to avoid duplication)
 
 export class TutorCommands {
@@ -173,9 +174,10 @@ export class TutorCommands {
       vscode.commands.registerCommand('computor.tutor.cloneStudentRepository', async (item: any) => {
         try {
           // Prefer repository information from the clicked assignment's submission_group
-          const content: any = item?.content || item?.courseContent || item;
+          const content: any = item?.content || item?.course_content;
           const contentCourseId: string | undefined = content?.course_id;
-          const submissionRepo = content?.submission_group?.repository;
+          const submission = content?.submission_group || content?.submission;
+          const submissionRepo = submission?.repository;
 
           const sel = TutorSelectionService.getInstance();
           let courseId = contentCourseId || sel.getCurrentCourseId() || '';
@@ -187,35 +189,80 @@ export class TutorCommands {
           }
           if (!courseId || !memberId) { return; }
 
-          // Build remote URL: prefer clone_url, fallback to url/web_url
+          // Build remote URL: prefer clone_url; then url/web_url; try to construct from provider_url + full_path; fallback to backend member repo; if still missing, throw
           let remoteUrl: string | undefined = submissionRepo?.clone_url || submissionRepo?.url || submissionRepo?.web_url;
+          if (!remoteUrl && submissionRepo) {
+            const base = (submissionRepo as any).provider_url || (submissionRepo as any).provider || submissionRepo.url || '';
+            const full = submissionRepo.full_path || '';
+            if (base && full) {
+              remoteUrl = `${base.replace(/\/$/, '')}/${full.replace(/^\//, '')}`;
+              if (!remoteUrl.endsWith('.git')) remoteUrl += '.git';
+            }
+          }
           if (!remoteUrl) {
             // Try backend member repository endpoint
             const repoMeta = await this.apiService.getTutorStudentRepository(courseId, memberId);
             remoteUrl = repoMeta?.remote_url;
           }
           if (!remoteUrl) {
-            // Last resort: ask the user
-            remoteUrl = await vscode.window.showInputBox({ title: 'Student Repo URL', prompt: 'Enter remote URL', ignoreFocusOut: true }) || undefined;
+            vscode.window.showErrorMessage('No repository URL found for this student assignment.');
+            return;
           }
-          if (!remoteUrl) { return; }
 
-          const dir = await this.workspaceManager.registerTutorStudentRepository(courseId, memberId, remoteUrl);
-          // Git clone into the student workspace path if empty
+          // Determine destination in current workspace: <workspaceRoot>/<courseId>/<memberId>
+          const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+          if (!wsRoot) {
+            vscode.window.showErrorMessage('No workspace folder is open. Open a folder before cloning.');
+            return;
+          }
+          const dir = path.join(wsRoot, courseId, memberId);
+          await fs.promises.mkdir(dir, { recursive: true });
+          // Git clone into the destination if empty
           const exists = await fs.promises.readdir(dir).then(list => list.length > 0).catch(() => false);
           if (exists) {
             vscode.window.showWarningMessage(`Directory not empty: ${dir}. Skipping clone.`);
           } else {
-            await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Cloning student repository...', cancellable: false }, async () => {
-              await simpleGit().clone(remoteUrl!, dir);
-            });
-            vscode.window.showInformationMessage(`Student repository cloned to ${dir}`);
+            const origin = (() => { try { const u = new URL(remoteUrl!); return u.origin; } catch { return undefined; } })();
+            const tokenManager = GitLabTokenManager.getInstance(this.context);
+            let authUrl = remoteUrl!;
+            if (origin) {
+              const savedToken = await tokenManager.getToken(origin);
+              if (savedToken) {
+                authUrl = tokenManager.buildAuthenticatedCloneUrl(remoteUrl!, savedToken);
+              }
+            }
+            try {
+              await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Cloning student repository...', cancellable: false }, async () => {
+                await simpleGit().clone(authUrl, dir);
+              });
+              vscode.window.showInformationMessage(`Student repository cloned to ${dir}`);
+            } catch (e: any) {
+              const msg = String(e?.message || e || '');
+              if (origin && (msg.includes('Authentication failed') || msg.includes('could not read Username') || msg.includes('403') || msg.includes('401'))) {
+                const newToken = await (async () => {
+                  // Reuse token manager's prompt behavior
+                  const t = await vscode.window.showInputBox({
+                    title: `GitLab Authentication for ${origin}`,
+                    prompt: `Enter your GitLab Personal Access Token for ${origin}`,
+                    placeHolder: 'glpat-xxxxxxxxxxxxxxxxxxxx',
+                    password: true,
+                    ignoreFocusOut: true
+                  });
+                  if (t) await tokenManager.storeToken(origin, t);
+                  return t || undefined;
+                })();
+                if (!newToken) throw e;
+                authUrl = tokenManager.buildAuthenticatedCloneUrl(remoteUrl!, newToken);
+                await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Cloning student repository...', cancellable: false }, async () => {
+                  await simpleGit().clone(authUrl, dir);
+                });
+                vscode.window.showInformationMessage(`Student repository cloned to ${dir}`);
+              } else {
+                throw e;
+              }
+            }
           }
-          // Optionally add to workspace
-          const folders = vscode.workspace.workspaceFolders || [];
-          if (!folders.some(f => f.uri.fsPath === dir)) {
-            vscode.workspace.updateWorkspaceFolders(folders.length, 0, { uri: vscode.Uri.file(dir), name: `Student ${memberId}` });
-          }
+          // Directory is already inside the current workspace; no need to add a new folder
         } catch (e: any) {
           vscode.window.showErrorMessage(`Failed to clone student repository: ${e?.message || e}`);
         }
@@ -224,25 +271,45 @@ export class TutorCommands {
 
     // Tutor: Checkout assignment submission into workspace root (scaffold)
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.checkoutAssignment', async (_item: any) => {
+      vscode.commands.registerCommand('computor.tutor.checkoutAssignment', async (item: any) => {
         try {
           const sel = TutorSelectionService.getInstance();
           const courseId = sel.getCurrentCourseId() || (await vscode.window.showInputBox({ title: 'Course ID', prompt: 'Enter course ID', ignoreFocusOut: true })) || '';
           const memberId = sel.getCurrentMemberId() || (await vscode.window.showInputBox({ title: 'Course Member ID', prompt: 'Enter course member ID', ignoreFocusOut: true })) || '';
           if (!courseId || !memberId) return;
-          const repoPath = await this.workspaceManager.getTutorStudentWorkspacePath(courseId, memberId);
+          // Work against current workspace directory for this student
+          const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+          if (!wsRoot) {
+            vscode.window.showErrorMessage('No workspace folder is open. Open a folder before checkout.');
+            return;
+          }
+          const repoPath = path.join(wsRoot, courseId, memberId);
+          // Ensure repository exists
+          const gitDir = path.join(repoPath, '.git');
+          try {
+            await fs.promises.access(gitDir);
+          } catch {
+            vscode.window.showErrorMessage('Student repository not found. Please clone it first.');
+            return;
+          }
           const git = simpleGit(repoPath);
-          await git.fetch();
-          const inferredBranch = await this.apiService.getTutorSubmissionBranch(courseId, memberId, _item?.id || '');
+          const content: any = item?.content || item?.courseContent || item;
+          const inferredBranch = await this.apiService.getTutorSubmissionBranch(courseId, memberId, content?.id || '');
           const branch = inferredBranch || await vscode.window.showInputBox({ title: 'Submission Branch', prompt: 'Enter submission branch to checkout', value: 'main', ignoreFocusOut: true });
           if (!branch) return;
-          await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Checking out ${branch}...`, cancellable: false }, async () => {
+          await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Syncing branch ${branch}...`, cancellable: false }, async (progress) => {
+            progress.report({ message: 'Fetching...' });
+            await git.fetch();
+            progress.report({ message: `Checking out ${branch}...` });
             await git.checkout(branch);
+            progress.report({ message: 'Pulling latest...' });
+            try { await git.pull('origin', branch); } catch (e) { /* ignore non-ff errors */ }
           });
-          const src = await vscode.window.showInputBox({ title: 'Assignment Path', prompt: 'Relative path in repo to copy', ignoreFocusOut: true });
+          const relDir: string | undefined = content?.directory || undefined;
+          const src = relDir ? (path.isAbsolute(relDir) ? relDir : path.join(repoPath, relDir)) : await vscode.window.showInputBox({ title: 'Assignment Path', prompt: 'Relative path in repo to copy', ignoreFocusOut: true });
           const dest = await vscode.window.showInputBox({ title: 'Destination Path', prompt: 'Destination directory (workspace root)', value: (vscode.workspace.workspaceFolders?.[0]?.uri.fsPath) || '', ignoreFocusOut: true });
           if (!src || !dest) return;
-          const absSrc = path.isAbsolute(src) ? src : path.join(repoPath, src);
+          const absSrc = src;
           await fs.promises.mkdir(dest, { recursive: true });
           await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Checking out assignment...', cancellable: false }, async () => {
             // Shallow copy directory (simple implementation)

@@ -162,14 +162,46 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         if (element instanceof CourseContentItem) {
             const contentType = element.contentType;
             const isAssignment = contentType?.course_content_kind_id === 'assignment';
-            const directory = (element.courseContent as any).directory;
+            let directory = (element.courseContent as any).directory as string | undefined;
             const hasRepository = !!element.submissionGroup?.repository;
             
             if (isAssignment && hasRepository) {
                 let assignmentPath: string | undefined;
                 
                 // First, check if we need to setup the repository
-                if (!directory || !fs.existsSync(directory)) {
+                // Resolve directory to absolute path if necessary
+                const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                // Derive local repo root from repository fields when directory is relative
+                const repoNameFromRepository = (repo: any): string | undefined => {
+                    if (!repo) return undefined;
+                    // Prefer full_path last segment
+                    if (typeof repo.full_path === 'string' && repo.full_path.length > 0) {
+                        const parts = repo.full_path.split('/');
+                        return parts[parts.length - 1] || undefined;
+                    }
+                    // Then from clone_url
+                    if (typeof repo.clone_url === 'string' && repo.clone_url.length > 0) {
+                        const clean = repo.clone_url.replace(/\.git$/, '');
+                        const parts = clean.split('/');
+                        return parts[parts.length - 1] || undefined;
+                    }
+                    // Then from web_url
+                    if (typeof repo.web_url === 'string' && repo.web_url.length > 0) {
+                        const parts = repo.web_url.split('/');
+                        return parts[parts.length - 1] || undefined;
+                    }
+                    return undefined;
+                };
+                const repoName = repoNameFromRepository(element.submissionGroup?.repository);
+                const repoRoot = wsRoot && repoName ? path.join(wsRoot, repoName) : wsRoot;
+                const resolvePath = (p?: string) => {
+                    if (!p) return undefined;
+                    if (path.isAbsolute(p)) return p;
+                    // If relative, resolve only when we can determine the repo root
+                    return repoRoot ? path.join(repoRoot, p) : undefined;
+                };
+                const absDir = resolvePath(directory);
+                if (!absDir || !fs.existsSync(absDir)) {
                     // Repository not set up yet - find the course ID and set it up
                     const courseId = await this.findCourseIdForContent(element.courseContent);
                     if (courseId && this.repositoryManager) {
@@ -194,12 +226,14 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                             const updatedContent = courseContents.find(c => c.id === element.courseContent.id);
                             if (updatedContent && updatedContent.directory) {
                                 (element.courseContent as any).directory = updatedContent.directory;
+                                directory = updatedContent.directory as any;
                             }
                         });
                         
                         // Now that directory is updated, continue to show files
                         // Re-check the directory after setup
-                        const updatedDirectory = (element.courseContent as any).directory;
+                        const updatedDirectory = resolvePath((element.courseContent as any).directory);
+
                         if (updatedDirectory) {
                             assignmentPath = updatedDirectory;
                             console.log('[StudentTree] Repository setup complete, directory path:', assignmentPath);
@@ -221,7 +255,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                     }
                 } else {
                     // Directory exists, use it
-                    assignmentPath = directory;
+                    assignmentPath = absDir;
                     console.log('[StudentTree] Using existing directory:', assignmentPath);
                 }
                 
@@ -975,8 +1009,27 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         // This is set by StudentRepositoryManager after cloning
         const directory = (this.courseContent as any).directory;
         if (directory) {
-            // Use the directory field directly - it's the actual file path
-            return directory;
+            // Resolve relative directory against repository root when possible
+            if (path.isAbsolute(directory)) return directory;
+            const ws = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            let repoName: string | undefined;
+            const repo = this.submissionGroup?.repository as any;
+            if (repo) {
+                if (typeof repo.full_path === 'string' && repo.full_path.length > 0) {
+                    const parts = repo.full_path.split('/');
+                    repoName = parts[parts.length - 1] || undefined;
+                } else if (typeof repo.clone_url === 'string' && repo.clone_url.length > 0) {
+                    const clean = repo.clone_url.replace(/\.git$/, '');
+                    const parts = clean.split('/');
+                    repoName = parts[parts.length - 1] || undefined;
+                } else if (typeof repo.web_url === 'string' && repo.web_url.length > 0) {
+                    const parts = repo.web_url.split('/');
+                    repoName = parts[parts.length - 1] || undefined;
+                }
+            }
+            if (ws && repoName) return path.join(ws, repoName, directory);
+            // Without a resolvable repo name, avoid guessing a path
+            return '';
         }
         
         // If no directory field, we can't determine the path

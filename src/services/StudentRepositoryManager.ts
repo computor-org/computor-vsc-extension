@@ -122,9 +122,11 @@ export class StudentRepositoryManager {
             directory: content.directory,
             exampleIdentifier: content.submission_group?.example_identifier
           });
-          // Use example_identifier as the subdirectory within the repo
-          // Do NOT use content.directory here as it might already be a full path
-          const subdirectory = content.submission_group?.example_identifier;
+          // Use directory from backend when available; otherwise fall back to example_identifier
+          // Treat these as subdirectories inside the repository (not absolute)
+          const subdirectory = (typeof content.directory === 'string' && content.directory.length > 0)
+            ? content.directory
+            : content.submission_group?.example_identifier;
           console.log(`[StudentRepositoryManager] Subdirectory for ${content.title}: "${subdirectory}"`);
           
           repoMap.set(key, {
@@ -308,53 +310,21 @@ export class StudentRepositoryManager {
       const content = courseContents.find(c => c.path === repo.assignmentPath);
       if (content) {
         let finalPath: string | undefined;
-        
-        // First, try the exact subdirectory from example_identifier
-        if (repo.directory) {
-          const exactPath = path.join(repoPath, repo.directory);
-          if (fs.existsSync(exactPath)) {
-            finalPath = exactPath;
-            console.log(`[StudentRepositoryManager] Found exact directory for ${repo.assignmentTitle}: ${repo.directory}`);
+        // Prefer backend-provided directory on content
+        if (typeof content.directory === 'string' && content.directory.length > 0) {
+          const p = path.isAbsolute(content.directory) ? content.directory : path.join(repoPath, content.directory);
+          if (fs.existsSync(p)) {
+            finalPath = p;
+            console.log(`[StudentRepositoryManager] Using backend directory for ${repo.assignmentTitle}: ${content.directory}`);
           }
         }
-        
-        // If not found, try to find a matching directory by scanning the repository
-        if (!finalPath && fs.existsSync(repoPath)) {
-          try {
-            const dirs = fs.readdirSync(repoPath, { withFileTypes: true })
-              .filter(dirent => dirent.isDirectory() && !dirent.name.startsWith('.'))
-              .map(dirent => dirent.name);
-            
-            // Try different matching strategies
-            const titleLower = repo.assignmentTitle.toLowerCase().replace(/\s+/g, '_');
-            const pathParts = repo.assignmentPath.split('.');
-            const lastPathPart = pathParts[pathParts.length - 1];
-            
-            // Look for directories that might match this assignment
-            for (const dir of dirs) {
-              const dirLower = dir.toLowerCase();
-              // Check if directory contains assignment title keywords
-              if (dirLower.includes('beta') && titleLower.includes('beta')) {
-                finalPath = path.join(repoPath, dir);
-                console.log(`[StudentRepositoryManager] Found matching directory by keyword for ${repo.assignmentTitle}: ${dir}`);
-                break;
-              }
-              // Check if directory contains last part of path
-              if (lastPathPart && dirLower.includes(lastPathPart.toLowerCase())) {
-                finalPath = path.join(repoPath, dir);
-                console.log(`[StudentRepositoryManager] Found matching directory by path for ${repo.assignmentTitle}: ${dir}`);
-                break;
-              }
-            }
-          } catch (error) {
-            console.error(`[StudentRepositoryManager] Error scanning repository: ${error}`);
-          }
-        }
-        
-        // If still not found, log warning but set to subdirectory path anyway
+        // Else use the repoInfo directory (example_identifier)
         if (!finalPath && repo.directory) {
-          finalPath = path.join(repoPath, repo.directory);
-          console.warn(`[StudentRepositoryManager] Directory not found for ${repo.assignmentTitle}, using: ${repo.directory}`);
+          const p = path.join(repoPath, repo.directory);
+          if (fs.existsSync(p)) {
+            finalPath = p;
+            console.log(`[StudentRepositoryManager] Using example_identifier subdirectory for ${repo.assignmentTitle}: ${repo.directory}`);
+          }
         }
         
         console.log(`[StudentRepositoryManager] Setting directory for ${repo.assignmentTitle}:`, {
@@ -364,8 +334,8 @@ export class StudentRepositoryManager {
           exists: finalPath ? fs.existsSync(finalPath) : false
         });
         
-        // Set the absolute path to the assignment directory
-        if (finalPath) {
+        // Set the absolute path to the assignment directory only when it exists
+        if (finalPath && fs.existsSync(finalPath)) {
           content.directory = finalPath;
           console.log(`[StudentRepositoryManager] Set directory for ${repo.assignmentTitle} to ${finalPath}`);
         }
@@ -388,45 +358,34 @@ export class StudentRepositoryManager {
       
       console.log(`[StudentRepositoryManager] Found existing repositories in workspace: ${dirs.join(', ')}`);
       
-      // For each content item, check if its directory exists
-      for (const content of courseContents) {
-        // Skip if directory is already set and exists
-        if (content.directory && fs.existsSync(content.directory)) {
-          continue;
-        }
+        // For each content item, check if its directory exists
+        for (const content of courseContents) {
+          // Skip if directory is already set and exists
+          if (content.directory && fs.existsSync(content.directory)) {
+            continue;
+          }
         
         // Try to find the repository for this content
         const isAssignment = content.course_content_type?.course_content_kind_id === 'assignment' || 
                             content.example_id;
         
         if (isAssignment) {
-          // Look for a matching repository directory
+          // Look for a matching repository and the expected subdirectory
           for (const dir of dirs) {
             const repoPath = path.join(this.workspaceRoot, dir);
-            
-            // Check if this content's subdirectory exists within this repository
-            // Use only example_identifier as the subdirectory, not content.directory which might be a full path
-            if (content.submission_group?.example_identifier) {
-              const subdirectory = content.submission_group.example_identifier;
-              const fullPath = path.join(repoPath, subdirectory);
-              
+            // Determine expected subdirectory from backend data first
+            let subdirectory: string | undefined;
+            if (typeof content.directory === 'string' && content.directory.length > 0) {
+              subdirectory = content.directory;
+            } else if (content.submission_group?.example_identifier) {
+              subdirectory = content.submission_group.example_identifier;
+            }
+
+            if (subdirectory) {
+              const fullPath = path.isAbsolute(subdirectory) ? subdirectory : path.join(repoPath, subdirectory);
               if (fs.existsSync(fullPath)) {
                 content.directory = fullPath;
                 console.log(`[StudentRepositoryManager] Found existing directory for ${content.title}: ${fullPath}`);
-                break;
-              }
-            } else if (content.submission_group?.repository) {
-              // Check if this repository matches the assignment's repository
-              // Extract repo name from the submission group repository URL
-              const repoUrl = content.submission_group.repository.ssh_url_to_repo || 
-                             content.submission_group.repository.http_url_to_repo || '';
-              const urlParts = repoUrl.replace(/\.git$/, '').split('/');
-              const expectedRepoName = urlParts[urlParts.length - 1] || '';
-              
-              if (dir === expectedRepoName) {
-                // No subdirectory specified, use the repository root
-                content.directory = repoPath;
-                console.log(`[StudentRepositoryManager] Set directory for ${content.title} to repository root: ${repoPath}`);
                 break;
               }
             }
