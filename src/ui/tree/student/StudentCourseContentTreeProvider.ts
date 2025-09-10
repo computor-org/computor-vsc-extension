@@ -840,15 +840,18 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             let badge: 'success' | 'failure' | 'none' = 'none';
             let corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none';
             if (shape === 'square') {
-                const grade = (this.submissionGroup?.latest_grading?.grading ?? this.submissionGroup?.grading) as number | undefined;
-                if (typeof grade === 'number') {
-                    if (grade >= 0.999) badge = 'success';
-                    else if (grade >= 0) badge = 'failure';
+                // const grade = this.submissionGroup?.grading as number | undefined;
+                // if (typeof grade === 'number') {
+                //     badge = (grade === 1) ? 'success' : 'failure';
+                // }
+                const result = this.courseContent?.result?.result as number | undefined;
+                if (typeof result === 'number') {
+                    badge = (result === 1) ? 'success' : 'failure';
                 }
-                const status = this.submissionGroup?.latest_grading?.status?.toLowerCase();
+                const status = (this.submissionGroup?.status || this.submissionGroup?.latest_grading?.status)?.toLowerCase();
                 if (status === 'corrected') corner = 'corrected';
                 else if (status === 'correction_necessary') corner = 'correction_necessary';
-                else if (status === 'correction_possible') corner = 'correction_possible';
+                else if (status === 'correction_possible' || status === 'improvement_possible') corner = 'correction_possible';
             }
 
             this.iconPath = (badge === 'none' && corner === 'none')
@@ -894,10 +897,16 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             entries.push(`${typeof maxSubmits === 'number' ? `[${submitCount}/${maxSubmits}]` : `[${submitCount}]`}`);
         }
 
-        const rawGrade = (this.submissionGroup?.latest_grading?.grading ?? this.submissionGroup?.grading) as number | undefined;
+        const testResult = (this.courseContent?.result?.result) as number | undefined;
+        if (typeof testResult === 'number') {
+            const pts = Math.round(testResult * 100);
+            entries.push(` ${pts}%`);
+        }
+
+        const rawGrade = this.submissionGroup?.grading as number | undefined;
         if (typeof rawGrade === 'number') {
             const pts = Math.round(rawGrade * 100);
-            entries.push(`[${pts}]`);
+            entries.push(` ${pts}%`);
         }
 
         this.description = entries.length > 0 ? `${entries.join('')}` : undefined;
@@ -936,10 +945,16 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             lines.push(`Submissions: ${typeof maxSubmits === 'number' ? `${submitCount} of ${maxSubmits}` : `${submitCount}`}`);
         }
 
+        // Show result percentage (0..1 -> percent) above grading
+        const resultVal = this.courseContent?.result?.result as number | undefined;
+        if (typeof resultVal === 'number') {
+            lines.push(`Result: ${(resultVal * 100).toFixed(2)}%`);
+        }
+
+        // Show grading percentage (0..1 -> percent)
         const rawGrade = (this.submissionGroup?.latest_grading?.grading ?? this.submissionGroup?.grading) as number | undefined;
         if (typeof rawGrade === 'number') {
-            const pts = Math.round(rawGrade * 100);
-            lines.push(`Points: ${pts}`);
+            lines.push(`Grading: ${(rawGrade * 100).toFixed(2)}%`);
         }
 
         // Additional grading details and team members

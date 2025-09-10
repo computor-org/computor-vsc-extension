@@ -176,8 +176,12 @@ class TutorContentItem extends vscode.TreeItem {
     if (status === 'corrected') corner = 'corrected';
     else if (status === 'correction_necessary') corner = 'correction_necessary';
     else if (status === 'correction_possible' || status === 'improvement_possible') corner = 'correction_possible';
-    if (typeof grading === 'number') {
-      badge = grading === 1 ? 'success' : 'failure';
+    // if (typeof grading === 'number') {
+    //   badge = grading === 1 ? 'success' : 'failure';
+    // }
+    const result = content.result?.result as number | undefined;
+    if (typeof result === 'number') {
+        badge = (result === 1) ? 'success' : 'failure';
     }
     this.iconPath = (badge === 'none' && corner === 'none')
       ? IconGenerator.getColoredIcon(color, shape)
