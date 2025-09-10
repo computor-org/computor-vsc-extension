@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { TutorSelectionService } from '../../../services/TutorSelectionService';
 import { IconGenerator } from '../../../utils/IconGenerator';
-import { CourseContentStudentList, CourseContentKindList } from '../../../types/generated';
+import { CourseContentStudentList, CourseContentKindList, SubmissionGroupStudentList } from '../../../types/generated';
 
 export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   private _onDidChangeTreeData = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
@@ -15,6 +15,9 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
   }
 
   refresh(): void { this._onDidChangeTreeData.fire(undefined); }
+
+  // Allow targeted refresh of a specific element
+  refreshItem(element: vscode.TreeItem): void { this._onDidChangeTreeData.fire(element); }
 
   getTreeItem(element: vscode.TreeItem): vscode.TreeItem { return element; }
 
@@ -167,21 +170,34 @@ class TutorContentItem extends vscode.TreeItem {
     const shape = kindId === 'assignment' ? 'square' : 'circle';
     let badge: 'success' | 'failure' | 'none' = 'none';
     let corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none';
-    const submission: any = (content as any).submission_group || (content as any).submission;
-    const grade = submission?.latest_grading?.grading ?? submission?.grading;
-    if (typeof grade === 'number') {
-      if (grade >= 0.999) badge = 'success';
-      else if (grade >= 0) badge = 'failure';
-    }
-    const status = submission?.latest_grading?.status?.toLowerCase?.();
+    const submission: SubmissionGroupStudentList = content.submission_group!;
+    const status = submission?.status?.toLowerCase?.();
+    const grading = submission?.grading;
     if (status === 'corrected') corner = 'corrected';
     else if (status === 'correction_necessary') corner = 'correction_necessary';
     else if (status === 'correction_possible' || status === 'improvement_possible') corner = 'correction_possible';
+    if (typeof grading === 'number') {
+      badge = grading === 1 ? 'success' : 'failure';
+    }
     this.iconPath = (badge === 'none' && corner === 'none')
       ? IconGenerator.getColoredIcon(color, shape)
       : IconGenerator.getColoredIconWithBadge(color, shape, badge, corner);
     this.contextValue = kindId === 'assignment' ? 'tutorStudentContent.assignment' : 'tutorStudentContent.reading';
-    this.tooltip = `Path: ${content.path}`;
+    // Tooltip with friendly status label
+    const friendlyStatus = (() => {
+      if (!status) return undefined;
+      if (status === 'corrected') return 'Corrected';
+      if (status === 'correction_necessary') return 'Correction Necessary';
+      if (status === 'improvement_possible') return 'Improvement Possible';
+      if (status === 'correction_possible') return 'Correction Possible';
+      // Fallback: capitalize first letter and replace underscores
+      const t = status.replace(/_/g, ' ');
+      return t.charAt(0).toUpperCase() + t.slice(1);
+    })();
+    this.tooltip = [
+      friendlyStatus ? `Status: ${friendlyStatus}` : undefined,
+      (typeof grading === 'number') ? `Grading: ${(grading * 100).toFixed(2)}%` : undefined
+    ].filter(Boolean).join('\n');
     this.id = content.id;
     // No IDs in description per request
   }

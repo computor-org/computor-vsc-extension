@@ -17,6 +17,11 @@
   "contributes": {
     "commands": [
       {
+        "command": "computor.tutor.assignment.grading",
+        "title": "Grading…",
+        "category": "Computor Tutor"
+      },
+      {
         "command": "computor.tutor.cloneStudentRepository",
         "title": "Clone Student Repository",
         "icon": "$(cloud-download)",
@@ -263,54 +268,6 @@
         "command": "computor.tutor.refreshCourses",
         "title": "Refresh Tutor Courses",
         "icon": "$(refresh)",
-        "category": "Computor Tutor"
-      },
-      {
-        "command": "computor.tutor.viewCourse",
-        "title": "View Course Details",
-        "icon": "$(info)",
-        "category": "Computor Tutor"
-      },
-      {
-        "command": "computor.tutor.viewRepository",
-        "title": "View Repository Details",
-        "icon": "$(info)",
-        "category": "Computor Tutor"
-      },
-      {
-        "command": "computor.tutor.viewExample",
-        "title": "View Example Details",
-        "icon": "$(info)",
-        "category": "Computor Tutor"
-      },
-      {
-        "command": "computor.tutor.downloadExample",
-        "title": "Download Example",
-        "icon": "$(cloud-download)",
-        "category": "Computor Tutor"
-      },
-      {
-        "command": "computor.tutor.downloadExampleWithDependencies",
-        "title": "Download Example with Dependencies",
-        "icon": "$(cloud-download)",
-        "category": "Computor Tutor"
-      },
-      {
-        "command": "computor.tutor.openExampleInBrowser",
-        "title": "Open Example in Browser",
-        "icon": "$(link-external)",
-        "category": "Computor Tutor"
-      },
-      {
-        "command": "computor.tutor.setupWorkspace",
-        "title": "Setup Tutor Workspace",
-        "icon": "$(folder-opened)",
-        "category": "Computor Tutor"
-      },
-      {
-        "command": "computor.tutor.downloadAllExamples",
-        "title": "Download All Examples",
-        "icon": "$(cloud-download)",
         "category": "Computor Tutor"
       },
       {
@@ -763,11 +720,6 @@
           "group": "inline@2"
         },
         {
-          "command": "computor.tutor.viewCourse",
-          "when": "view == computor.tutor.courses && viewItem == tutorCourse",
-          "group": "1_details@1"
-        },
-        {
           "command": "computor.tutor.cloneStudentRepository",
           "when": "view == computor.tutor.courses && viewItem =~ /^tutorStudentContent\\.assignment/",
           "group": "inline@1"
@@ -778,43 +730,13 @@
           "group": "inline@2"
         },
         {
+          "command": "computor.tutor.assignment.grading",
+          "when": "view == computor.tutor.courses && viewItem == tutorStudentContent.assignment",
+          "group": "1_status@1"
+        },
+        {
           "command": "computor.tutor.downloadStudentExample",
           "when": "view == computor.tutor.courses && viewItem =~ /^tutorStudentContent\\.assignment/",
-          "group": "3_external@1"
-        },
-        {
-          "command": "computor.tutor.setupWorkspace",
-          "when": "view == computor.tutor.courses && viewItem == tutorCourse",
-          "group": "2_actions@1"
-        },
-        {
-          "command": "computor.tutor.viewRepository",
-          "when": "view == computor.tutor.courses && viewItem == tutorExampleRepository",
-          "group": "1_details@1"
-        },
-        {
-          "command": "computor.tutor.downloadAllExamples",
-          "when": "view == computor.tutor.courses && viewItem == tutorExampleRepository",
-          "group": "2_actions@1"
-        },
-        {
-          "command": "computor.tutor.viewExample",
-          "when": "view == computor.tutor.courses && viewItem == tutorExample",
-          "group": "1_details@1"
-        },
-        {
-          "command": "computor.tutor.downloadExample",
-          "when": "view == computor.tutor.courses && viewItem == tutorExample",
-          "group": "2_actions@1"
-        },
-        {
-          "command": "computor.tutor.downloadExampleWithDependencies",
-          "when": "view == computor.tutor.courses && viewItem == tutorExample",
-          "group": "2_actions@2"
-        },
-        {
-          "command": "computor.tutor.openExampleInBrowser",
-          "when": "view == computor.tutor.courses && viewItem == tutorExample",
           "group": "3_external@1"
         },
         {

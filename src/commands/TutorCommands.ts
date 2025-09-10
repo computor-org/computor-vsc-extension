@@ -1,10 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { TutorTreeDataProvider, TutorCourseTreeItem, TutorExampleRepositoryTreeItem, TutorExampleTreeItem } from '../ui/tree/tutor/TutorTreeDataProvider';
 import { TutorStudentTreeProvider } from '../ui/tree/tutor/TutorStudentTreeProvider';
 import { ComputorApiService } from '../services/ComputorApiService';
-import { WorkspaceManager } from '../services/WorkspaceManager';
 import { TutorSelectionService } from '../services/TutorSelectionService';
 import simpleGit from 'simple-git';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
@@ -12,162 +10,39 @@ import { GitLabTokenManager } from '../services/GitLabTokenManager';
 
 export class TutorCommands {
   private context: vscode.ExtensionContext;
-  private treeDataProvider: TutorTreeDataProvider | TutorStudentTreeProvider;
+  private treeDataProvider: TutorStudentTreeProvider;
   private apiService: ComputorApiService;
-  private workspaceManager: WorkspaceManager;
 
   constructor(
     context: vscode.ExtensionContext, 
-    treeDataProvider: TutorTreeDataProvider | TutorStudentTreeProvider,
+    treeDataProvider: TutorStudentTreeProvider,
     apiService?: ComputorApiService
   ) {
     this.context = context;
     this.treeDataProvider = treeDataProvider;
     // Use provided apiService or create a new one
     this.apiService = apiService || new ComputorApiService(context);
-    this.workspaceManager = WorkspaceManager.getInstance(context);
+    // No workspace manager needed for current tutor actions
   }
 
   registerCommands(): void {
-    // Refresh tutor view
+    // Refresh tutor view: clear caches for current member to force API reload
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.tutor.refresh', () => {
+        try {
+          const sel = TutorSelectionService.getInstance();
+          const memberId = sel.getCurrentMemberId();
+          if (memberId) {
+            this.apiService.clearTutorMemberCourseContentsCache(memberId);
+          }
+          // Also clear content kinds to be safe
+          this.apiService.clearCourseContentKindsCache();
+        } catch {}
         this.treeDataProvider.refresh();
       })
     );
 
-    // View course details
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.viewCourse', async (item: TutorCourseTreeItem) => {
-        if (!item) {
-          return;
-        }
-
-        const course = item.course;
-        const info = [
-          `**Course: ${course.title}**`,
-          '',
-          `ID: ${course.id}`,
-          `Path: ${course.path}`,
-          `Organization: ${course.organization_id}`,
-          course.repository ? `Repository: ${course.repository.provider_url}/${course.repository.full_path}` : 'No repository assigned'
-        ].join('\n');
-
-        vscode.window.showInformationMessage(info, { modal: true });
-      })
-    );
-
-    // View repository details
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.viewRepository', async (item: TutorExampleRepositoryTreeItem) => {
-        if (!item) {
-          return;
-        }
-
-        const repo = item.repository;
-        const info = [
-          `**Repository: ${repo.name}**`,
-          '',
-          `ID: ${repo.id}`,
-          `Type: ${repo.source_type}`,
-          `URL: ${repo.source_url}`,
-          repo.description ? `Description: ${repo.description}` : ''
-        ].filter(line => line).join('\n');
-
-        vscode.window.showInformationMessage(info, { modal: true });
-      })
-    );
-
-    // View example details
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.viewExample', async (item: TutorExampleTreeItem) => {
-        if (!item) {
-          return;
-        }
-
-        const example = item.example;
-        const info = [
-          `**Example: ${example.title}**`,
-          '',
-          `ID: ${example.id}`,
-          `Identifier: ${example.identifier}`,
-          `Directory: ${example.directory}`,
-          example.subject ? `Subject: ${example.subject}` : '',
-          example.category ? `Category: ${example.category}` : '',
-          example.tags.length > 0 ? `Tags: ${example.tags.join(', ')}` : ''
-        ].filter(line => line).join('\n');
-
-        vscode.window.showInformationMessage(info, { modal: true });
-      })
-    );
-
-    // Download example (latest version)
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.downloadExample', async (item: TutorExampleTreeItem) => {
-        if (!item) {
-          return;
-        }
-
-        await this.downloadExample(item, false);
-      })
-    );
-
-    // Download example with dependencies
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.downloadExampleWithDependencies', async (item: TutorExampleTreeItem) => {
-        if (!item) {
-          return;
-        }
-
-        await this.downloadExample(item, true);
-      })
-    );
-
-    // Open example in browser (if GitLab/GitHub)
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.openExampleInBrowser', async (item: TutorExampleTreeItem) => {
-        if (!item || item.repository.source_type !== 'git') {
-          vscode.window.showErrorMessage('Browser viewing is only available for Git repositories');
-          return;
-        }
-
-        // Construct URL based on repository URL and example directory
-        const baseUrl = item.repository.source_url;
-        let webUrl = baseUrl;
-        
-        // Convert Git URL to web URL if necessary
-        if (baseUrl.endsWith('.git')) {
-          webUrl = baseUrl.slice(0, -4);
-        }
-        
-        // Add path to specific example directory
-        webUrl = `${webUrl}/tree/main/${item.example.directory}`;
-        
-        vscode.env.openExternal(vscode.Uri.parse(webUrl));
-      })
-    );
-
-    // Setup tutor workspace for course
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.setupWorkspace', async (item: TutorCourseTreeItem) => {
-        if (!item) {
-          return;
-        }
-
-        await this.setupTutorWorkspace(item.course);
-      })
-    );
-
-    // Bulk download all examples from repository
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.downloadAllExamples', async (item: TutorExampleRepositoryTreeItem) => {
-        if (!item) {
-          return;
-        }
-
-        await this.downloadAllExamples(item);
-      })
-    );
+    // Old tutor example/course commands removed in favor of TutorStudentTreeProvider actions
 
     // Tutor: Clone student repository (scaffold)
     this.context.subscriptions.push(
@@ -331,6 +206,106 @@ export class TutorCommands {
       })
     );
 
+    // Tutor: Set grading and status together
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.tutor.assignment.grading', async (item: any) => {
+        const content: any = item?.content || item?.courseContent || item;
+        const contentId: string | undefined = content?.id;
+        if (!contentId) { vscode.window.showErrorMessage('No course content selected.'); return; }
+
+        const sel = TutorSelectionService.getInstance();
+        const memberId = sel.getCurrentMemberId();
+        if (!memberId) { vscode.window.showErrorMessage('No course member selected.'); return; }
+
+        const prev = (() => {
+          const submission: any = content?.submission_group || content?.submission;
+          const latest = submission?.latest_grading || submission?.grading;
+          const grading = typeof latest?.grading === 'number' ? latest.grading as number : undefined;
+          const status = typeof latest?.status === 'string' ? String(latest.status) : undefined;
+          return { grading, status } as { grading?: number; status?: string };
+        })();
+
+        const gradingInput = await vscode.window.showInputBox({
+          title: 'Grading',
+          prompt: 'Enter grading (0..1 or percentage 0..100)',
+          placeHolder: 'e.g., 0.85 or 85',
+          value: prev.grading != null ? (prev.grading <= 1 ? String(Math.round(prev.grading * 1000) / 1000) : String(prev.grading)) : undefined,
+          ignoreFocusOut: true,
+          validateInput: (v) => {
+            if (!v || !v.trim()) return 'Enter a number between 0 and 1 or 0 and 100';
+            const n = Number(v.replace('%', '').trim());
+            if (!isFinite(n)) return 'Not a number';
+            if (n < 0 || n > 100) return 'Value must be between 0 and 100';
+            return undefined;
+          }
+        });
+        if (gradingInput == null) return; // cancelled
+        let grade = Number(gradingInput.replace('%', '').trim());
+        if (grade > 1) grade = grade / 100; // percentage to fraction
+        grade = Math.max(0, Math.min(1, grade));
+
+        const statusPick = await vscode.window.showQuickPick([
+          { label: 'corrected', description: 'Mark as corrected' },
+          { label: 'correction_necessary', description: 'Correction necessary' },
+          { label: 'improvement_possible', description: 'Improvement possible' },
+        ], { title: 'Status', placeHolder: 'Choose status', canPickMany: false, ignoreFocusOut: true });
+        if (!statusPick) return; // cancelled
+
+        try {
+          await this.apiService.updateTutorCourseContentStudent(memberId, contentId, { grading: grade, status: statusPick.label as any });
+          // Fetch fresh item and update the clicked tree item inline
+          const updated = await this.apiService.getTutorMemberCourseContent(memberId, contentId);
+          if (updated && item) {
+            try {
+              // Update visible item fields
+              item.content = updated;
+              item.label = updated.title || updated.path;
+              const ct: any = (updated as any).course_content_type;
+              const color = ct?.color || 'grey';
+              const kindId = ct?.course_content_kind_id;
+              const shape = kindId === 'assignment' ? 'square' : 'circle';
+              let corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none';
+              const submission: any = (updated as any).submission_group || (updated as any).submission;
+              const status = submission?.status?.toLowerCase?.() || submission?.latest_grading?.status?.toLowerCase?.();
+              if (status === 'corrected') corner = 'corrected';
+              else if (status === 'correction_necessary') corner = 'correction_necessary';
+              else if (status === 'correction_possible' || status === 'improvement_possible') corner = 'correction_possible';
+              const gradingVal: number | undefined = (typeof submission?.latest_grading?.grading === 'number')
+                ? submission.latest_grading.grading
+                : (typeof submission?.grading === 'number' ? submission.grading : undefined);
+              const badge: 'success' | 'failure' | 'none' = (typeof gradingVal === 'number') ? (gradingVal === 1 ? 'success' : 'failure') : 'none';
+              item.iconPath = (badge === 'none' && corner === 'none')
+                ? (await import('../utils/IconGenerator').then(m => m.IconGenerator.getColoredIcon(color, shape)))
+                : (await import('../utils/IconGenerator').then(m => m.IconGenerator.getColoredIconWithBadge(color, shape, badge, corner)));
+              // Update tooltip with friendly status
+              const friendlyStatus = (() => {
+                if (!status) return undefined;
+                if (status === 'corrected') return 'Corrected';
+                if (status === 'correction_necessary') return 'Correction Necessary';
+                if (status === 'improvement_possible') return 'Improvement Possible';
+                if (status === 'correction_possible') return 'Correction Possible';
+                const t = status.replace(/_/g, ' ');
+                return t.charAt(0).toUpperCase() + t.slice(1);
+              })();
+              const gradingText = (typeof gradingVal === 'number') ? `Grading: ${(gradingVal * 100).toFixed(2)}%` : undefined;
+              item.tooltip = [`Path: ${updated.path}`, friendlyStatus ? `Status: ${friendlyStatus}` : undefined, gradingText].filter(Boolean).join('\n');
+              // Trigger a targeted refresh for this item
+              (this.treeDataProvider as any).refreshItem?.(item);
+            } catch {
+              // Fallback to full refresh if targeted update fails
+              this.treeDataProvider.refresh();
+            }
+          } else {
+            // Fallback to full refresh
+            this.treeDataProvider.refresh();
+          }
+          vscode.window.showInformationMessage(`Updated: ${(grade * 100).toFixed(1)}% • ${statusPick.label}`);
+        } catch (e: any) {
+          vscode.window.showErrorMessage(`Failed to update grading/status: ${e?.message || e}`);
+        }
+      })
+    );
+
     // Tutor: Download example for comparison (scaffold)
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.tutor.downloadStudentExample', async (_item: any) => {
@@ -342,258 +317,5 @@ export class TutorCommands {
         }
       })
     );
-  }
-
-  private async downloadExample(item: TutorExampleTreeItem, withDependencies: boolean): Promise<void> {
-    const example = item.example;
-    const course = item.course;
-
-    await vscode.window.withProgress({
-      location: vscode.ProgressLocation.Notification,
-      title: `Downloading example "${example.title}"${withDependencies ? ' with dependencies' : ''}...`,
-      cancellable: false
-    }, async (progress) => {
-      void progress; // Progress not used in current implementation
-      try {
-        // Download example from API
-        const downloadResponse = await this.apiService.downloadExample(example.id, withDependencies);
-        
-        if (!downloadResponse) {
-          throw new Error('Failed to download example');
-        }
-        
-        // Create example directory structure in tutor workspace
-        const tutorWorkspacePath = await this.workspaceManager.getTutorWorkspacePath(course.id);
-        const examplePath = path.join(tutorWorkspacePath, 'examples', example.directory);
-        
-        // Create directories
-        await fs.promises.mkdir(examplePath, { recursive: true });
-        
-        // Write main example files
-        for (const [filename, content] of Object.entries(downloadResponse.files)) {
-          const filePath = path.join(examplePath, filename);
-          await fs.promises.writeFile(filePath, content, 'utf-8');
-        }
-        
-        // Write meta.yaml
-        if (downloadResponse.meta_yaml) {
-          await fs.promises.writeFile(
-            path.join(examplePath, 'meta.yaml'),
-            downloadResponse.meta_yaml,
-            'utf-8'
-          );
-        }
-        
-        // Write test.yaml if available
-        if (downloadResponse.test_yaml) {
-          await fs.promises.writeFile(
-            path.join(examplePath, 'test.yaml'),
-            downloadResponse.test_yaml,
-            'utf-8'
-          );
-        }
-        
-        // Example is already saved to workspace using saveExampleToWorkspace above
-        
-        // Handle dependencies if downloaded
-        if (withDependencies && downloadResponse.dependencies) {
-          const dependenciesPath = path.join(examplePath, 'dependencies');
-          await fs.promises.mkdir(dependenciesPath, { recursive: true });
-          
-          for (const dep of downloadResponse.dependencies) {
-            const depPath = path.join(dependenciesPath, dep.directory);
-            await fs.promises.mkdir(depPath, { recursive: true });
-            
-            // Write dependency files
-            for (const [filename, content] of Object.entries(dep.files)) {
-              const filePath = path.join(depPath, filename);
-              await fs.promises.writeFile(filePath, content, 'utf-8');
-            }
-            
-            // Write dependency meta files
-            if (dep.meta_yaml) {
-              await fs.promises.writeFile(
-                path.join(depPath, 'meta.yaml'),
-                dep.meta_yaml,
-                'utf-8'
-              );
-            }
-            
-            if (dep.test_yaml) {
-              await fs.promises.writeFile(
-                path.join(depPath, 'test.yaml'),
-                dep.test_yaml,
-                'utf-8'
-              );
-            }
-          }
-        }
-        
-        // Add to workspace if not already added
-        const workspaceFolders = vscode.workspace.workspaceFolders || [];
-        const isAlreadyInWorkspace = workspaceFolders.some(folder => 
-          folder.uri.fsPath === examplePath
-        );
-        
-        if (!isAlreadyInWorkspace) {
-          const folderName = `${example.title} (${example.identifier})`;
-          vscode.workspace.updateWorkspaceFolders(
-            workspaceFolders.length,
-            0,
-            { uri: vscode.Uri.file(examplePath), name: folderName }
-          );
-        }
-        
-        vscode.window.showInformationMessage(
-          `Example "${example.title}" downloaded successfully to tutor workspace`
-        );
-        
-        // Open the main file if it exists (common patterns)
-        const mainFiles = ['main.py', 'index.js', 'main.js', 'app.py', 'README.md'];
-        for (const mainFile of mainFiles) {
-          const mainFilePath = path.join(examplePath, mainFile);
-          try {
-            await fs.promises.access(mainFilePath);
-            const document = await vscode.workspace.openTextDocument(mainFilePath);
-            await vscode.window.showTextDocument(document);
-            break;
-          } catch {
-            // File doesn't exist, try next
-          }
-        }
-        
-      } catch (error) {
-        vscode.window.showErrorMessage(`Failed to download example: ${error}`);
-        console.error('Download error:', error);
-      }
-    });
-  }
-
-  private async setupTutorWorkspace(course: any): Promise<void> {
-    await vscode.window.withProgress({
-      location: vscode.ProgressLocation.Notification,
-      title: `Setting up tutor workspace for "${course.title}"...`,
-      cancellable: false
-    }, async (progress) => {
-      try {
-        // Initialize tutor workspace structure
-        await this.workspaceManager.initializeTutorWorkspace(course.id, course.title);
-        
-        // Clone tutor repository if available
-        if (course.repository) {
-          const tutorRepoPath = await this.workspaceManager.getTutorRepositoryPath(course.id);
-          
-          // Check if already cloned
-          const gitPath = path.join(tutorRepoPath, '.git');
-          try {
-            await fs.promises.access(gitPath);
-            vscode.window.showInformationMessage('Tutor repository already exists');
-          } catch {
-            // Clone repository
-            progress.report({ message: 'Cloning tutor repository...' });
-            await this.workspaceManager.cloneTutorRepository(
-              course.id,
-              course.repository.provider_url,
-              course.repository.full_path
-            );
-          }
-        }
-        
-        // Add tutor workspace root to VS Code workspace
-        const tutorWorkspacePath = await this.workspaceManager.getTutorWorkspacePath(course.id);
-        const workspaceFolders = vscode.workspace.workspaceFolders || [];
-        const isAlreadyInWorkspace = workspaceFolders.some(folder => 
-          folder.uri.fsPath === tutorWorkspacePath
-        );
-        
-        if (!isAlreadyInWorkspace) {
-          const folderName = `Tutor: ${course.title}`;
-          vscode.workspace.updateWorkspaceFolders(
-            0, // Add at beginning
-            0,
-            { uri: vscode.Uri.file(tutorWorkspacePath), name: folderName }
-          );
-        }
-        
-        vscode.window.showInformationMessage(
-          `Tutor workspace setup complete for "${course.title}"`
-        );
-        
-      } catch (error) {
-        vscode.window.showErrorMessage(`Failed to setup tutor workspace: ${error}`);
-        console.error('Workspace setup error:', error);
-      }
-    });
-  }
-
-  private async downloadAllExamples(item: TutorExampleRepositoryTreeItem): Promise<void> {
-    const repository = item.repository;
-    const course = item.course;
-
-    const result = await vscode.window.showInformationMessage(
-      `Download all examples from repository "${repository.name}"? This may take some time.`,
-      'Yes',
-      'Cancel'
-    );
-
-    if (result !== 'Yes') {
-      return;
-    }
-
-    await vscode.window.withProgress({
-      location: vscode.ProgressLocation.Notification,
-      title: `Downloading all examples from "${repository.name}"...`,
-      cancellable: false
-    }, async (progress) => {
-      try {
-        // Get all examples in repository
-        const examples = await this.apiService.getExamples(repository.id);
-        
-        if (!examples || examples.length === 0) {
-          vscode.window.showInformationMessage('No examples found in this repository');
-          return;
-        }
-
-        let successCount = 0;
-        let failureCount = 0;
-
-        for (let i = 0; i < examples.length; i++) {
-          const example = examples[i];
-          if (example) {
-            progress.report({ 
-              message: `Downloading ${example.title} (${i + 1}/${examples.length})`,
-              increment: (100 / examples.length)
-            });
-
-            try {
-              // Convert ExampleList to Example type for the tree item
-              const typedExample = {
-                ...example,
-                tags: example.tags || [],
-                subject: example.subject || null,
-                category: example.category || null
-              };
-              const exampleItem = new TutorExampleTreeItem(typedExample, repository, course, false);
-              await this.downloadExample(exampleItem, false);
-              successCount++;
-            } catch (error) {
-              console.error(`Failed to download example ${example.title}:`, error);
-              failureCount++;
-            }
-          }
-        }
-
-        const message = `Download complete: ${successCount} successful, ${failureCount} failed`;
-        if (failureCount > 0) {
-          vscode.window.showWarningMessage(message);
-        } else {
-          vscode.window.showInformationMessage(message);
-        }
-
-      } catch (error) {
-        vscode.window.showErrorMessage(`Failed to download examples: ${error}`);
-        console.error('Bulk download error:', error);
-      }
-    });
   }
 }

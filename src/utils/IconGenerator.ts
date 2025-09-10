@@ -108,7 +108,7 @@ export class IconGenerator {
     // Corner status dot
     let cornerElement = '';
     if (corner !== 'none') {
-      const cornerColor = corner === 'corrected' ? '#2e7d32' : corner === 'correction_necessary' ? '#d32f2f' : '#f9a825';
+      const cornerColor = corner === 'corrected' ? '#57cc5dff' : corner === 'correction_necessary' ? '#fc4a4aff' : '#fdba4dff';
       const cx = size - 3.5;
       const cy = size - 3.5;
       const r = 3;

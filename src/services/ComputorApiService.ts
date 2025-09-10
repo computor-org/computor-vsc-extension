@@ -39,7 +39,8 @@ import {
   TestCreate,
   CourseContentDeploymentGet,
   DeploymentHistoryGet,
-  CourseContentStudentList
+  CourseContentStudentList,
+  CourseContentStudentUpdate
 } from '../types/generated';
 
 // Query interface for examples (not generated yet)
@@ -775,6 +776,15 @@ export class ComputorApiService {
     multiTierCache.delete(membersKey);
   }
 
+  // Tutor helpers: cache invalidation
+  clearTutorMemberCourseContentsCache(memberId: string): void {
+    multiTierCache.delete(`tutorContents-${memberId}`);
+  }
+
+  clearCourseContentKindsCache(): void {
+    multiTierCache.delete('courseContentKinds');
+  }
+
   clearAllCaches(): void {
     // Clear ALL caches to force complete data refresh
     console.log('[ComputorApiService] Clearing all caches...');
@@ -1403,6 +1413,37 @@ export class ComputorApiService {
     } catch {
       return undefined;
     }
+  }
+
+  // Tutor: get a specific member's course content (fresh)
+  async getTutorMemberCourseContent(memberId: string, courseContentId: string): Promise<any | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<any>(`/tutors/course-members/${memberId}/course-contents/${courseContentId}`);
+      return response.data;
+    } catch (e) {
+      console.error('Failed to get tutor member course content:', e);
+      return undefined;
+    }
+  }
+
+  /**
+   * Tutor: update a student's course content grading/status
+   */
+  async updateTutorCourseContentStudent(
+    memberId: string,
+    courseContentId: string,
+    update: CourseContentStudentUpdate
+  ): Promise<any> {
+    const client = await this.getHttpClient();
+    const response = await client.patch<any>(
+      `/tutors/course-members/${memberId}/course-contents/${courseContentId}`,
+      update
+    );
+    // Invalidate caches related to this member/content so UI refresh shows changes
+    multiTierCache.delete(`tutorContents-${memberId}`);
+    multiTierCache.delete(`studentCourseContent-${courseContentId}`);
+    return response.data;
   }
 
   /**
