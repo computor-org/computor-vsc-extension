@@ -174,9 +174,12 @@ export class LecturerExampleCommands {
       })
     );
 
-    // Refresh examples tree
+    // Refresh examples tree (clear caches first)
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.refreshExamples', async () => {
+        try {
+          this.apiService.clearExamplesCache();
+        } catch {}
         this.treeProvider.refresh();
       })
     );
@@ -243,8 +246,32 @@ export class LecturerExampleCommands {
           fs.mkdirSync(fileDir, { recursive: true });
         }
         
-        // Write file content
-        fs.writeFileSync(filePath, content, 'utf8');
+        // Write file content (handle binary vs text)
+        try {
+          const ext = path.extname(filename).toLowerCase();
+          const binaryExtensions = new Set(['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.svg', '.pdf', '.zip', '.gz', '.tar', '.rar', '.7z', '.webp']);
+          if (typeof content === 'string' && content.startsWith('data:') && content.includes(';base64,')) {
+            const base64 = content.split(';base64,')[1] || '';
+            const buffer = Buffer.from(base64, 'base64');
+            fs.writeFileSync(filePath, buffer);
+          } else if (binaryExtensions.has(ext)) {
+            // Attempt to decode as base64 for known binary extensions
+            const maybeBase64 = content as string;
+            const isProbablyBase64 = /^[A-Za-z0-9+/=\r\n]+$/.test(maybeBase64) && (maybeBase64.replace(/\s+/g, '').length % 4 === 0);
+            if (isProbablyBase64) {
+              const buffer = Buffer.from(maybeBase64, 'base64');
+              fs.writeFileSync(filePath, buffer);
+            } else {
+              // Fallback: write raw bytes from utf8 string (may still corrupt if misidentified)
+              fs.writeFileSync(filePath, maybeBase64);
+            }
+          } else {
+            fs.writeFileSync(filePath, content, 'utf8');
+          }
+        } catch (e) {
+          // Fallback to text write on any errors
+          fs.writeFileSync(filePath, content, 'utf8');
+        }
         
         // If this is meta.yaml, also create a .meta.yaml copy as source of truth
         if (filename === 'meta.yaml') {
@@ -357,8 +384,29 @@ export class LecturerExampleCommands {
                 fs.mkdirSync(fileDir, { recursive: true });
               }
               
-              // Write file content
-              fs.writeFileSync(filePath, content, 'utf8');
+              // Write file content (handle binary vs text)
+              try {
+                const ext = path.extname(filename).toLowerCase();
+                const binaryExtensions = new Set(['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.svg', '.pdf', '.zip', '.gz', '.tar', '.rar', '.7z', '.webp']);
+                if (typeof content === 'string' && content.startsWith('data:') && content.includes(';base64,')) {
+                  const base64 = content.split(';base64,')[1] || '';
+                  const buffer = Buffer.from(base64, 'base64');
+                  fs.writeFileSync(filePath, buffer);
+                } else if (binaryExtensions.has(ext)) {
+                  const maybeBase64 = content as string;
+                  const isProbablyBase64 = /^[A-Za-z0-9+/=\r\n]+$/.test(maybeBase64) && (maybeBase64.replace(/\s+/g, '').length % 4 === 0);
+                  if (isProbablyBase64) {
+                    const buffer = Buffer.from(maybeBase64, 'base64');
+                    fs.writeFileSync(filePath, buffer);
+                  } else {
+                    fs.writeFileSync(filePath, maybeBase64);
+                  }
+                } else {
+                  fs.writeFileSync(filePath, content, 'utf8');
+                }
+              } catch (e) {
+                fs.writeFileSync(filePath, content, 'utf8');
+              }
               
               // If this is meta.yaml, also create a .meta.yaml copy as source of truth
               if (filename === 'meta.yaml') {
@@ -432,59 +480,41 @@ export class LecturerExampleCommands {
         title: `Uploading example: ${item.example.title}`,
         cancellable: false
       }, async (progress) => {
-        progress.report({ increment: 10, message: 'Reading local files...' });
+        progress.report({ increment: 10, message: 'Packaging example as zip...' });
 
-        // Read all files from the directory
-        const files: Record<string, string> = {};
-        
-        const readDirectory = (dirPath: string, basePath: string) => {
+        // Package the example directory into a zip to preserve file types
+        const zipper = new JSZip();
+
+        const addToZip = (dirPath: string, basePath: string) => {
           const entries = fs.readdirSync(dirPath);
-          
           for (const entry of entries) {
+            if (entry === 'node_modules' || entry === '.git' || entry.startsWith('.')) continue;
             const fullPath = path.join(dirPath, entry);
-            const relativePath = path.relative(basePath, fullPath);
             const stat = fs.statSync(fullPath);
-            
+            const relativePath = path.relative(basePath, fullPath).replace(/\\/g, '/');
             if (stat.isFile()) {
-              // Skip certain files
-              if (entry.startsWith('.') || entry === 'node_modules') continue;
-              
-              try {
-                // Check if it's a binary file (images, etc.)
-                const ext = path.extname(fullPath).toLowerCase();
-                const binaryExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.svg', '.pdf', '.zip', '.gz', '.tar'];
-                
-                if (binaryExtensions.includes(ext)) {
-                  // Read binary files as buffer and encode as base64
-                  const buffer = fs.readFileSync(fullPath);
-                  const base64Content = buffer.toString('base64');
-                  files[relativePath] = `data:application/octet-stream;base64,${base64Content}`;
-                } else {
-                  // Read text files as UTF-8
-                  const content = fs.readFileSync(fullPath, 'utf8');
-                  files[relativePath] = content;
-                }
-              } catch (err) {
-                console.warn(`Failed to read file ${fullPath}:`, err);
-              }
+              if (entry === '.meta.yaml') continue; // local tracking only
+              const data = fs.readFileSync(fullPath);
+              zipper.file(relativePath, data);
             } else if (stat.isDirectory()) {
-              // Skip certain directories
-              if (entry === 'node_modules' || entry === '.git' || entry.startsWith('.')) continue;
-              
-              readDirectory(fullPath, basePath);
+              addToZip(fullPath, basePath);
             }
           }
         };
 
-        readDirectory(item.downloadPath!, item.downloadPath!);
+        addToZip(item.downloadPath!, item.downloadPath!);
+
+        // Generate base64 zip content
+        const base64Zip = await zipper.generateAsync({ type: 'base64', compression: 'DEFLATE' });
 
         progress.report({ increment: 40, message: 'Preparing upload...' });
 
-        // Create upload request
+        // Create upload request with a single zip entry
+        const zipName = `${item.example.directory}.zip`;
         const uploadRequest: ExampleUploadRequest = {
           repository_id: item.repository.id,
           directory: item.example.directory,
-          files: files
+          files: { [zipName]: base64Zip }
         };
 
         progress.report({ increment: 20, message: 'Uploading to server...' });
@@ -732,12 +762,15 @@ Explain how to use this example.
 
         progress.report({ increment: 20, message: `Found ${metaYamlPaths.length} example(s)...` });
 
-        // Process each example
+        // Process each example (we will re-zip each directory individually)
         const examples: Array<{
           directory: string;
           title: string;
           identifier: string;
-          files: { [key: string]: string };
+          slug: string;
+          dependencies: string[];
+          zipBase64: string;
+          zipName: string;
         }> = [];
 
         for (const metaPath of metaYamlPaths) {
@@ -759,43 +792,50 @@ Explain how to use this example.
             continue;
           }
 
-          // Collect all files in this directory
-          const files: { [key: string]: string } = {};
-          const directoryPrefix = directoryPath === directoryName ? directoryName + '/' : directoryPath + '/';
+          // Create a new zip for this example's directory
+          const exampleZip = new JSZip();
+          const directoryPrefix = directoryPath === directoryName ? `${directoryName}/` : `${directoryPath}/`;
 
           for (const [filePath, zipEntry] of Object.entries(loadedZip.files)) {
             const entry = zipEntry as JSZip.JSZipObject;
-            if (!entry.dir && filePath.startsWith(directoryPrefix) && 
-                !filePath.startsWith('__MACOSX/') && !filePath.includes('/.')) {
-              
+            if (!entry.dir && filePath.startsWith(directoryPrefix) &&
+                !filePath.startsWith('__MACOSX/') && !filePath.includes('/.') &&
+                !filePath.endsWith('.meta.yaml')) {
               const relativePath = filePath.substring(directoryPrefix.length);
-              
               try {
-                // Check if it's a binary file
-                const ext = path.extname(filePath).toLowerCase();
-                const binaryExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.svg', '.pdf', '.zip', '.gz', '.tar'];
-                
-                if (binaryExtensions.includes(ext)) {
-                  // Read binary files as base64
-                  const buffer = await entry.async('nodebuffer');
-                  const base64Content = buffer.toString('base64');
-                  files[relativePath] = `data:application/octet-stream;base64,${base64Content}`;
-                } else {
-                  // Read text files as string
-                  const content = await entry.async('string');
-                  files[relativePath] = content;
-                }
+                const content = await entry.async('uint8array');
+                exampleZip.file(relativePath, content);
               } catch (err) {
-                console.warn(`Failed to extract ${filePath}:`, err);
+                console.warn(`Failed to add ${filePath} to zip:`, err);
               }
             }
           }
 
+          const base64Zip = await exampleZip.generateAsync({ type: 'base64', compression: 'DEFLATE' });
+          const zipName = `${directoryName}.zip`;
+
+          // Determine slug/identifier and dependencies
+          const slug = (metaData?.slug || metaData?.identifier || directoryName).toString();
+          let deps: string[] = [];
+          const td = metaData?.testDependencies ?? metaData?.properties?.testDependencies;
+          if (Array.isArray(td)) {
+            deps = td.map((d: any) => {
+              if (typeof d === 'string') return d.toString();
+              if (d && typeof d === 'object') {
+                return (d.slug || d.identifier || '').toString();
+              }
+              return '';
+            }).filter(Boolean);
+          }
+
           examples.push({
             directory: directoryName,
-            title: metaData.title || directoryName,
-            identifier: metaData.identifier || metaData.slug || directoryName,
-            files
+            title: metaData?.title || directoryName,
+            identifier: metaData?.identifier || metaData?.slug || directoryName,
+            slug,
+            dependencies: deps,
+            zipBase64: base64Zip,
+            zipName
           });
         }
 
@@ -807,7 +847,7 @@ Explain how to use this example.
         const quickPickItems = examples.map(ex => ({
           label: ex.title,
           description: ex.identifier,
-          detail: `${Object.keys(ex.files).length} files`,
+          detail: `will upload as ${ex.zipName}${ex.dependencies.length ? ` • deps: ${ex.dependencies.join(', ')}` : ''}`,
           example: ex,
           picked: true  // Preselect all items
         }));
@@ -825,19 +865,73 @@ Explain how to use this example.
           return;
         }
 
-        progress.report({ increment: 40, message: `Uploading ${selectedItems.length} example(s)...` });
+        // Compute dependency-aware order among selected examples
+        const selectedExamples = selectedItems.map(si => si.example);
+        const slugToExample = new Map<string, any>();
+        for (const ex of selectedExamples) slugToExample.set(ex.slug, ex);
+
+        // Kahn's algorithm: edges dep -> ex (only for deps present in selection)
+        const indegree = new Map<string, number>();
+        const adj = new Map<string, Set<string>>();
+        const keyOf = (ex: any) => ex.slug;
+
+        for (const ex of selectedExamples) {
+          indegree.set(keyOf(ex), 0);
+          adj.set(keyOf(ex), new Set());
+        }
+        for (const ex of selectedExamples) {
+          for (const dep of ex.dependencies) {
+            if (!slugToExample.has(dep)) continue; // Only order within selected set
+            adj.get(dep)!.add(ex.slug);
+            indegree.set(ex.slug, (indegree.get(ex.slug) || 0) + 1);
+          }
+        }
+
+        // Initialize queue with stable order using the original selected order
+        const queue: string[] = [];
+        for (const ex of selectedExamples) {
+          if ((indegree.get(ex.slug) || 0) === 0) queue.push(ex.slug);
+        }
+
+        const orderedSlugs: string[] = [];
+        while (queue.length) {
+          const u = queue.shift()!;
+          orderedSlugs.push(u);
+          for (const v of (adj.get(u) || [])) {
+            indegree.set(v, (indegree.get(v) || 0) - 1);
+            if ((indegree.get(v) || 0) === 0) queue.push(v);
+          }
+        }
+
+        let uploadOrder = orderedSlugs.map(s => slugToExample.get(s)!).filter(Boolean);
+        if (uploadOrder.length !== selectedExamples.length) {
+          // Cycle or missing accounted nodes; append any remaining in original selection order
+          const seen = new Set(uploadOrder.map(e => e.slug));
+          for (const ex of selectedExamples) if (!seen.has(ex.slug)) uploadOrder.push(ex);
+        }
+
+        // Warn about missing dependencies not included in selection
+        const missingSummary: string[] = [];
+        const selectedSlugSet = new Set(selectedExamples.map(e => e.slug));
+        for (const ex of selectedExamples) {
+          const missing = ex.dependencies.filter(d => !selectedSlugSet.has(d));
+          if (missing.length) missingSummary.push(`${ex.slug}: ${missing.join(', ')}`);
+        }
+        if (missingSummary.length) {
+          vscode.window.showWarningMessage(`Some selected examples reference dependencies not in selection: ${missingSummary.slice(0,3).join('; ')}${missingSummary.length>3?' ...':''}`);
+        }
+
+        progress.report({ increment: 40, message: `Uploading ${selectedItems.length} example(s) with dependency order...` });
 
         // Upload selected examples
         let successCount = 0;
         const errors: string[] = [];
 
-        for (let i = 0; i < selectedItems.length; i++) {
-          const item = selectedItems[i];
-          if (!item) continue;
-          const example = item.example;
+        for (let i = 0; i < uploadOrder.length; i++) {
+          const example = uploadOrder[i];
           
           progress.report({ 
-            increment: 40 + (40 * i / selectedItems.length), 
+            increment: 40 + (40 * i / uploadOrder.length), 
             message: `Uploading ${example.title}...` 
           });
 
@@ -845,7 +939,7 @@ Explain how to use this example.
             const uploadRequest: ExampleUploadRequest = {
               repository_id: repositoryId,
               directory: example.directory,
-              files: example.files
+              files: { [example.zipName]: example.zipBase64 }
             };
 
             await this.apiService.uploadExample(uploadRequest);

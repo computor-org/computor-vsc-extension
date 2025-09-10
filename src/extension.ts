@@ -13,7 +13,7 @@ import { JwtHttpClient } from './http/JwtHttpClient';
 import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataProvider';
 import { LecturerExampleTreeProvider } from './ui/tree/lecturer/LecturerExampleTreeProvider';
 import { LecturerCommands } from './commands/LecturerCommands';
-// import { LecturerExampleCommands } from './commands/LecturerExampleCommands';
+import { LecturerExampleCommands } from './commands/LecturerExampleCommands';
 
 import { StudentCourseContentTreeProvider } from './ui/tree/student/StudentCourseContentTreeProvider';
 import { StudentRepositoryManager } from './services/StudentRepositoryManager';
@@ -233,6 +233,9 @@ class LecturerController extends BaseRoleController {
 
     const commands = new LecturerCommands(this.context, this.tree, api);
     commands.registerCommands();
+
+    // Register example-related commands (search, upload from ZIP, etc.)
+    new LecturerExampleCommands(this.context, api, this.exampleTree);
 
     await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', true);
     await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
