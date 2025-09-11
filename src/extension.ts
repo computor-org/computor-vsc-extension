@@ -130,12 +130,49 @@ async function writeMarker(file: string, data: { courseId: string }): Promise<vo
   await fs.promises.writeFile(file, JSON.stringify(data, null, 2), 'utf8');
 }
 
-async function ensureCourseMarker(role: Extract<Role, 'Student' | 'Tutor'>, api: ComputorApiService): Promise<string | undefined> {
+async function ensureCourseMarker(role: Extract<Role, 'Student' | 'Tutor'>, api: ComputorApiService, context?: vscode.ExtensionContext): Promise<string | undefined> {
   const root = getWorkspaceRoot();
   if (!root) {
     const action = await vscode.window.showErrorMessage(`${role} login requires an open workspace.`, 'Open Folder');
     if (action === 'Open Folder') {
-      await vscode.commands.executeCommand('vscode.openFolder');
+      // Let the user select a folder to open as workspace
+      const folderUri = await vscode.window.showOpenDialog({
+        canSelectFolders: true,
+        canSelectFiles: false,
+        canSelectMany: false,
+        openLabel: 'Select Workspace Folder'
+      });
+      
+      if (folderUri && folderUri.length > 0) {
+        // Store pending login info before workspace change
+        if (context) {
+          await context.globalState.update('pendingLogin', { 
+            role, 
+            timestamp: Date.now() 
+          });
+        }
+        
+        // Add the folder to the current workspace
+        // This will restart the extension if no workspace was open
+        const workspaceFolders = vscode.workspace.workspaceFolders || [];
+        vscode.workspace.updateWorkspaceFolders(
+          workspaceFolders.length,
+          0,
+          { uri: folderUri[0]!, name: path.basename(folderUri[0]!.fsPath) }
+        );
+        
+        // If we had existing workspace folders, the extension won't restart
+        // In that case, we can continue immediately
+        if (workspaceFolders.length > 0) {
+          // Give VS Code a moment to update
+          await new Promise(resolve => setTimeout(resolve, 100));
+          // Recursively call to handle the marker with the new workspace
+          return ensureCourseMarker(role, api, context);
+        }
+        
+        // Extension will restart, return undefined
+        return undefined;
+      }
     }
     return undefined;
   }
@@ -263,7 +300,7 @@ class TutorController extends BaseRoleController {
     }
 
     // Ensure tutor marker exists (no course binding)
-    await ensureCourseMarker('Tutor', api);
+    await ensureCourseMarker('Tutor', api, this.context);
 
     // Register filter panel and tree
     const { TutorFilterPanelProvider } = await import('./ui/panels/TutorFilterPanel');
@@ -318,7 +355,7 @@ class StudentController extends BaseRoleController {
     const api = await this.setupApi(client);
 
     // Ensure course marker exists / choose course
-    const courseId = await ensureCourseMarker('Student', api);
+    const courseId = await ensureCourseMarker('Student', api, this.context);
     if (!courseId) throw new Error('Student course selection cancelled.');
 
     this.repositoryManager = new StudentRepositoryManager(this.context, api);
@@ -375,7 +412,30 @@ async function loginFlow(context: vscode.ExtensionContext, role: Role): Promise<
   if (!root) {
     const action = await vscode.window.showErrorMessage('Login requires an open workspace.', 'Open Folder');
     if (action === 'Open Folder') {
-      await vscode.commands.executeCommand('vscode.openFolder');
+      // Let the user select a folder to open as workspace
+      const folderUri = await vscode.window.showOpenDialog({
+        canSelectFolders: true,
+        canSelectFiles: false,
+        canSelectMany: false,
+        openLabel: 'Select Workspace Folder'
+      });
+      
+      if (folderUri && folderUri.length > 0) {
+        // Store pending login info before workspace change
+        await context.globalState.update('pendingLogin', { 
+          role, 
+          timestamp: Date.now() 
+        });
+        
+        // Add the folder to the current workspace
+        // This will restart the extension if no workspace was open
+        const workspaceFolders = vscode.workspace.workspaceFolders || [];
+        vscode.workspace.updateWorkspaceFolders(
+          workspaceFolders.length,
+          0,
+          { uri: folderUri[0]!, name: path.basename(folderUri[0]!.fsPath) }
+        );
+      }
     }
     isAuthenticating = false;
     return;
@@ -441,6 +501,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(vscode.commands.registerCommand('computor.lecturer.login', async () => loginFlow(context, 'Lecturer')));
   context.subscriptions.push(vscode.commands.registerCommand('computor.student.login', async () => loginFlow(context, 'Student')));
   context.subscriptions.push(vscode.commands.registerCommand('computor.tutor.login', async () => loginFlow(context, 'Tutor')));
+  
+  // Check for pending login after workspace change
+  const pendingLogin = context.globalState.get<{ role: Extract<Role, 'Student' | 'Tutor'>; timestamp: number }>('pendingLogin');
+  if (pendingLogin) {
+    // Clear the pending login state
+    await context.globalState.update('pendingLogin', undefined);
+    
+    // Check if the login is recent (within 5 seconds)
+    if (Date.now() - pendingLogin.timestamp < 5000) {
+      // Automatically continue the login flow
+      setTimeout(() => {
+        vscode.window.showInformationMessage(`Continuing ${pendingLogin.role} login after workspace change...`);
+        loginFlow(context, pendingLogin.role);
+      }, 1000);
+    }
+  }
 
   // Logout command
   context.subscriptions.push(vscode.commands.registerCommand('computor.logout', async () => {
