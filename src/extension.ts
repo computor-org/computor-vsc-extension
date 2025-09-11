@@ -278,7 +278,7 @@ class LecturerController extends BaseRoleController {
     await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
     await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
 
-    try { await vscode.commands.executeCommand('workbench.view.extension.computor-lecturer'); } catch {}
+    try { await vscode.commands.executeCommand('workbench.view.extension.computor-main'); } catch {}
     try { await vscode.commands.executeCommand('computor.lecturer.courses.focus'); } catch {}
   }
 }
@@ -341,7 +341,7 @@ class TutorController extends BaseRoleController {
     await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
     await vscode.commands.executeCommand('setContext', 'computor.tutor.show', true);
 
-    try { await vscode.commands.executeCommand('workbench.view.extension.computor-tutor'); } catch {}
+    try { await vscode.commands.executeCommand('workbench.view.extension.computor-main'); } catch {}
     try { await vscode.commands.executeCommand('computor.tutor.courses.focus'); } catch {}
   }
 }
@@ -397,7 +397,7 @@ class StudentController extends BaseRoleController {
     await vscode.commands.executeCommand('setContext', 'computor.student.show', true);
     await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
 
-    try { await vscode.commands.executeCommand('workbench.view.extension.computor-student'); } catch {}
+    try { await vscode.commands.executeCommand('workbench.view.extension.computor-main'); } catch {}
   }
 }
 
@@ -477,11 +477,13 @@ async function loginFlow(context: vscode.ExtensionContext, role: Role): Promise<
   try {
     await controller.activate(client as any);
     activeSession = { role, deactivate: () => controller.dispose().then(async () => {
+      await vscode.commands.executeCommand('setContext', 'computor.isLoggedIn', false);
       await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
       await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
       await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
     }) };
     await context.secrets.store(secretKey, JSON.stringify(auth));
+    await vscode.commands.executeCommand('setContext', 'computor.isLoggedIn', true);
     vscode.window.showInformationMessage(`Logged in as ${role}.`);
   } catch (error: any) {
     await controller.dispose();
@@ -496,6 +498,12 @@ async function loginFlow(context: vscode.ExtensionContext, role: Role): Promise<
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   console.log('Computor extension activated');
   IconGenerator.initialize(context);
+
+  // Initialize all view contexts to false to hide views until login
+  await vscode.commands.executeCommand('setContext', 'computor.isLoggedIn', false);
+  await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
+  await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
+  await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
 
   // Commands: per-role logins
   context.subscriptions.push(vscode.commands.registerCommand('computor.lecturer.login', async () => loginFlow(context, 'Lecturer')));
@@ -524,6 +532,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const role = activeSession.role;
     await activeSession.deactivate();
     activeSession = null;
+    await vscode.commands.executeCommand('setContext', 'computor.isLoggedIn', false);
     vscode.window.showInformationMessage(`Logged out from ${role}.`);
   }));
 
