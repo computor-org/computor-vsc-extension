@@ -166,8 +166,12 @@ export class CourseSelectionService {
         // Set context to make course content view visible
         vscode.commands.executeCommand('setContext', 'computor.courseSelected', true);
 
-        // Fire event for other components
-        vscode.commands.executeCommand('computor.courseChanged', course);
+        // Fire event for other components (if handler exists)
+        try {
+            await vscode.commands.executeCommand('computor.courseChanged', course);
+        } catch {
+            // Command might not be registered, that's OK
+        }
 
         vscode.window.showInformationMessage(`Switched to course: ${course.title}`);
     }
