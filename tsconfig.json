@@ -33,7 +33,9 @@
   "exclude": [
     "node_modules",
     "out",
-    "**/*.test.ts"
+    "**/*.test.ts",
+    "**/extension_deprecated.ts",
+    "**/*_deprecated.ts"
   ],
   "ts-node": {
     "compilerOptions": {

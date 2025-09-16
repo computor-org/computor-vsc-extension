@@ -135,7 +135,7 @@ export class GitBranchManager {
   /**
    * Get the main branch name (main or master)
    */
-  private async getMainBranch(repoPath: string): Promise<string> {
+  async getMainBranch(repoPath: string): Promise<string> {
     try {
       const branches = await this.gitWrapper.getBranches(repoPath);
       
@@ -180,13 +180,20 @@ export class GitBranchManager {
     const branchName = this.generateBranchName(assignmentPath);
     
     try {
-      // Push with upstream tracking
-      const git = await this.gitWrapper.getRepository(repoPath);
-      await git.push('origin', branchName, ['--set-upstream']);
+      // Push branch to remote
+      // First try regular push, GitWrapper will handle upstream if needed
+      await this.gitWrapper.push(repoPath, 'origin', branchName);
       vscode.window.showInformationMessage(`Pushed branch ${branchName} to remote`);
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to push branch: ${error}`);
-      throw error;
+      // If push fails due to no upstream, try with set-upstream
+      try {
+        const git = await this.gitWrapper.getRepository(repoPath);
+        await git.push('origin', branchName, ['--set-upstream']);
+        vscode.window.showInformationMessage(`Pushed branch ${branchName} to remote`);
+      } catch (fallbackError) {
+        vscode.window.showErrorMessage(`Failed to push branch: ${error}`);
+        throw error;
+      }
     }
   }
 
@@ -202,6 +209,88 @@ export class GitBranchManager {
     } catch (error) {
       console.error(`Failed to list branches: ${error}`);
       return [];
+    }
+  }
+
+  /**
+   * Get current branch name
+   */
+  async getCurrentBranch(repoPath: string): Promise<string | null> {
+    try {
+      return await this.gitWrapper.getCurrentBranch(repoPath);
+    } catch (error) {
+      console.error(`Failed to get current branch: ${error}`);
+      return null;
+    }
+  }
+
+  /**
+   * Checkout a branch
+   */
+  async checkoutBranch(repoPath: string, branchName: string): Promise<void> {
+    try {
+      await this.gitWrapper.checkoutBranch(repoPath, branchName);
+    } catch (error) {
+      console.error(`Failed to checkout branch ${branchName}: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if repository has uncommitted changes
+   */
+  async hasChanges(repoPath: string): Promise<boolean> {
+    try {
+      const status = await this.gitWrapper.status(repoPath);
+      return !status.isClean;
+    } catch (error) {
+      console.error(`Failed to check repository status: ${error}`);
+      return false;
+    }
+  }
+
+  /**
+   * Stage all changes in the repository
+   */
+  async stageAll(repoPath: string): Promise<void> {
+    try {
+      await this.gitWrapper.add(repoPath, ['--all']);
+    } catch (error) {
+      console.error(`Failed to stage changes: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Push current branch to remote
+   */
+  async pushCurrentBranch(repoPath: string): Promise<void> {
+    try {
+      const currentBranch = await this.gitWrapper.getCurrentBranch(repoPath);
+      if (!currentBranch) {
+        throw new Error('Could not determine current branch');
+      }
+      await this.gitWrapper.push(repoPath, 'origin', currentBranch);
+      // Removed notification - handled by caller
+    } catch (error) {
+      console.error(`Failed to push current branch: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Get the latest commit hash from the repository
+   */
+  async getLatestCommitHash(repoPath: string): Promise<string | null> {
+    try {
+      const log = await this.gitWrapper.getLog(repoPath, { maxCount: 1 });
+      if (log && log.length > 0 && log[0]) {
+        return log[0].hash;
+      }
+      return null;
+    } catch (error) {
+      console.error(`Failed to get latest commit hash: ${error}`);
+      return null;
     }
   }
 

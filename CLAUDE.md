@@ -41,8 +41,3 @@ This is a VS Code extension project called "computor-vsc-extension" that is part
 - **KISS**: Keep It Simple, Stupid - avoid unnecessary complexity
 - **YAGNI**: You Aren't Gonna Need It - don't add functionality until it's needed
 - **SRP**: Single Responsibility Principle - each class/function should have one reason to change
-
-### Testing
-- Write tests for new functionality
-- Follow TDD approach when possible
-- Ensure code coverage for critical paths

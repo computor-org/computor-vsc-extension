@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
-import { OrganizationList } from '../../types/generated';
+import { OrganizationGet } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
 
@@ -15,7 +15,7 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
   }
 
   protected async getWebviewContent(data?: {
-    organization: OrganizationList;
+    organization: OrganizationGet;
   }): Promise<string> {
     if (!data) {
       return this.getBaseHtml('Organization', '<p>No organization data available</p>');
@@ -52,12 +52,11 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
           
           <div class="form-group">
             <label for="description">Description</label>
-            <textarea id="description" name="description" rows="4"></textarea>
+            <textarea id="description" name="description" rows="4">${organization.description || ''}</textarea>
           </div>
           
           <div class="actions">
             <button type="submit" class="button">Save Changes</button>
-            <button type="button" class="button secondary" onclick="refreshView()">Refresh</button>
           </div>
         </form>
       </div>
@@ -119,7 +118,7 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
           if (this.treeDataProvider) {
             this.treeDataProvider.updateNode('organization', message.data.organizationId, message.data.updates);
           } else {
-            vscode.commands.executeCommand('computor.refreshLecturerTree');
+            vscode.commands.executeCommand('computor.lecturer.refresh');
           }
         } catch (error) {
           vscode.window.showErrorMessage(`Failed to update organization: ${error}`);
@@ -127,7 +126,23 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
         break;
 
       case 'refresh':
-        vscode.commands.executeCommand('computor.refreshLecturerTree');
+        // Reload the webview with fresh data
+        if (message.data.organizationId) {
+          try {
+            const organization = await this.apiService.getOrganization(message.data.organizationId);
+            if (organization && this.currentData) {
+              // Update the current data and re-render the entire webview
+              this.currentData.organization = organization;
+              const content = await this.getWebviewContent(this.currentData);
+              if (this.panel) {
+                this.panel.webview.html = content;
+              }
+              vscode.window.showInformationMessage('Organization refreshed');
+            }
+          } catch (error) {
+            vscode.window.showErrorMessage(`Failed to refresh: ${error}`);
+          }
+        }
         break;
 
       case 'createCourseFamily':

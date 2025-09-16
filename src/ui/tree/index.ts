@@ -13,7 +13,6 @@ export { JsonTreeItem } from './JsonTreeItem';
 // Tree data providers
 export { ApiTreeDataProvider } from './ApiTreeDataProvider';
 export { JsonTreeDataProvider } from './JsonTreeDataProvider';
-export { TestResultTreeDataProvider } from './TestResultTreeDataProvider';
 
 // Re-export types
 export * from '../../types/TreeTypes';

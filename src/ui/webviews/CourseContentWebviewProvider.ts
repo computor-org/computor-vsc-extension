@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
-import { CourseContentList, CourseList, CourseContentTypeList } from '../../types/generated';
+import { CourseContentGet, CourseList, CourseContentTypeList } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
+import { hasExampleAssigned, getExampleVersionId, getDeploymentStatus } from '../../utils/deploymentHelpers';
 
 export class CourseContentWebviewProvider extends BaseWebviewProvider {
   private apiService: ComputorApiService;
@@ -15,7 +16,7 @@ export class CourseContentWebviewProvider extends BaseWebviewProvider {
   }
 
   protected async getWebviewContent(data?: {
-    courseContent: CourseContentList;
+    courseContent: CourseContentGet;
     course: CourseList;
     contentType?: CourseContentTypeList;
     exampleInfo?: any;
@@ -42,15 +43,15 @@ export class CourseContentWebviewProvider extends BaseWebviewProvider {
         ${courseContent.max_group_size ? `<p><strong>Max Group Size:</strong> ${courseContent.max_group_size}</p>` : ''}
       </div>
 
-      ${courseContent.example_id ? `
+      ${hasExampleAssigned(courseContent) ? `
         <div class="info-section">
           <h2>Assigned Example</h2>
           <p><strong>Example:</strong> ${exampleInfo?.title || 'Unknown'}</p>
-          <p><strong>Version:</strong> ${courseContent.example_version || 'latest'}</p>
-          ${isSubmittable && courseContent.deployment_status ? `
+          <p><strong>Version ID:</strong> ${getExampleVersionId(courseContent) || 'not set'}</p>
+          ${isSubmittable && getDeploymentStatus(courseContent) ? `
             <p><strong>Deployment Status:</strong> 
-              <span class="status ${courseContent.deployment_status === 'deployed' ? 'success' : 'pending'}">
-                ${courseContent.deployment_status}
+              <span class="status ${getDeploymentStatus(courseContent) === 'deployed' ? 'success' : 'pending'}">
+                ${getDeploymentStatus(courseContent)}
               </span>
             </p>
           ` : ''}
@@ -77,7 +78,7 @@ export class CourseContentWebviewProvider extends BaseWebviewProvider {
           
           <div class="form-group">
             <label for="description">Description</label>
-            <textarea id="description" name="description" rows="4"></textarea>
+            <textarea id="description" name="description" rows="4">${courseContent.description || ''}</textarea>
           </div>
           
           ${isSubmittable ? `
@@ -89,7 +90,6 @@ export class CourseContentWebviewProvider extends BaseWebviewProvider {
           
           <div class="actions">
             <button type="submit" class="button">Save Changes</button>
-            <button type="button" class="button secondary" onclick="refreshView()">Refresh</button>
           </div>
         </form>
       </div>
@@ -209,16 +209,31 @@ export class CourseContentWebviewProvider extends BaseWebviewProvider {
         break;
 
       case 'refresh':
-        // Trigger tree refresh
-        vscode.commands.executeCommand('computor.refreshLecturerTree');
+        // Reload the webview with fresh data
+        if (message.data.contentId) {
+          try {
+            const freshContent = await this.apiService.getCourseContent(message.data.contentId);
+            if (freshContent && this.currentData) {
+              // Update the current data and re-render the entire webview
+              this.currentData.courseContent = freshContent;
+              const content = await this.getWebviewContent(this.currentData);
+              if (this.panel) {
+                this.panel.webview.html = content;
+              }
+              vscode.window.showInformationMessage('Course content refreshed');
+            }
+          } catch (error) {
+            vscode.window.showErrorMessage(`Failed to refresh: ${error}`);
+          }
+        }
         break;
 
       case 'assignExample':
-        vscode.commands.executeCommand('computor.assignExample', message.data);
+        vscode.commands.executeCommand('computor.lecturer.assignExample', message.data);
         break;
 
       case 'unassignExample':
-        vscode.commands.executeCommand('computor.unassignExample', message.data);
+        vscode.commands.executeCommand('computor.lecturer.unassignExample', message.data);
         break;
 
       case 'updateExample':
@@ -226,7 +241,7 @@ export class CourseContentWebviewProvider extends BaseWebviewProvider {
         break;
 
       case 'createChild':
-        vscode.commands.executeCommand('computor.createCourseContent', message.data);
+        vscode.commands.executeCommand('computor.lecturer.createCourseContent', message.data);
         break;
 
       case 'moveContent':

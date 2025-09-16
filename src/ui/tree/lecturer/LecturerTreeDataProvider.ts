@@ -1,10 +1,15 @@
 import * as vscode from 'vscode';
 import { ComputorApiService } from '../../../services/ComputorApiService';
+import { LecturerRepositoryManager } from '../../../services/LecturerRepositoryManager';
+import * as fs from 'fs';
+import * as path from 'path';
 import { GitLabTokenManager } from '../../../services/GitLabTokenManager';
 import { ComputorSettingsManager } from '../../../settings/ComputorSettingsManager';
 import { errorRecoveryService } from '../../../services/ErrorRecoveryService';
 import { performanceMonitor } from '../../../services/PerformanceMonitoringService';
 import { VirtualScrollingService } from '../../../services/VirtualScrollingService';
+import { DragDropManager } from '../../../services/DragDropManager';
+import { hasExampleAssigned, getExampleVersionId } from '../../../utils/deploymentHelpers';
 import {
   OrganizationTreeItem,
   CourseFamilyTreeItem,
@@ -18,7 +23,7 @@ import {
   CourseMemberTreeItem,
   LoadMoreTreeItem
 } from './LecturerTreeItems';
-import { 
+import type { 
   CourseContentList, 
   CourseContentCreate, 
   CourseContentUpdate, 
@@ -26,14 +31,34 @@ import {
   CourseContentTypeList,
   CourseGroupList,
   CourseMemberList,
+  CourseContentDeploymentList,
   ExampleGet
 } from '../../../types/generated';
 
-type TreeItem = OrganizationTreeItem | CourseFamilyTreeItem | CourseTreeItem | CourseContentTreeItem | CourseFolderTreeItem | CourseContentTypeTreeItem | ExampleTreeItem | CourseGroupTreeItem | NoGroupTreeItem | CourseMemberTreeItem | LoadMoreTreeItem;
+type TreeItem =
+  | OrganizationTreeItem
+  | CourseFamilyTreeItem
+  | CourseTreeItem
+  | CourseContentTreeItem
+  | CourseFolderTreeItem
+  | CourseContentTypeTreeItem
+  | ExampleTreeItem
+  | CourseGroupTreeItem
+  | NoGroupTreeItem
+  | CourseMemberTreeItem
+  | LoadMoreTreeItem
+  | FSFolderItem
+  | FSFileItem
+  | InfoItem;
 
 interface NodeUpdateData {
   course_id?: string;
   [key: string]: unknown;
+}
+
+interface AssignmentDirectoryStatus {
+  message: string;
+  severity: 'info' | 'warning' | 'error';
 }
 
 interface PaginationInfo {
@@ -54,6 +79,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   private apiService: ComputorApiService;
   private gitLabTokenManager: GitLabTokenManager;
   private settingsManager: ComputorSettingsManager;
+  private context: vscode.ExtensionContext;
   private expandedStates: Record<string, boolean> = {};
   
   // Pagination state for different node types
@@ -62,10 +88,12 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   // Virtual scrolling services for large datasets
   private virtualScrollServices: Map<string, VirtualScrollingService<any>> = new Map();
 
-  constructor(context: vscode.ExtensionContext) {
-    this.apiService = new ComputorApiService(context);
+  constructor(context: vscode.ExtensionContext, apiService?: ComputorApiService) {
+    // Use provided apiService or create a new one
+    this.apiService = apiService || new ComputorApiService(context);
     this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
     this.settingsManager = new ComputorSettingsManager(context);
+    this.context = context;
     
     // Load expanded states on startup
     console.log('Loading expanded states on startup...');
@@ -424,22 +452,38 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
                   const treeItems = await Promise.all(items.map(async content => {
                     const hasChildren = this.hasChildContents(content, allContents);
                     let exampleInfo = null;
+                    let exampleVersionInfo = null;
                     
-                    if (content.example_id) {
-                      console.log(`[Virtual scroll] Fetching example info for content "${content.title}" with example_id: ${content.example_id}`);
-                      exampleInfo = await this.getExampleInfo(content.example_id);
-                      console.log(`[Virtual scroll] Example info fetched:`, exampleInfo ? `${exampleInfo.title}` : 'null');
+                    // Check if example is assigned using helper
+                    if (hasExampleAssigned(content)) {
+                      const versionId = getExampleVersionId(content);
+                      if (versionId) {
+                        console.log(`[Virtual scroll] Fetching example version info for content "${content.title}" with version_id: ${versionId}`);
+                        try {
+                          exampleVersionInfo = await this.apiService.getExampleVersion(versionId);
+                          console.log(`[Virtual scroll] Version info fetched:`, exampleVersionInfo ? `${exampleVersionInfo.version_tag || 'unknown'}` : 'null');
+                          
+                          // Get example info from the version
+                          if (exampleVersionInfo && exampleVersionInfo.example_id) {
+                            exampleInfo = await this.getExampleInfo(exampleVersionInfo.example_id);
+                            console.log(`[Virtual scroll] Example info fetched:`, exampleInfo ? `${exampleInfo.title}` : 'null');
+                          }
+                        } catch (error) {
+                          console.warn(`Failed to fetch version info for ${versionId}:`, error);
+                        }
+                      }
                     }
                     
                     // Get content type for this content
                     const contentTypes = await this.getCourseContentTypes(element.course.id);
                     const contentType = contentTypes.find(t => t.id === content.course_content_type_id);
                     const isSubmittable = this.isContentSubmittable(contentType);
+                    const isAssignmentLeaf = isSubmittable && !hasChildren;
                     
                     const nodeId = `content-${content.id}`;
-                    const expandedState = hasChildren ? 
-                      (this.expandedStates[nodeId] ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed) :
-                      vscode.TreeItemCollapsibleState.None;
+                    const expandedState = hasChildren
+                      ? (this.expandedStates[nodeId] ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
+                      : (isAssignmentLeaf ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
                     
                     return new CourseContentTreeItem(
                       content,
@@ -450,6 +494,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
                       exampleInfo,
                       contentType,
                       isSubmittable,
+                      exampleVersionInfo,
                       expandedState
                     );
                   }));
@@ -481,22 +526,38 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
             const contentItems = await Promise.all(rootContents.map(async content => {
               const hasChildren = this.hasChildContents(content, allContents);
               let exampleInfo = null;
+              let exampleVersionInfo = null;
               
-              if (content.example_id) {
-                console.log(`Fetching example info for content "${content.title}" with example_id: ${content.example_id}`);
-                exampleInfo = await this.getExampleInfo(content.example_id);
-                console.log(`Example info fetched:`, exampleInfo ? `${exampleInfo.title}` : 'null');
+              // Check if example is assigned using helper
+              if (hasExampleAssigned(content)) {
+                const versionId = getExampleVersionId(content);
+                if (versionId) {
+                  console.log(`Fetching example version info for content "${content.title}" with version_id: ${versionId}`);
+                  try {
+                    exampleVersionInfo = await this.apiService.getExampleVersion(versionId);
+                    console.log(`Version info fetched:`, exampleVersionInfo ? `${exampleVersionInfo.version_tag || 'unknown'}` : 'null');
+                    
+                    // Get example info from the version
+                    if (exampleVersionInfo && exampleVersionInfo.example_id) {
+                      exampleInfo = await this.getExampleInfo(exampleVersionInfo.example_id);
+                      console.log(`Example info fetched:`, exampleInfo ? `${exampleInfo.title}` : 'null');
+                    }
+                  } catch (error) {
+                    console.warn(`Failed to fetch version info for ${versionId}:`, error);
+                  }
+                }
               }
               
               // Get content type info
               const contentTypes = await this.getCourseContentTypes(element.course.id);
               const contentType = contentTypes.find(t => t.id === content.course_content_type_id);
               const isSubmittable = this.isContentSubmittable(contentType);
+              const isAssignmentLeaf = isSubmittable && !hasChildren;
               
               const nodeId = `content-${content.id}`;
-              const expandedState = hasChildren ? 
-                (this.expandedStates[nodeId] ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed) :
-                vscode.TreeItemCollapsibleState.None;
+              const expandedState = hasChildren
+                ? (this.expandedStates[nodeId] ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
+                : (isAssignmentLeaf ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
               
               return new CourseContentTreeItem(
                 content,
@@ -507,6 +568,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
                 exampleInfo,
                 contentType,
                 isSubmittable,
+                exampleVersionInfo,
                 expandedState
               );
             }));
@@ -555,19 +617,39 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
           
           return result;
         } else {
-          // Show course content types
+          // Show course content types with content kind titles
           const contentTypes = await this.getCourseContentTypes(element.course.id);
-          return contentTypes.map(type => new CourseContentTypeTreeItem(
-            type,
-            element.course,
-            element.courseFamily,
-            element.organization
-          ));
+          
+          // Fetch content kind information for each type
+          const contentTypesWithKinds = await Promise.all(contentTypes.map(async (type) => {
+            try {
+              const fullType = await this.apiService.getCourseContentType(type.id);
+              const kindTitle = fullType?.course_content_kind?.title || undefined;
+              return new CourseContentTypeTreeItem(
+                type,
+                element.course,
+                element.courseFamily,
+                element.organization,
+                kindTitle
+              );
+            } catch (error) {
+              // If fetching full type fails, create without kind title
+              console.warn(`Failed to fetch content type details for ${type.id}:`, error);
+              return new CourseContentTypeTreeItem(
+                type,
+                element.course,
+                element.courseFamily,
+                element.organization
+              );
+            }
+          }));
+          
+          return contentTypesWithKinds;
         }
       }
 
       if (element instanceof CourseContentTreeItem) {
-        // Show child course contents
+        // Show child course contents or, for assignments (leaves), show local repo files
         const allContents = await this.getCourseContents(element.course.id);
         const childContents = this.getChildContents(element.courseContent, allContents);
         
@@ -575,20 +657,34 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         const childItems = await Promise.all(childContents.map(async content => {
           const hasChildren = this.hasChildContents(content, allContents);
           let exampleInfo = null;
+          let exampleVersionInfo = null;
           
-          if (content.example_id) {
-            exampleInfo = await this.getExampleInfo(content.example_id);
+          // Check if example is assigned using helper
+          if (hasExampleAssigned(content)) {
+            const versionId = getExampleVersionId(content);
+            if (versionId) {
+              try {
+                exampleVersionInfo = await this.apiService.getExampleVersion(versionId);
+                // Get example info from the version
+                if (exampleVersionInfo && exampleVersionInfo.example_id) {
+                  exampleInfo = await this.getExampleInfo(exampleVersionInfo.example_id);
+                }
+              } catch (error) {
+                console.warn(`Failed to fetch version info for ${versionId}:`, error);
+              }
+            }
           }
           
           // Get content type info
           const contentTypes = await this.getCourseContentTypes(element.course.id);
           const contentType = contentTypes.find(t => t.id === content.course_content_type_id);
           const isSubmittable = this.isContentSubmittable(contentType);
+          const isAssignmentLeaf = isSubmittable && !hasChildren;
           
           const nodeId = `content-${content.id}`;
-          const expandedState = hasChildren ? 
-            (this.expandedStates[nodeId] ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed) :
-            vscode.TreeItemCollapsibleState.None;
+          const expandedState = hasChildren
+            ? (this.expandedStates[nodeId] ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
+            : (isAssignmentLeaf ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
           
           return new CourseContentTreeItem(
             content,
@@ -599,11 +695,16 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
             exampleInfo,
             contentType,
             isSubmittable,
+            exampleVersionInfo,
             expandedState
           );
         }));
         
-        return childItems;
+        if (childItems.length > 0) {
+          return childItems;
+        }
+        
+        return this.getAssignmentDirectoryChildren(element);
       }
 
       if (element instanceof CourseGroupTreeItem) {
@@ -713,6 +814,12 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         }
       }
 
+      // Filesystem folder expansion for lecturer assignment folders
+      if (element instanceof FSFolderItem) {
+        const items = await this.readDirectoryItems(element.absPath);
+        return items;
+      }
+
       return [];
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to load tree data: ${error}`);
@@ -720,9 +827,107 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     }
   }
 
+  private async getAssignmentDirectoryChildren(element: CourseContentTreeItem): Promise<TreeItem[]> {
+    if (!element.isSubmittable) {
+      return [];
+    }
+
+    const directoryName = this.getAssignmentDirectoryName(element.courseContent);
+    if (!directoryName) {
+      return [new InfoItem('Assignment not initialized in assignments repo', 'info')];
+    }
+
+    try {
+      const resolution = await this.resolveAssignmentDirectory(element, directoryName);
+
+      if (!resolution.absolutePath || !resolution.exists) {
+        if (resolution.statusMessage) {
+          return [new InfoItem(resolution.statusMessage.message, resolution.statusMessage.severity)];
+        }
+        return [new InfoItem('Assignment directory not available locally', 'warning')];
+      }
+
+      const children = await this.readDirectoryItems(resolution.absolutePath);
+      if (children.length === 0) {
+        return [new InfoItem('Empty assignment directory', 'info')];
+      }
+      return children;
+    } catch (error) {
+      console.warn('Failed to prepare assignment directory:', error);
+      return [new InfoItem('Error loading assignment files', 'error')];
+    }
+  }
+
+  private getAssignmentDirectoryName(content: CourseContentList): string | undefined {
+    const deployment = content.deployment as (CourseContentDeploymentList & { deployment_path?: string | null }) | null | undefined;
+    if (!deployment) {
+      return undefined;
+    }
+    const identifier = (deployment?.deployment_path as string | undefined) || deployment.example_identifier || undefined;
+    return identifier || undefined;
+  }
+
+  private async resolveAssignmentDirectory(
+    element: CourseContentTreeItem,
+    directoryName: string
+  ): Promise<{ absolutePath: string | null; exists: boolean; statusMessage?: AssignmentDirectoryStatus }> {
+    const repoMgr = new LecturerRepositoryManager(this.context, this.apiService as any);
+    const fullCourse: any = await this.apiService.getCourse(element.course.id) || element.course;
+
+    if (!fullCourse.organization && fullCourse.organization_id) {
+      try {
+        fullCourse.organization = await (this.apiService as any).getOrganization(fullCourse.organization_id);
+      } catch {
+        // Ignore organization lookup failures; downstream logic will handle missing info
+      }
+    }
+
+    let folder = repoMgr.getAssignmentFolderPath(fullCourse, directoryName);
+    if (!folder) {
+      return {
+        absolutePath: null,
+        exists: false,
+        statusMessage: { message: 'Assignments repository not configured for this course', severity: 'warning' }
+      };
+    }
+
+    let folderExists = fs.existsSync(folder);
+    let statusMessage: AssignmentDirectoryStatus | undefined;
+
+    if (!folderExists) {
+      try {
+        await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: 'Syncing assignments...' }, async (progress) => {
+          progress.report({ message: `Syncing assignments for ${fullCourse.title || fullCourse.path}` });
+          await repoMgr.syncAssignmentsForCourse(element.course.id);
+        });
+        folder = repoMgr.getAssignmentFolderPath(fullCourse, directoryName);
+        if (!folder) {
+          return {
+            absolutePath: null,
+            exists: false,
+            statusMessage: statusMessage || { message: 'Assignments repository not configured for this course', severity: 'warning' }
+          };
+        }
+        folderExists = fs.existsSync(folder);
+        if (!folderExists) {
+          statusMessage = { message: 'Assignment folder missing locally — run "Sync Assignments"', severity: 'warning' };
+        }
+      } catch (syncError) {
+        console.warn('Failed to sync assignments repository:', syncError);
+        statusMessage = { message: 'Error syncing assignments repository', severity: 'error' };
+      }
+    }
+
+    return {
+      absolutePath: folder || null,
+      exists: folderExists,
+      statusMessage
+    };
+  }
+
   private async getCourseContents(courseId: string): Promise<CourseContentList[]> {
-    // Always fetch fresh data from API
-    const contents = await this.apiService.getCourseContents(courseId, true);
+    // Always fetch fresh data from API, include deployment info for proper status display
+    const contents = await this.apiService.getCourseContents(courseId, true, true);
     return contents || [];
   }
 
@@ -809,9 +1014,22 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         if (parentContent) {
           const hasChildren = this.hasChildContents(parentContent, allContents);
           let exampleInfo = null;
+          let exampleVersionInfo = null;
           
-          if (parentContent.example_id) {
-            exampleInfo = await this.getExampleInfo(parentContent.example_id);
+          // Check if example is assigned using helper
+          if (hasExampleAssigned(parentContent)) {
+            const versionId = getExampleVersionId(parentContent);
+            if (versionId) {
+              try {
+                exampleVersionInfo = await this.apiService.getExampleVersion(versionId);
+                // Get example info from the version
+                if (exampleVersionInfo && exampleVersionInfo.example_id) {
+                  exampleInfo = await this.getExampleInfo(exampleVersionInfo.example_id);
+                }
+              } catch (error) {
+                console.warn(`Failed to fetch version info for ${versionId}:`, error);
+              }
+            }
           }
           
           // Get content type info
@@ -833,6 +1051,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
             exampleInfo,
             contentType,
             isSubmittable,
+            exampleVersionInfo,
             expandedState
           );
         }
@@ -1058,48 +1277,121 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   }
 
   public async handleDrop(target: TreeItem | undefined, dataTransfer: vscode.DataTransfer): Promise<void> {
+    // Debug: Log all available mime types
+    const mimeTypes: string[] = [];
+    dataTransfer.forEach((_value, key) => {
+      mimeTypes.push(key);
+    });
+    console.log('Available mime types:', mimeTypes);
+    
     // Check if we have example data being dropped
     const exampleData = dataTransfer.get('application/vnd.code.tree.computorexample');
     
+    console.log('Example data found:', !!exampleData);
+    
     if (!exampleData || !target) {
+      console.log('Missing data or target - exampleData:', !!exampleData, 'target:', !!target);
       return;
     }
 
-    // Only allow dropping on course content items
-    if (!(target instanceof CourseContentTreeItem)) {
-      vscode.window.showErrorMessage('Examples can only be dropped on course content items');
-      return;
-    }
+    // Determine where to create the new assignment based on drop target
+    let courseId: string;
+    let parentPath: string | undefined;
+    let targetDescription = '';
 
-
-    // First check: only allow drops on submittable content (assignments, exercises, etc.)
-    if (!target.isSubmittable) {
-      vscode.window.showErrorMessage(
-        `Examples can only be assigned to submittable content like assignments or exercises. "${target.courseContent.title}" is not submittable.`
-      );
-      return;
-    }
-
-    // Second check: if the content already has an example assigned, ask for confirmation
-    if (target.courseContent.example_id) {
-      const choice = await vscode.window.showWarningMessage(
-        `Assignment "${target.courseContent.title}" already has an example assigned. Replace it?`,
-        'Replace', 'Cancel'
-      );
-      if (choice !== 'Replace') {
-        return;
+    if (target instanceof CourseTreeItem) {
+      // Dropped on course - create at root level
+      courseId = target.course.id;
+      parentPath = undefined;
+      targetDescription = `in course "${target.course.title || target.course.path}"`;
+    } else if (target instanceof CourseFolderTreeItem && target.folderType === 'contents') {
+      // Dropped on "Contents" folder - create at root level of course contents
+      courseId = target.course.id;
+      parentPath = undefined;
+      targetDescription = `in course "${target.course.title || target.course.path}"`;
+    } else if (target instanceof CourseContentTreeItem) {
+      courseId = target.course.id;
+      
+      // Check if target is submittable - if yes, we might want to replace
+      if (target.isSubmittable && hasExampleAssigned(target.courseContent)) {
+        const choice = await vscode.window.showWarningMessage(
+          `Assignment "${target.courseContent.title}" already has an example. Do you want to replace it or create a new assignment?`,
+          'Replace', 'Create New', 'Cancel'
+        );
+        
+        if (choice === 'Cancel') {
+          return;
+        } else if (choice === 'Replace') {
+          // Original behavior - assign to existing
+          await this.assignExampleToExisting(target, exampleData);
+          return;
+        }
+        // Otherwise fall through to create new
       }
+      
+      // For non-submittable content or when creating new, use it as parent
+      if (!target.isSubmittable) {
+        parentPath = target.courseContent.path;
+        targetDescription = `under "${target.courseContent.title}"`;
+      } else {
+        // For submittable content when creating new, create as sibling
+        const pathParts = target.courseContent.path.split('.');
+        if (pathParts.length > 1) {
+          pathParts.pop();
+          parentPath = pathParts.join('.');
+          targetDescription = `as sibling of "${target.courseContent.title}"`;
+        } else {
+          parentPath = undefined;
+          targetDescription = `at root level`;
+        }
+      }
+    } else {
+      vscode.window.showErrorMessage('Examples can only be dropped on courses or course contents');
+      return;
     }
 
     try {
-      const rawValue = exampleData.value;
+      // First try to get data from DragDropManager (workaround for VS Code DataTransfer limitations)
+      const dragDropManager = DragDropManager.getInstance();
+      let draggedExamples = dragDropManager.getDraggedData();
       
-      // Parse the JSON string if it's a string, otherwise use as-is
-      const draggedExamples = typeof rawValue === 'string' 
-        ? JSON.parse(rawValue)
-        : rawValue;
+      if (!draggedExamples) {
+        // Fallback: try to get from DataTransfer (though this often fails)
+        console.log('No data in DragDropManager, trying DataTransfer...');
+        console.log('ExampleData item:', exampleData);
+        
+        let rawValue: any = '';
+        
+        if (typeof exampleData.value === 'function') {
+          try {
+            rawValue = await exampleData.value();
+          } catch (err) {
+            console.error('Error calling value():', err);
+          }
+        } else if (typeof exampleData.value === 'string') {
+          rawValue = exampleData.value;
+        } else {
+          rawValue = exampleData.value ? String(exampleData.value) : '';
+        }
+        
+        console.log('Drag data from DataTransfer:', rawValue);
+        
+        if (!rawValue || rawValue === '') {
+          vscode.window.showErrorMessage('No data received from drag operation. Please try again or use the context menu instead.');
+          console.error('Empty drag data received');
+          return;
+        }
+        
+        // Parse the JSON string if it's a string
+        draggedExamples = typeof rawValue === 'string' 
+          ? JSON.parse(rawValue)
+          : rawValue;
+      } else {
+        console.log('Successfully retrieved drag data from DragDropManager');
+      }
       
       if (!Array.isArray(draggedExamples) || draggedExamples.length === 0) {
+        console.error('Invalid dragged examples format:', draggedExamples);
         return;
       }
 
@@ -1107,20 +1399,98 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       const example = draggedExamples[0];
       
       if (!example.exampleId) {
+        vscode.window.showErrorMessage('Invalid example data - missing exampleId');
+        console.error('Invalid example data:', example);
+        return;
+      }
+
+      // Create a new assignment with the example
+      await this.createAssignmentFromExample(
+        courseId,
+        parentPath,
+        example,
+        targetDescription
+      );
+      
+      // Clear the drag data after successful operation
+      dragDropManager.clearDraggedData();
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      vscode.window.showErrorMessage(`Failed to create assignment: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Helper method to assign example to existing course content
+   */
+  private async assignExampleToExisting(target: CourseContentTreeItem, exampleData: vscode.DataTransferItem): Promise<void> {
+    try {
+      // Try DragDropManager first
+      const dragDropManager = DragDropManager.getInstance();
+      let draggedExamples = dragDropManager.getDraggedData();
+      
+      if (!draggedExamples) {
+        // Fallback to DataTransfer
+        let rawValue: any = '';
+        
+        if (typeof exampleData.value === 'function') {
+          rawValue = await exampleData.value();
+        } else if (typeof exampleData.value === 'string') {
+          rawValue = exampleData.value;
+        } else {
+          rawValue = exampleData.value ? String(exampleData.value) : '';
+        }
+        
+        if (!rawValue || rawValue === '') {
+          vscode.window.showErrorMessage('No data received from drag operation.');
+          return;
+        }
+        
+        draggedExamples = typeof rawValue === 'string' 
+          ? JSON.parse(rawValue)
+          : rawValue;
+      }
+      
+      if (!Array.isArray(draggedExamples) || draggedExamples.length === 0) {
+        return;
+      }
+
+      const example = draggedExamples[0];
+      if (!example.exampleId) {
         vscode.window.showErrorMessage('Invalid example data');
         return;
       }
 
-      // Assign the example to the course content
-      await this.apiService.assignExampleToCourseContent(
-        target.course.id,
-        target.courseContent.id,
-        example.exampleId,
-        'latest' // Default to latest version
+      // Get the example with versions to find the latest version ID
+      const fullExample = await this.apiService.getExample(example.exampleId);
+      if (!fullExample || !fullExample.versions || fullExample.versions.length === 0) {
+        throw new Error('Example has no versions available');
+      }
+
+      // Use the latest version
+      const latestVersion = fullExample.versions.reduce((latest, current) => 
+        current.version_number > latest.version_number ? current : latest
       );
 
+      // Assign the example version to the course content
+      await this.apiService.assignExampleVersionToCourseContent(
+        target.courseContent.id,
+        latestVersion.id
+      );
+
+      // Trigger assignments sync so files are populated in assignments repo
+      try {
+        await this.apiService.generateAssignments(target.course.id, {
+          course_content_ids: [target.courseContent.id],
+          overwrite_strategy: 'skip_if_exists',
+          commit_message: `Initialize assignment from example ${fullExample.identifier || fullExample.title}`
+        });
+      } catch (e) {
+        console.warn('Failed to trigger assignments generation after assigning example:', e);
+      }
+
       // Clear cache and force refresh to show the updated assignment
-      // Cache cleared via API
       await this.forceRefreshCourse(target.course.id);
 
       vscode.window.showInformationMessage(
@@ -1131,5 +1501,197 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       vscode.window.showErrorMessage(`Failed to assign example: ${errorMessage}`);
     }
+  }
+
+  /**
+   * Create a new assignment from an example at the specified location
+   */
+  private async createAssignmentFromExample(
+    courseId: string,
+    parentPath: string | undefined,
+    example: any,
+    targetDescription: string
+  ): Promise<void> {
+    try {
+      // Get content types for the course and find a submittable one
+      const contentTypes = await this.apiService.getCourseContentTypes(courseId);
+      
+      // Find submittable content types
+      const submittableTypes = [];
+      for (const type of contentTypes) {
+        try {
+          const fullType = await this.apiService.getCourseContentType(type.id);
+          if (fullType?.course_content_kind?.submittable) {
+            submittableTypes.push(type);
+          }
+        } catch (error) {
+          console.warn(`Failed to fetch content type details: ${error}`);
+        }
+      }
+
+      if (submittableTypes.length === 0) {
+        vscode.window.showErrorMessage(
+          'No submittable content types (assignments, exercises) are configured for this course. Please create one first.'
+        );
+        return;
+      }
+
+      // Use the first submittable type or let user choose if multiple
+      let contentType = submittableTypes[0];
+      if (submittableTypes.length > 1) {
+        const selected = await vscode.window.showQuickPick(
+          submittableTypes.map(t => ({
+            label: t.title || t.slug,
+            id: t.id
+          })),
+          { placeHolder: 'Select assignment type' }
+        );
+        
+        if (!selected) {
+          return;
+        }
+        
+        const selectedType = submittableTypes.find(t => t.id === selected.id);
+        if (selectedType) {
+          contentType = selectedType;
+        }
+      }
+
+      // Generate slug from example title
+      const slug = example.title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+      
+      // Build the full path
+      const path = parentPath ? `${parentPath}.${slug}` : slug;
+      
+      // Check if path already exists
+      const existingContents = await this.getCourseContents(courseId);
+      if (existingContents.some(c => c.path === path)) {
+        vscode.window.showErrorMessage(`A content item with path '${path}' already exists.`);
+        return;
+      }
+
+      // Get position for the new content
+      const position = await this.getNextPosition(courseId, parentPath);
+
+      // Ensure we have a content type (TypeScript safety)
+      if (!contentType) {
+        vscode.window.showErrorMessage('No content type selected');
+        return;
+      }
+
+      // Create the course content
+      const contentData: CourseContentCreate = {
+        title: example.title,
+        description: example.description || `Assignment based on example: ${example.title}`,
+        path: path,
+        position: position,
+        course_id: courseId,
+        course_content_type_id: contentType.id,
+        max_submissions: 10,
+        max_test_runs: 100
+      };
+
+      const createdContent = await this.apiService.createCourseContent(courseId, contentData);
+      
+      // Assign the example version if content was created
+      if (createdContent && createdContent.id) {
+        const fullExample = await this.apiService.getExample(example.exampleId);
+        
+        if (fullExample && fullExample.versions && fullExample.versions.length > 0) {
+          const latestVersion = fullExample.versions.reduce((latest, current) => 
+            current.version_number > latest.version_number ? current : latest
+          );
+
+          try {
+            await this.apiService.assignExampleVersionToCourseContent(
+              createdContent.id,
+              latestVersion.id
+            );
+            // Trigger assignments sync for the newly created content
+            try {
+              await this.apiService.generateAssignments(courseId, {
+                course_content_ids: [createdContent.id],
+                overwrite_strategy: 'skip_if_exists',
+                commit_message: `Initialize assignment from example ${fullExample.identifier || fullExample.title}`
+              });
+            } catch (e) {
+              console.warn('Failed to trigger assignments generation after creating content:', e);
+            }
+          } catch (assignError) {
+            console.warn('Failed to assign example version:', assignError);
+          }
+        }
+      }
+
+      // Refresh the tree
+      await this.forceRefreshCourse(courseId);
+      
+      vscode.window.showInformationMessage(
+        `✅ Created assignment "${example.title}" ${targetDescription}`
+      );
+      
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      vscode.window.showErrorMessage(`Failed to create assignment: ${errorMessage}`);
+    }
+  }
+
+  private async readDirectoryItems(dir: string): Promise<TreeItem[]> {
+    try {
+      const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+      const items: TreeItem[] = [];
+      for (const ent of entries) {
+        if (ent.name === '.git') continue;
+        const abs = path.join(dir, ent.name);
+        const rel = ent.name;
+        if (ent.isDirectory()) {
+          items.push(new FSFolderItem(abs, rel));
+        } else {
+          items.push(new FSFileItem(abs, rel));
+        }
+      }
+      // Sort folders first, then files alphabetically
+      items.sort((a: any, b: any) => {
+        const aIsFolder = a instanceof FSFolderItem;
+        const bIsFolder = b instanceof FSFolderItem;
+        if (aIsFolder && !bIsFolder) return -1;
+        if (!aIsFolder && bIsFolder) return 1;
+        return String(a.label).localeCompare(String(b.label));
+      });
+      return items;
+    } catch (e) {
+      console.warn('Failed to read directory:', dir, e);
+      return [new InfoItem('Error reading directory', 'error')];
+    }
+  }
+}
+
+class FSFolderItem extends vscode.TreeItem {
+  constructor(public absPath: string, public relPath: string) {
+    super(path.basename(absPath), vscode.TreeItemCollapsibleState.Collapsed);
+    this.iconPath = new vscode.ThemeIcon('folder');
+    this.resourceUri = vscode.Uri.file(absPath);
+    this.contextValue = 'lecturerFsFolder';
+    this.tooltip = absPath;
+  }
+}
+
+class FSFileItem extends vscode.TreeItem {
+  constructor(public absPath: string, public relPath: string) {
+    super(path.basename(absPath), vscode.TreeItemCollapsibleState.None);
+    this.iconPath = new vscode.ThemeIcon('file');
+    this.resourceUri = vscode.Uri.file(absPath);
+    this.contextValue = 'lecturerFsFile';
+    this.command = { command: 'vscode.open', title: 'Open File', arguments: [vscode.Uri.file(absPath)] };
+    this.tooltip = absPath;
+  }
+}
+
+class InfoItem extends vscode.TreeItem {
+  constructor(message: string, severity: 'info' | 'warning' | 'error') {
+    super(message, vscode.TreeItemCollapsibleState.None);
+    if (severity === 'warning') this.iconPath = new vscode.ThemeIcon('warning');
+    else if (severity === 'error') this.iconPath = new vscode.ThemeIcon('error');
+    else this.iconPath = new vscode.ThemeIcon('info');
   }
 }

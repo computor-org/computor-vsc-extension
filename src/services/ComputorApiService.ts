@@ -1,8 +1,6 @@
 import * as vscode from 'vscode';
-import { JwtHttpClient } from '../http/JwtHttpClient';
-import { ComputorAuthenticationProvider } from '../authentication/ComputorAuthenticationProvider';
+import { BasicAuthHttpClient } from '../http/BasicAuthHttpClient';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
-import { ComputorAuthenticationSession } from '../types/AuthenticationTypes';
 import { errorRecoveryService } from './ErrorRecoveryService';
 import { requestBatchingService } from './RequestBatchingService';
 import { multiTierCache } from './CacheService';
@@ -34,10 +32,15 @@ import {
   ExampleDownloadResponse,
   CourseGroupList,
   CourseGroupGet,
+  CourseGroupUpdate,
   CourseMemberList,
   CourseMemberGet,
   TaskResponse,
-  SubmissionGroupStudent
+  TestCreate,
+  CourseContentDeploymentGet,
+  DeploymentHistoryGet,
+  CourseContentStudentList,
+  CourseContentStudentUpdate
 } from '../types/generated';
 
 // Query interface for examples (not generated yet)
@@ -52,14 +55,16 @@ interface ExampleQuery {
 }
 
 export class ComputorApiService {
-  private httpClient?: JwtHttpClient;
+  private httpClient?: BasicAuthHttpClient;
   private settingsManager: ComputorSettingsManager;
+  private context: vscode.ExtensionContext;
   
   // Batched method versions for improved performance
   public readonly batchedGetCourseContents: (courseId: string) => Promise<CourseContentList[] | undefined>;
   public readonly batchedGetCourseContentTypes: (courseId: string) => Promise<CourseContentTypeList[] | undefined>;
 
   constructor(context: vscode.ExtensionContext) {
+    this.context = context;
     this.settingsManager = new ComputorSettingsManager(context);
     
     // Create batched versions of frequently called methods
@@ -76,39 +81,33 @@ export class ComputorApiService {
     );
   }
 
-  private async getHttpClient(): Promise<JwtHttpClient> {
+  private async getHttpClient(): Promise<BasicAuthHttpClient> {
     if (!this.httpClient) {
       const settings = await this.settingsManager.getSettings();
-      const sessions = await vscode.authentication.getSession('computor', [], { createIfNone: false });
       
-      if (!sessions) {
-        throw new Error('Not authenticated. Please sign in first.');
+      // Try to get stored credentials
+      const username = await this.context.secrets.get('computor.username');
+      const password = await this.context.secrets.get('computor.password');
+      
+      if (!username || !password) {
+        throw new Error('Not authenticated. Please login first using the Computor: Login command.');
       }
-
-      const authHeaders = ComputorAuthenticationProvider.getAuthHeaders(sessions as ComputorAuthenticationSession);
       
-      // For now, use a dummy Keycloak config since we're using token auth
-      const keycloakConfig = {
-        serverUrl: '',
-        realm: '',
-        clientId: '',
-        redirectUri: ''
-      };
-      
-      this.httpClient = new JwtHttpClient(
+      // Use BasicAuthHttpClient for proper Basic authentication handling
+      this.httpClient = new BasicAuthHttpClient(
         settings.authentication.baseUrl,
-        keycloakConfig,
+        username,
+        password,
         5000
       );
       
-      // Set the auth headers directly
-      this.httpClient.setDefaultHeaders(authHeaders);
-      
-      // If we have a Bearer token, set it directly
-      const authHeader = authHeaders['Authorization'];
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        const token = authHeader.substring(7);
-        this.httpClient.setTokens(token);
+      // Authenticate to verify credentials
+      try {
+        await this.httpClient.authenticate();
+      } catch (error) {
+        // Clear invalid client
+        this.httpClient = undefined;
+        throw error;
       }
     }
     return this.httpClient;
@@ -249,6 +248,62 @@ export class ComputorApiService {
     }
   }
 
+  async getCourseFamily(familyId: string): Promise<CourseFamilyGet | undefined> {
+    const cacheKey = `courseFamily-${familyId}`;
+    
+    // Check cache first
+    const cached = multiTierCache.get<CourseFamilyGet>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const response = await client.get<CourseFamilyGet>(`/course-families/${familyId}`);
+        return response.data;
+      }, {
+        maxRetries: 2,
+        exponentialBackoff: true
+      });
+      
+      // Cache in warm tier
+      multiTierCache.set(cacheKey, result, 'warm');
+      return result;
+    } catch (error) {
+      console.error('Failed to get course family:', error);
+      return undefined;
+    }
+  }
+
+  async getOrganization(organizationId: string): Promise<OrganizationGet | undefined> {
+    const cacheKey = `organization-${organizationId}`;
+    
+    // Check cache first
+    const cached = multiTierCache.get<OrganizationGet>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const response = await client.get<OrganizationGet>(`/organizations/${organizationId}`);
+        return response.data;
+      }, {
+        maxRetries: 2,
+        exponentialBackoff: true
+      });
+      
+      // Cache in cold tier (organizations rarely change)
+      multiTierCache.set(cacheKey, result, 'cold');
+      return result;
+    } catch (error) {
+      console.error('Failed to get organization:', error);
+      return undefined;
+    }
+  }
+
   async updateCourse(courseId: string, updates: CourseUpdate): Promise<CourseGet> {
     const client = await this.getHttpClient();
     const response = await client.patch<CourseGet>(`/courses/${courseId}`, updates);
@@ -263,8 +318,8 @@ export class ComputorApiService {
     return response.data;
   }
 
-  async getCourseContents(courseId: string, skipCache: boolean = false): Promise<CourseContentList[]> {
-    const cacheKey = `courseContents-${courseId}`;
+  async getCourseContents(courseId: string, skipCache: boolean = false, includeDeployment: boolean = false): Promise<CourseContentList[]> {
+    const cacheKey = `courseContents-${courseId}-${includeDeployment}`;
     
     // Check cache first (unless explicitly skipping)
     if (!skipCache) {
@@ -277,7 +332,8 @@ export class ComputorApiService {
     // Fetch with error recovery
     const result = await errorRecoveryService.executeWithRecovery(async () => {
       const client = await this.getHttpClient();
-      const response = await client.get<CourseContentList[]>(`/course-contents?course_id=${courseId}`);
+      const params = includeDeployment ? '&include=deployment' : '';
+      const response = await client.get<CourseContentList[]>(`/course-contents?course_id=${courseId}${params}`);
       return response.data;
     }, {
       maxRetries: 2,
@@ -291,6 +347,35 @@ export class ComputorApiService {
     return result;
   }
 
+
+  async getCourseContent(contentId: string, includeDeployment: boolean = false): Promise<CourseContentGet | undefined> {
+    const cacheKey = `courseContent-${contentId}-${includeDeployment}`;
+    
+    // Check cache first
+    const cached = multiTierCache.get<CourseContentGet>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const params = includeDeployment ? '?include=deployment' : '';
+        const response = await client.get<CourseContentGet>(`/course-contents/${contentId}${params}`);
+        return response.data;
+      }, {
+        maxRetries: 2,
+        exponentialBackoff: true
+      });
+      
+      // Cache in warm tier
+      multiTierCache.set(cacheKey, result, 'warm');
+      return result;
+    } catch (error) {
+      console.error('Failed to get course content:', error);
+      return undefined;
+    }
+  }
 
   async createCourseContent(courseId: string, content: CourseContentCreate): Promise<CourseContentGet> {
     const client = await this.getHttpClient();
@@ -306,8 +391,9 @@ export class ComputorApiService {
     const client = await this.getHttpClient();
     const response = await client.patch<CourseContentGet>(`/course-contents/${contentId}`, content);
     
-    // Invalidate course contents cache
+    // Invalidate both list and individual caches
     this.invalidateCachePattern(`courseContents-${courseId}`);
+    this.invalidateCachePattern(`courseContent-${contentId}`);
     
     return response.data;
   }
@@ -371,6 +457,34 @@ export class ComputorApiService {
     return result;
   }
 
+  async getCourseContentType(typeId: string): Promise<CourseContentTypeGet | undefined> {
+    const cacheKey = `courseContentType-${typeId}`;
+    
+    // Check cache first
+    const cached = multiTierCache.get<CourseContentTypeGet>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const response = await client.get<CourseContentTypeGet>(`/course-content-types/${typeId}`);
+        return response.data;
+      }, {
+        maxRetries: 2,
+        exponentialBackoff: true
+      });
+      
+      // Cache in warm tier
+      multiTierCache.set(cacheKey, result, 'warm');
+      return result;
+    } catch (error) {
+      console.error('Failed to get course content type:', error);
+      return undefined;
+    }
+  }
+
   async createCourseContentType(contentType: CourseContentTypeCreate): Promise<CourseContentTypeGet> {
     const client = await this.getHttpClient();
     const response = await client.post<CourseContentTypeGet>('/course-content-types', contentType);
@@ -387,8 +501,9 @@ export class ComputorApiService {
     const client = await this.getHttpClient();
     const response = await client.patch<CourseContentTypeGet>(`/course-content-types/${typeId}`, contentType);
     
-    // Invalidate content types cache
+    // Invalidate both list and individual caches
     this.invalidateCachePattern('courseContentTypes-');
+    this.invalidateCachePattern(`courseContentType-${typeId}`);
     
     return response.data;
   }
@@ -459,6 +574,37 @@ export class ComputorApiService {
     }
   }
 
+  async getExampleVersion(exampleVersionId: string): Promise<any | undefined> {
+    const cacheKey = `exampleVersion-${exampleVersionId}`;
+    
+    // Check cache first
+    const cached = multiTierCache.get<any>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        // Use the correct endpoint for fetching a specific example version
+        const response = await client.get<any>(`/examples/versions/${exampleVersionId}`);
+        return response.data;
+      }, {
+        maxRetries: 2,
+        exponentialBackoff: true
+      });
+      
+      // Cache in warm tier if we got a result
+      if (result) {
+        multiTierCache.set(cacheKey, result, 'warm');
+      }
+      return result;
+    } catch (error) {
+      console.error('Failed to get example version:', error);
+      return undefined;
+    }
+  }
+
   async downloadExample(exampleId: string, withDependencies: boolean = false): Promise<ExampleDownloadResponse | undefined> {
     try {
       const client = await this.getHttpClient();
@@ -491,6 +637,10 @@ export class ComputorApiService {
     console.log('[ComputorApiService] Cleared examples cache');
   }
 
+  /**
+   * @deprecated Use assignExampleVersionToCourseContent instead
+   * This method is kept for backward compatibility but will be removed
+   */
   async assignExampleToCourseContent(
     courseId: string, 
     contentId: string, 
@@ -499,19 +649,37 @@ export class ComputorApiService {
   ): Promise<CourseContentGet> {
     // Note: courseId is kept for API consistency but not used in the endpoint
     void courseId;
+    void contentId;
+    void exampleId;
+    void exampleVersion;
     
+    // This old method signature can't work with the new API
+    // The backend now requires example_version_id, not example_id + version tag
+    throw new Error('assignExampleToCourseContent is deprecated. Use assignExampleVersionToCourseContent with example_version_id instead.');
+  }
+
+  /**
+   * Assign an example version to course content using the new deployment model
+   */
+  async assignExampleVersionToCourseContent(
+    contentId: string,
+    exampleVersionId: string
+  ): Promise<CourseContentGet> {
     return errorRecoveryService.executeWithRecovery(async () => {
       const client = await this.getHttpClient();
       
       const requestData = {
-        example_id: exampleId,
-        example_version: exampleVersion || 'latest'
+        example_version_id: exampleVersionId
       };
       
       const response = await client.post<CourseContentGet>(
         `/course-contents/${contentId}/assign-example`,
         requestData
       );
+      
+      // Clear cache for this content
+      multiTierCache.delete(`courseContent-${contentId}-true`);
+      multiTierCache.delete(`courseContent-${contentId}-false`);
       
       return response.data;
     }, {
@@ -525,14 +693,69 @@ export class ComputorApiService {
     void courseId;
     
     const client = await this.getHttpClient();
-    const response = await client.patch<CourseContentGet>(
-      `/course-contents/${contentId}`,
-      {
-        example_id: null,
-        example_version: null
-      }
+    const response = await client.delete<CourseContentGet>(
+      `/course-contents/${contentId}/deployment`
     );
+    
+    // Clear cache for this content
+    multiTierCache.delete(`courseContent-${contentId}-true`);
+    multiTierCache.delete(`courseContent-${contentId}-false`);
+    
     return response.data;
+  }
+
+  /**
+   * Get deployment information for a course content
+   */
+  async getCourseContentDeployment(contentId: string): Promise<CourseContentDeploymentGet | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<CourseContentDeploymentGet>(
+        `/course-contents/${contentId}/deployment`
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Failed to get deployment:', error);
+      return undefined;
+    }
+  }
+
+  /**
+   * Get deployment history for a course content
+   */
+  async getCourseContentDeploymentHistory(contentId: string): Promise<DeploymentHistoryGet[]> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<DeploymentHistoryGet[]>(
+        `/course-contents/${contentId}/deployment/history`
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Failed to get deployment history:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Trigger deployment for a course content
+   */
+  async deployCourseContent(contentId: string, force: boolean = false): Promise<TaskResponse | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.post<TaskResponse>(
+        `/course-contents/${contentId}/deploy`,
+        { force }
+      );
+      
+      // Clear cache for this content
+      multiTierCache.delete(`courseContent-${contentId}-true`);
+      multiTierCache.delete(`courseContent-${contentId}-false`);
+      
+      return response.data;
+    } catch (error) {
+      console.error('Failed to deploy content:', error);
+      return undefined;
+    }
   }
 
   clearCourseCache(courseId: string): void {
@@ -553,6 +776,15 @@ export class ComputorApiService {
     multiTierCache.delete(membersKey);
   }
 
+  // Tutor helpers: cache invalidation
+  clearTutorMemberCourseContentsCache(memberId: string): void {
+    multiTierCache.delete(`tutorContents-${memberId}`);
+  }
+
+  clearCourseContentKindsCache(): void {
+    multiTierCache.delete('courseContentKinds');
+  }
+
   clearAllCaches(): void {
     // Clear ALL caches to force complete data refresh
     console.log('[ComputorApiService] Clearing all caches...');
@@ -563,13 +795,43 @@ export class ComputorApiService {
     console.log('[ComputorApiService] All caches cleared');
   }
 
-  async generateStudentTemplate(courseId: string): Promise<{ task_id: string }> {
+  async getLecturerCourses(): Promise<any[] | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const resp = await client.get<any[]>('/lecturers/courses');
+      return resp.data || [];
+    } catch (e) {
+      console.warn('[API] getLecturerCourses failed:', e);
+      return undefined;
+    }
+  }
+
+  async generateStudentTemplate(courseId: string): Promise<{ workflow_id: string; status?: string; contents_to_process?: number }> {
     const client = await this.getHttpClient();
-    const response = await client.post<{ task_id: string }>(
+    // Backend now returns a workflow-based response (Temporal): { workflow_id, status, contents_to_process }
+    const response = await client.post<{ workflow_id: string; status?: string; contents_to_process?: number }>(
       `/system/courses/${courseId}/generate-student-template`,
       {}
     );
     console.log('Generate student template response:', response.data);
+    return response.data;
+  }
+
+  async generateAssignments(courseId: string, params: {
+    assignments_url?: string;
+    course_content_ids?: string[];
+    parent_id?: string;
+    include_descendants?: boolean;
+    all?: boolean;
+    overwrite_strategy?: 'skip_if_exists' | 'force_update';
+    commit_message?: string;
+  }): Promise<{ workflow_id: string; status?: string; contents_to_process?: number }> {
+    const client = await this.getHttpClient();
+    const response = await client.post<{ workflow_id: string; status?: string; contents_to_process?: number }>(
+      `/system/courses/${courseId}/generate-assignments`,
+      params
+    );
+    console.log('Generate assignments response:', response.data);
     return response.data;
   }
 
@@ -714,6 +976,17 @@ export class ComputorApiService {
     }
   }
 
+  async updateCourseGroup(groupId: string, updates: CourseGroupUpdate): Promise<CourseGroupGet> {
+    const client = await this.getHttpClient();
+    const response = await client.patch<CourseGroupGet>(`/course-groups/${groupId}`, updates);
+    
+    // Invalidate related caches
+    this.invalidateCachePattern('courseGroup-');
+    this.invalidateCachePattern('courseGroups-');
+    
+    return response.data;
+  }
+
   // Course Members API methods
   async getCourseMembers(courseId: string, groupId?: string): Promise<CourseMemberList[]> {
     const cacheKey = groupId ? `courseMembers-${courseId}-${groupId}` : `courseMembers-${courseId}`;
@@ -768,6 +1041,34 @@ export class ComputorApiService {
   }
 
   // Student API methods
+  async getCurrentUser(): Promise<{ id: string; username: string; full_name?: string } | undefined> {
+    const cacheKey = 'currentUser';
+    
+    // Check cache first
+    const cached = multiTierCache.get<any>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const response = await client.get<any>('/users/me');
+        return response.data;
+      }, {
+        maxRetries: 2,
+        exponentialBackoff: true
+      });
+      
+      // Cache in warm tier
+      multiTierCache.set(cacheKey, result, 'warm');
+      return result;
+    } catch (error) {
+      console.error('Failed to get current user:', error);
+      return undefined;
+    }
+  }
+
   async getStudentCourses(): Promise<any[]> {
     const cacheKey = 'studentCourses';
     
@@ -824,11 +1125,11 @@ export class ComputorApiService {
     }
   }
 
-  async getStudentCourseContents(courseId?: string): Promise<any[]> {
+  async getStudentCourseContents(courseId?: string): Promise<CourseContentStudentList[]> {
     const cacheKey = courseId ? `studentCourseContents-${courseId}` : 'studentCourseContents-all';
     
     // Check cache first
-    const cached = multiTierCache.get<any[]>(cacheKey);
+    const cached = multiTierCache.get<CourseContentStudentList[]>(cacheKey);
     if (cached) {
       return cached;
     }
@@ -837,7 +1138,7 @@ export class ComputorApiService {
       const result = await errorRecoveryService.executeWithRecovery(async () => {
         const client = await this.getHttpClient();
         const params = courseId ? `?course_id=${courseId}` : '';
-        const response = await client.get<any[]>(`/students/course-contents${params}`);
+        const response = await client.get<CourseContentStudentList[]>(`/students/course-contents${params}`);
         return response.data;
       }, {
         maxRetries: 2,
@@ -853,11 +1154,11 @@ export class ComputorApiService {
     }
   }
 
-  async getStudentCourseContent(contentId: string): Promise<any | undefined> {
+  async getStudentCourseContent(contentId: string): Promise<CourseContentStudentList | undefined> {
     const cacheKey = `studentCourseContent-${contentId}`;
     
     // Check cache first
-    const cached = multiTierCache.get<any>(cacheKey);
+    const cached = multiTierCache.get<CourseContentStudentList>(cacheKey);
     if (cached) {
       return cached;
     }
@@ -865,7 +1166,7 @@ export class ComputorApiService {
     try {
       const result = await errorRecoveryService.executeWithRecovery(async () => {
         const client = await this.getHttpClient();
-        const response = await client.get<any>(`/students/course-contents/${contentId}`);
+        const response = await client.get<CourseContentStudentList>(`/students/course-contents/${contentId}`);
         return response.data;
       }, {
         maxRetries: 2,
@@ -914,36 +1215,35 @@ export class ComputorApiService {
     course_content_id?: string;
     has_repository?: boolean;
     is_graded?: boolean;
-  }): Promise<SubmissionGroupStudent[]> {
-    // Build query params
-    const queryParams = new URLSearchParams();
-    if (params?.course_id) queryParams.append('course_id', params.course_id);
-    if (params?.course_content_id) queryParams.append('course_content_id', params.course_content_id);
-    if (params?.has_repository !== undefined) queryParams.append('has_repository', String(params.has_repository));
-    if (params?.is_graded !== undefined) queryParams.append('is_graded', String(params.is_graded));
-    
-    const cacheKey = `studentSubmissionGroups-${queryParams.toString()}`;
-    
-    // Check cache first
-    const cached = multiTierCache.get<SubmissionGroupStudent[]>(cacheKey);
-    if (cached) {
-      return cached;
-    }
-    
+  }): Promise<CourseContentStudentList[]> {
+    // Get course contents with submission groups
     try {
-      const result = await errorRecoveryService.executeWithRecovery(async () => {
-        const client = await this.getHttpClient();
-        const url = `/students/submission-groups${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-        const response = await client.get<SubmissionGroupStudent[]>(url);
-        return response.data;
-      }, {
-        maxRetries: 2,
-        exponentialBackoff: true
-      });
+      const courseContents = await this.getStudentCourseContents(params?.course_id);
       
-      // Cache in warm tier (shorter TTL since submission groups change more frequently)
-      multiTierCache.set(cacheKey, result, 'warm');
-      return result || [];
+      // Filter course contents that have submission groups
+      const contentsWithSubmissionGroups: CourseContentStudentList[] = [];
+      
+      for (const content of courseContents) {
+        if (content.submission_group) {
+          // Filter based on params
+          if (params?.course_content_id && content.id !== params.course_content_id) {
+            continue;
+          }
+          if (params?.has_repository !== undefined) {
+            const hasRepo = !!content.submission_group.repository;
+            if (hasRepo !== params.has_repository) continue;
+          }
+          if (params?.is_graded !== undefined) {
+            const isGraded = !!content.submission_group.latest_grading;
+            if (isGraded !== params.is_graded) continue;
+          }
+          
+          // Add the full course content with its submission group
+          contentsWithSubmissionGroups.push(content);
+        }
+      }
+      
+      return contentsWithSubmissionGroups;
     } catch (error) {
       console.error('Failed to get student submission groups:', error);
       return [];
@@ -1036,30 +1336,238 @@ export class ComputorApiService {
   // Tutor API methods
   async getTutorCourses(): Promise<any[]> {
     const cacheKey = 'tutorCourses';
-    
-    // Check cache first
     const cached = multiTierCache.get<any[]>(cacheKey);
-    if (cached) {
-      return cached;
-    }
-    
+    if (cached) return cached;
     try {
       const result = await errorRecoveryService.executeWithRecovery(async () => {
         const client = await this.getHttpClient();
-        // For now use regular courses endpoint - this might need to be updated when tutor endpoint is available
-        const response = await client.get<any[]>('/courses');
+        const response = await client.get<any[]>('/tutors/courses');
         return response.data;
-      }, {
-        maxRetries: 2,
-        exponentialBackoff: true
-      });
-      
-      // Cache in warm tier
+      }, { maxRetries: 2, exponentialBackoff: true });
       multiTierCache.set(cacheKey, result, 'warm');
-      return result;
+      return result || [];
     } catch (error) {
       console.error('Failed to get tutor courses:', error);
       return [];
+    }
+  }
+
+  async getTutorCourse(courseId: string): Promise<any | undefined> {
+    const cacheKey = `tutorCourse-${courseId}`;
+    const cached = multiTierCache.get<any>(cacheKey);
+    if (cached) return cached;
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const response = await client.get<any>(`/tutors/courses/${courseId}`);
+        return response.data;
+      }, { maxRetries: 2, exponentialBackoff: true });
+      multiTierCache.set(cacheKey, result, 'warm');
+      return result;
+    } catch (e) {
+      console.error('Failed to get tutor course:', e);
+      return undefined;
+    }
+  }
+
+  // Placeholder Tutor API for course groups and members (to be aligned with backend)
+  async getTutorCourseGroups(courseId: string): Promise<any[]> {
+    // Use generic course groups endpoint with course filter
+    return await this.getCourseGroups(courseId);
+  }
+
+  async getTutorCourseMembers(courseId: string, groupId?: string): Promise<any[]> {
+    const cacheKey = groupId ? `tutorCourseMembers-${courseId}-${groupId}` : `tutorCourseMembers-${courseId}`;
+    const cached = multiTierCache.get<any[]>(cacheKey);
+    if (cached) return cached;
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const params = new URLSearchParams();
+        if (courseId) params.append('course_id', courseId);
+        if (groupId) params.append('course_group_id', groupId);
+        const url = params.toString() ? `/tutors/course-members?${params.toString()}` : '/tutors/course-members';
+        const response = await client.get<any[]>(url);
+        return response.data;
+      }, { maxRetries: 2, exponentialBackoff: true });
+      multiTierCache.set(cacheKey, result, 'warm');
+      return result || [];
+    } catch (e) {
+      console.error('Failed to get tutor course members:', e);
+      return [];
+    }
+  }
+
+  // Tutor: course contents for a specific member in a course
+  async getTutorCourseContents(courseId: string, memberId: string): Promise<any[]> {
+    const cacheKey = `tutorContents-${memberId}`;
+    const cached = multiTierCache.get<any[]>(cacheKey);
+    if (cached) return cached.filter(c => !courseId || c.course_id === courseId);
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const response = await client.get<any[]>(`/tutors/course-members/${memberId}/course-contents`);
+        return response.data;
+      }, { maxRetries: 2, exponentialBackoff: true });
+      multiTierCache.set(cacheKey, result, 'warm');
+      return (result || []).filter((c: any) => !courseId || c.course_id === courseId);
+    } catch (e) {
+      console.error('Failed to get tutor member course contents:', e);
+      return [];
+    }
+  }
+
+  // Tutor: student repository metadata for a course/member pair
+  async getTutorStudentRepository(courseId: string, memberId: string): Promise<{ remote_url: string } | undefined> {
+    void courseId; // Not yet used if backend returns scoped by member
+    try {
+      const client = await this.getHttpClient();
+      // Pending backend path: guessing /tutors/course-members/{id}
+      const response = await client.get<any>(`/tutors/course-members/${memberId}`);
+      const repoUrl = response.data?.repository?.clone_url || response.data?.repository?.url || response.data?.repository?.web_url;
+      return repoUrl ? { remote_url: repoUrl } : undefined;
+    } catch (e) {
+      // Keep silent; command will prompt for URL
+      return undefined;
+    }
+  }
+
+  // Tutor: submission branch for a student's assignment
+  async getTutorSubmissionBranch(courseId: string, memberId: string, courseContentId: string): Promise<string | undefined> {
+    void courseId;
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<any>(`/tutors/course-members/${memberId}/course-contents/${courseContentId}`);
+      const branch = response.data?.submission_branch || response.data?.latest_submission?.branch;
+      return branch;
+    } catch {
+      return undefined;
+    }
+  }
+
+  // Tutor: get a specific member's course content (fresh)
+  async getTutorMemberCourseContent(memberId: string, courseContentId: string): Promise<any | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<any>(`/tutors/course-members/${memberId}/course-contents/${courseContentId}`);
+      return response.data;
+    } catch (e) {
+      console.error('Failed to get tutor member course content:', e);
+      return undefined;
+    }
+  }
+
+  /**
+   * Tutor: update a student's course content grading/status
+   */
+  async updateTutorCourseContentStudent(
+    memberId: string,
+    courseContentId: string,
+    update: CourseContentStudentUpdate
+  ): Promise<any> {
+    const client = await this.getHttpClient();
+    const response = await client.patch<any>(
+      `/tutors/course-members/${memberId}/course-contents/${courseContentId}`,
+      update
+    );
+    // Invalidate caches related to this member/content so UI refresh shows changes
+    multiTierCache.delete(`tutorContents-${memberId}`);
+    multiTierCache.delete(`studentCourseContent-${courseContentId}`);
+    return response.data;
+  }
+
+  /**
+   * Submit a test for an assignment
+   * @param testData The test submission data
+   * @returns The test run response with result ID
+   */
+  async submitTest(testData: TestCreate): Promise<any> {
+    try {
+      if (!this.httpClient) {
+        throw new Error('HTTP client not initialized');
+      }
+      const response = await this.httpClient.post<any>('/tests', testData);
+      return response.data;
+    } catch (error: any) {
+      console.error('Failed to submit test:', error);
+      // Show user-friendly error message
+      const message = error?.response?.data?.detail || error?.message || 'Failed to submit test';
+      vscode.window.showErrorMessage(`Test submission failed: ${message}`);
+      return undefined;
+    }
+  }
+
+  /**
+   * Get the status of a test result
+   * @param resultId The result ID to check
+   * @returns The status string or undefined
+   */
+  async getResultStatus(resultId: string): Promise<string | undefined> {
+    try {
+      if (!this.httpClient) {
+        throw new Error('HTTP client not initialized');
+      }
+      const response = await this.httpClient.get<string>(`/results/${resultId}/status`);
+      return response.data;
+    } catch (error: any) {
+      console.error('Failed to get result status:', error);
+      return undefined;
+    }
+  }
+
+  /**
+   * Get full test result details
+   * @param resultId The result ID to fetch
+   * @returns The full result data or undefined
+   */
+  async getResult(resultId: string): Promise<any> {
+    try {
+      if (!this.httpClient) {
+        throw new Error('HTTP client not initialized');
+      }
+      const response = await this.httpClient.get<any>(`/results/${resultId}`);
+      return response.data;
+    } catch (error: any) {
+      console.error('Failed to get result:', error);
+      return undefined;
+    }
+  }
+
+  /**
+   * Clear the cached HTTP client instance.
+   * This should be called when credentials change or on logout.
+   */
+  public clearHttpClient(): void {
+    this.httpClient = undefined;
+  }
+
+  /**
+   * Check if the service is authenticated
+   */
+  public isAuthenticated(): boolean {
+    return !!this.httpClient && this.httpClient.isAuthenticated();
+  }
+
+  // Student submission API
+  async submitStudentAssignment(
+    courseContentId: string,
+    data: { branch_name: string; gitlab_token: string; title?: string; description?: string }
+  ): Promise<{ merge_request_id: number; merge_request_iid: number; web_url: string; source_branch: string; target_branch: string; title: string; state: string } | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.post(
+        `/students/course-contents/${courseContentId}/submit`,
+        data
+      );
+      return response.data as any;
+    } catch (error) {
+      console.error('Failed to submit assignment via API:', error);
+      if (error) {
+        vscode.window.showErrorMessage(`${error}`);
+      } else {
+        vscode.window.showErrorMessage('Failed to create Merge Request via backend');
+      }
+      return undefined;
     }
   }
 

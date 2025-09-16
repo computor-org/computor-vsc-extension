@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
-import { CourseFamilyList, OrganizationList } from '../../types/generated';
+import { CourseFamilyGet, OrganizationList } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
 
@@ -15,7 +15,7 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
   }
 
   protected async getWebviewContent(data?: {
-    courseFamily: CourseFamilyList;
+    courseFamily: CourseFamilyGet;
     organization: OrganizationList;
   }): Promise<string> {
     if (!data) {
@@ -54,7 +54,7 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
           
           <div class="form-group">
             <label for="description">Description</label>
-            <textarea id="description" name="description" rows="4"></textarea>
+            <textarea id="description" name="description" rows="4">${courseFamily.description || ''}</textarea>
           </div>
           
           <div class="form-group">
@@ -64,7 +64,6 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
           
           <div class="actions">
             <button type="submit" class="button">Save Changes</button>
-            <button type="button" class="button secondary" onclick="refreshView()">Refresh</button>
           </div>
         </form>
       </div>
@@ -132,7 +131,7 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
           if (this.treeDataProvider) {
             this.treeDataProvider.updateNode('courseFamily', message.data.familyId, message.data.updates);
           } else {
-            vscode.commands.executeCommand('computor.refreshLecturerTree');
+            vscode.commands.executeCommand('computor.lecturer.refresh');
           }
         } catch (error) {
           vscode.window.showErrorMessage(`Failed to update course family: ${error}`);
@@ -140,7 +139,23 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
         break;
 
       case 'refresh':
-        vscode.commands.executeCommand('computor.refreshLecturerTree');
+        // Reload the webview with fresh data
+        if (message.data.familyId) {
+          try {
+            const courseFamily = await this.apiService.getCourseFamily(message.data.familyId);
+            if (courseFamily && this.currentData) {
+              // Update the current data and re-render the entire webview
+              this.currentData.courseFamily = courseFamily;
+              const content = await this.getWebviewContent(this.currentData);
+              if (this.panel) {
+                this.panel.webview.html = content;
+              }
+              vscode.window.showInformationMessage('Course family refreshed');
+            }
+          } catch (error) {
+            vscode.window.showErrorMessage(`Failed to refresh: ${error}`);
+          }
+        }
         break;
 
       case 'createCourse':

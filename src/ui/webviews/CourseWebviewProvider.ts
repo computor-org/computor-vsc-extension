@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
-import { CourseList, CourseFamilyList, OrganizationList } from '../../types/generated';
+import { CourseGet, CourseFamilyList, OrganizationList } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
 
@@ -15,7 +15,7 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
   }
 
   protected async getWebviewContent(data?: {
-    course: CourseList;
+    course: CourseGet;
     courseFamily: CourseFamilyList;
     organization: OrganizationList;
   }): Promise<string> {
@@ -49,7 +49,7 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
           
           <div class="form-group">
             <label for="description">Description</label>
-            <textarea id="description" name="description" rows="4"></textarea>
+            <textarea id="description" name="description" rows="4">${course.description || ''}</textarea>
           </div>
           
           <div class="form-group">
@@ -59,7 +59,6 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
           
           <div class="actions">
             <button type="submit" class="button">Save Changes</button>
-            <button type="button" class="button secondary" onclick="refreshView()">Refresh</button>
           </div>
         </form>
       </div>
@@ -152,9 +151,19 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
       case 'refresh':
         // Reload the webview with fresh data
         if (message.data.courseId) {
-          const course = await this.apiService.getCourse(message.data.courseId);
-          if (course && this.panel) {
-            this.panel.webview.postMessage({ command: 'update', data: { course } });
+          try {
+            const course = await this.apiService.getCourse(message.data.courseId);
+            if (course && this.currentData) {
+              // Update the current data and re-render the entire webview
+              this.currentData.course = course;
+              const content = await this.getWebviewContent(this.currentData);
+              if (this.panel) {
+                this.panel.webview.html = content;
+              }
+              vscode.window.showInformationMessage('Course refreshed');
+            }
+          } catch (error) {
+            vscode.window.showErrorMessage(`Failed to refresh: ${error}`);
           }
         }
         break;
@@ -170,7 +179,9 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
         break;
 
       case 'releaseContent':
-        vscode.commands.executeCommand('computor.releaseCourseContent', message.data);
+        // Convert course data to a format that the command expects
+        // The command expects either a CourseTreeItem or course data with an id
+        vscode.commands.executeCommand('computor.lecturer.releaseCourseContentFromWebview', message.data);
         break;
 
       case 'showMembers':

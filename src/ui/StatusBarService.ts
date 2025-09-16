@@ -12,7 +12,8 @@ export class StatusBarService implements vscode.Disposable {
             vscode.StatusBarAlignment.Left,
             100
         );
-        this.courseItem.command = 'computor.student.selectCourse';
+        // Command removed - student features being reimplemented
+        // this.courseItem.command = 'computor.student.selectCourse';
         this.courseItem.tooltip = 'Click to switch course';
         this.courseItem.show();
         
@@ -21,7 +22,8 @@ export class StatusBarService implements vscode.Disposable {
             vscode.StatusBarAlignment.Left,
             99
         );
-        this.syncItem.command = 'computor.student.syncCourseRepositories';
+        // Command removed - student features being reimplemented
+        // this.syncItem.command = 'computor.student.syncCourseRepositories';
         this.syncItem.tooltip = 'Click to sync all repositories';
     }
     

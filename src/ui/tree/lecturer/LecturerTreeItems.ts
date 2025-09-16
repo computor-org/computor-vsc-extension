@@ -10,6 +10,7 @@ import {
   CourseMemberList
 } from '../../../types/generated';
 import { IconGenerator } from '../../../utils/IconGenerator';
+import { hasExampleAssigned, getExampleVersionId, getDeploymentStatus } from '../../../utils/deploymentHelpers';
 
 export class OrganizationTreeItem extends vscode.TreeItem {
   constructor(
@@ -21,6 +22,7 @@ export class OrganizationTreeItem extends vscode.TreeItem {
     this.contextValue = 'organization';
     this.iconPath = new vscode.ThemeIcon('organization');
     this.tooltip = organization.title || organization.path;
+    this.description = 'Organization';
   }
 }
 
@@ -35,6 +37,7 @@ export class CourseFamilyTreeItem extends vscode.TreeItem {
     this.contextValue = 'courseFamily';
     this.iconPath = new vscode.ThemeIcon('folder-library');
     this.tooltip = courseFamily.title || courseFamily.path;
+    this.description = 'Course Family';
   }
 }
 
@@ -51,10 +54,8 @@ export class CourseTreeItem extends vscode.TreeItem {
     this.iconPath = new vscode.ThemeIcon('book');
     this.tooltip = course.title || course.path;
     
-    // Add repository URL to description if available
-    if (course.properties?.gitlab) {
-      this.description = 'GitLab';
-    }
+    // Set description to indicate this is a Course
+    this.description = 'Course';
   }
 }
 
@@ -68,6 +69,7 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     public readonly exampleInfo?: any,
     public readonly contentType?: CourseContentTypeList,
     public readonly isSubmittable: boolean = false,
+    public readonly exampleVersionInfo?: any,
     public readonly providedCollapsibleState?: vscode.TreeItemCollapsibleState
   ) {
     super(
@@ -95,16 +97,12 @@ export class CourseContentTreeItem extends vscode.TreeItem {
       parts.push('nonSubmittable');
     }
     
-    // Check if it's an assignment based on content type slug or kind
-    const isAssignmentLike = this.contentType?.slug?.toLowerCase().includes('assignment') ||
-                            this.contentType?.slug?.toLowerCase().includes('exercise') ||
-                            this.contentType?.slug?.toLowerCase().includes('homework') ||
-                            this.contentType?.slug?.toLowerCase().includes('task') ||
-                            this.isSubmittable;
+    // Check if it's an assignment based on course_content_kind_id
+    const isAssignment = this.contentType?.course_content_kind_id === 'assignment';
     
-    if (isAssignmentLike) {
+    if (isAssignment) {
       parts.push('assignment');
-      if (this.courseContent.example_id) {
+      if (hasExampleAssigned(this.courseContent)) {
         parts.push('hasExample');
       } else {
         parts.push('noExample');
@@ -119,30 +117,23 @@ export class CourseContentTreeItem extends vscode.TreeItem {
   }
 
   private getIcon(): vscode.ThemeIcon | vscode.Uri {
-    // Use colored icon based on content type
-    if (this.contentType?.color) {
-      try {
-        // Map content type slug to appropriate icon shape
-        const isAssignment = this.contentType.slug?.toLowerCase().includes('assignment') ||
-                            this.contentType.slug?.toLowerCase().includes('exercise') ||
-                            this.contentType.slug?.toLowerCase().includes('homework') ||
-                            this.contentType.slug?.toLowerCase().includes('task');
-        
-        // Use square for assignments, circle for units/others
-        const shape = isAssignment ? 'square' : 'circle';
-        return IconGenerator.getColoredIcon(this.contentType.color, shape);
-      } catch {
-        // Fallback to default icons
-      }
-    }
+    // Use the color from contentType, or grey as default
+    const color = this.contentType?.color || 'grey';
     
-    // Fallback to default theme icons
-    if (this.courseContent.example_id) {
-      return new vscode.ThemeIcon('file-code');
-    } else if (this.hasChildren) {
-      return new vscode.ThemeIcon('folder');
-    } else {
-      return new vscode.ThemeIcon('file');
+    try {
+      // Determine shape based on course_content_kind_id
+      // 'assignment' gets square, 'unit' (or anything else) gets circle
+      const shape = this.contentType?.course_content_kind_id === 'assignment' ? 'square' : 'circle';
+      return IconGenerator.getColoredIcon(color, shape);
+    } catch {
+      // Fallback to default theme icons if icon generation fails
+      if (hasExampleAssigned(this.courseContent)) {
+        return new vscode.ThemeIcon('file-code');
+      } else if (this.hasChildren) {
+        return new vscode.ThemeIcon('folder');
+      } else {
+        return new vscode.ThemeIcon('file');
+      }
     }
   }
 
@@ -153,10 +144,20 @@ export class CourseContentTreeItem extends vscode.TreeItem {
       parts.push(this.courseContent.title);
     }
     
-    if (this.courseContent.example_id) {
-      parts.push(`Example: ${this.courseContent.example_id}`);
-      if (this.courseContent.example_version) {
-        parts.push(`Version: ${this.courseContent.example_version}`);
+    if (hasExampleAssigned(this.courseContent)) {
+      // Show example title if available
+      if (this.exampleInfo?.title) {
+        parts.push(`Example: ${this.exampleInfo.title}`);
+      }
+      const versionId = getExampleVersionId(this.courseContent);
+      if (versionId) {
+        if (this.exampleVersionInfo) {
+          parts.push(`Version: ${this.exampleVersionInfo.version_tag || this.exampleVersionInfo.version || 'unknown'}`);
+        } else {
+          parts.push(`Version ID: ${versionId}`);
+        }
+      } else {
+        parts.push(`Version: <not set>`);
       }
     }
     
@@ -166,33 +167,39 @@ export class CourseContentTreeItem extends vscode.TreeItem {
   private getDescription(): string | undefined {
     const parts: string[] = [];
     
-    // Show example title and version
-    if (this.courseContent.example_id && this.exampleInfo) {
-      const exampleTitle = this.exampleInfo.title || 'Unknown Example';
-      const versionText = this.courseContent.example_version ? 
-        `v${this.courseContent.example_version}` : 
-        'latest';
-      parts.push(`📦 ${exampleTitle} (${versionText})`);
-    } else if (this.courseContent.example_id) {
-      // Fallback if example info couldn't be loaded
-      const versionText = this.courseContent.example_version ? 
-        `v${this.courseContent.example_version}` : 
-        'latest';
+    // Show only version indicator for examples
+    if (hasExampleAssigned(this.courseContent)) {
+      let versionText = '<not set>';
+      if (this.exampleVersionInfo) {
+        versionText = this.exampleVersionInfo.version_tag || this.exampleVersionInfo.version || 'unknown';
+      } else if (getExampleVersionId(this.courseContent)) {
+        versionText = 'loading...';
+      }
       parts.push(`📦 ${versionText}`);
     }
     
-    // Show deployment status only for submittable content (assignments)
-    if (this.isSubmittable && this.courseContent.deployment_status) {
+    // Show deployment status only for assignments (submittable content)
+    // Check if it's an assignment based on course_content_kind_id
+    const isAssignment = this.contentType?.course_content_kind_id === 'assignment';
+    
+    // Check deployment status from either the new nested structure or old deprecated fields
+    const deploymentStatus = getDeploymentStatus(this.courseContent);
+    
+    if (isAssignment && deploymentStatus) {
+      // According to new model, valid statuses are: pending, in_progress, deployed, failed
       const statusIcons: { [key: string]: string } = {
-        'pending': '⏳',
+        'pending': '⏳',         // Assigned but not deployed
+        'in_progress': '🔄',     // Currently deploying
+        'deployed': '✅',        // Successfully deployed
+        'failed': '❌',          // Deployment failed
+        // Legacy status mappings (for backwards compatibility)
         'pending_release': '📤',
+        'assigned': '📎',
         'deploying': '🔄',
-        'deployed': '✅',
-        'released': '🚀',
-        'failed': '❌'
+        'released': '🚀'
       };
-      const icon = statusIcons[this.courseContent.deployment_status] || '❓';
-      parts.push(`${icon} ${this.courseContent.deployment_status}`);
+      const icon = statusIcons[deploymentStatus] || '❓';
+      parts.push(`${icon} ${deploymentStatus}`);
     }
     
     return parts.length > 0 ? parts.join(' • ') : undefined;
@@ -257,7 +264,8 @@ export class CourseContentTypeTreeItem extends vscode.TreeItem {
     public readonly contentType: CourseContentTypeList,
     public readonly course: CourseList,
     public readonly courseFamily: CourseFamilyList,
-    public readonly organization: OrganizationList
+    public readonly organization: OrganizationList,
+    public readonly contentKindTitle?: string
   ) {
     super(contentType.title || contentType.slug, vscode.TreeItemCollapsibleState.None);
     this.id = `contentType-${contentType.id}`;
@@ -277,9 +285,9 @@ export class CourseContentTypeTreeItem extends vscode.TreeItem {
     
     this.tooltip = `${contentType.title || contentType.slug}\nSlug: ${contentType.slug}`;
     
-    // Show color as description if available
-    if (contentType.color) {
-      this.description = contentType.color;
+    // Show content kind title as description if available
+    if (contentKindTitle) {
+      this.description = contentKindTitle;
     }
   }
 }

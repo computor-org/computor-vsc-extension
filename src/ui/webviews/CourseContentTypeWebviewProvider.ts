@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
-import { CourseContentTypeList, CourseList, CourseContentKindList } from '../../types/generated';
+import { CourseContentTypeGet, CourseList, CourseContentKindList } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
 
@@ -15,7 +15,7 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
   }
 
   protected async getWebviewContent(data?: {
-    contentType: CourseContentTypeList;
+    contentType: CourseContentTypeGet;
     course: CourseList;
     contentKind?: CourseContentKindList;
   }): Promise<string> {
@@ -81,12 +81,11 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
           
           <div class="form-group">
             <label for="description">Description</label>
-            <textarea id="description" name="description" rows="4"></textarea>
+            <textarea id="description" name="description" rows="4">${contentType.description || ''}</textarea>
           </div>
           
           <div class="actions">
             <button type="submit" class="button">Save Changes</button>
-            <button type="button" class="button secondary" onclick="refreshView()">Refresh</button>
           </div>
         </form>
       </div>
@@ -189,7 +188,7 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
               course_id: courseData?.course.id
             });
           } else {
-            vscode.commands.executeCommand('computor.refreshLecturerTree');
+            vscode.commands.executeCommand('computor.lecturer.refresh');
           }
         } catch (error) {
           vscode.window.showErrorMessage(`Failed to update content type: ${error}`);
@@ -197,7 +196,38 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
         break;
 
       case 'refresh':
-        vscode.commands.executeCommand('computor.refreshLecturerTree');
+        // Reload the webview with fresh data
+        if (message.data.typeId) {
+          try {
+            const freshContentType = await this.apiService.getCourseContentType(message.data.typeId);
+            if (freshContentType && this.currentData) {
+              // Also refresh content kind info if needed
+              let contentKind = this.currentData.contentKind;
+              if (freshContentType.course_content_kind_id) {
+                try {
+                  const kinds = await this.apiService.getCourseContentKinds();
+                  const freshKind = kinds.find(k => k.id === freshContentType.course_content_kind_id);
+                  if (freshKind) {
+                    contentKind = freshKind;
+                  }
+                } catch (error) {
+                  console.error('Failed to refresh content kind:', error);
+                }
+              }
+              
+              // Update the current data and re-render the entire webview
+              this.currentData.contentType = freshContentType;
+              this.currentData.contentKind = contentKind;
+              const content = await this.getWebviewContent(this.currentData);
+              if (this.panel) {
+                this.panel.webview.html = content;
+              }
+              vscode.window.showInformationMessage('Content type refreshed');
+            }
+          } catch (error) {
+            vscode.window.showErrorMessage(`Failed to refresh: ${error}`);
+          }
+        }
         break;
 
       case 'findUsage':

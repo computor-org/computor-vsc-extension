@@ -30,10 +30,11 @@ export class CourseSelectionService {
         this.context = context;
         this.apiService = apiService;
         this.statusBarService = statusBarService;
-        this.workspaceRoot = path.join(os.homedir(), 'computor');
+        this.workspaceRoot = path.join(os.homedir(), '.computor', 'workspace');
         
-        // Load last selected course
-        this.loadLastSelectedCourse();
+        // Don't auto-load last selected course - let the student extension handle it
+        // This prevents loading stale/invalid course IDs from previous sessions
+        // this.loadLastSelectedCourse();
     }
 
     static initialize(
@@ -58,24 +59,31 @@ export class CourseSelectionService {
         return CourseSelectionService.instance;
     }
 
-    private async loadLastSelectedCourse(): Promise<void> {
-        const savedCourseId = this.context.globalState.get<string>('selectedCourseId');
-        const savedCourseInfo = this.context.globalState.get<CourseInfo>('selectedCourseInfo');
-        
-        if (savedCourseId && savedCourseInfo) {
-            this.currentCourseId = savedCourseId;
-            this.currentCourseInfo = savedCourseInfo;
-            this.statusBarService.updateCourse(savedCourseInfo.title);
-            // Set context to make course content view visible
-            vscode.commands.executeCommand('setContext', 'computor.courseSelected', true);
-        } else {
-            this.statusBarService.clearCourse();
-            vscode.commands.executeCommand('setContext', 'computor.courseSelected', false);
-        }
-    }
+    // Removed loadLastSelectedCourse - we don't want to load stale course IDs
+    // Course selection should come from the .computor_student marker file only
 
-    async selectCourse(): Promise<CourseInfo | undefined> {
+    async selectCourse(courseId?: string): Promise<CourseInfo | undefined> {
         try {
+            // If courseId is provided, select that course directly
+            if (courseId) {
+                const courses = await this.apiService.getStudentCourses();
+                const course = courses.find(c => c.id === courseId);
+                
+                if (course) {
+                    const courseInfo: CourseInfo = {
+                        id: course.id,
+                        title: course.title || course.path,
+                        path: course.path,
+                        organizationId: course.organization_id || '',
+                        courseFamilyId: course.course_family_id || ''
+                    };
+                    await this.switchToCourse(courseInfo);
+                    return courseInfo;
+                }
+                return undefined;
+            }
+            
+            // Otherwise, show course selection dialog
             // Fetch available courses for student
             const courses = await this.apiService.getStudentCourses();
             
@@ -120,8 +128,8 @@ export class CourseSelectionService {
         this.currentCourseId = course.id;
         this.currentCourseInfo = course;
 
-        // Update workspace folder
-        const courseWorkspace = path.join(this.workspaceRoot, 'courses', course.id);
+        // Update workspace folder - use the same workspace root as assignments
+        const courseWorkspace = this.workspaceRoot;
         
         // Ensure directory exists
         try {
@@ -158,8 +166,12 @@ export class CourseSelectionService {
         // Set context to make course content view visible
         vscode.commands.executeCommand('setContext', 'computor.courseSelected', true);
 
-        // Fire event for other components
-        vscode.commands.executeCommand('computor.courseChanged', course);
+        // Fire event for other components (if handler exists)
+        try {
+            await vscode.commands.executeCommand('computor.courseChanged', course);
+        } catch {
+            // Command might not be registered, that's OK
+        }
 
         vscode.window.showInformationMessage(`Switched to course: ${course.title}`);
     }
@@ -172,11 +184,18 @@ export class CourseSelectionService {
         return this.currentCourseInfo;
     }
 
+    /**
+     * Clear any stored course IDs from global state
+     * Used to prevent stale course IDs from being loaded
+     */
+    async clearStoredCourseIds(): Promise<void> {
+        await this.context.globalState.update('selectedCourseId', undefined);
+        await this.context.globalState.update('selectedCourseInfo', undefined);
+        console.log('Cleared stored course IDs from global state');
+    }
+
     getCourseWorkspacePath(): string | undefined {
-        if (!this.currentCourseId) {
-            return undefined;
-        }
-        return path.join(this.workspaceRoot, 'courses', this.currentCourseId);
+        return this.workspaceRoot;
     }
 
     async ensureCourseSelected(): Promise<CourseInfo | undefined> {
