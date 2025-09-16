@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import * as fs from 'fs';
+import * as path from 'path';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
 import { LecturerTreeDataProvider } from '../ui/tree/lecturer/LecturerTreeDataProvider';
 import { OrganizationTreeItem, CourseFamilyTreeItem, CourseTreeItem, CourseContentTreeItem, CourseFolderTreeItem, CourseContentTypeTreeItem, CourseGroupTreeItem, CourseMemberTreeItem } from '../ui/tree/lecturer/LecturerTreeItems';
@@ -14,6 +15,8 @@ import { CourseContentTypeWebviewProvider } from '../ui/webviews/CourseContentTy
 import { CourseGroupWebviewProvider } from '../ui/webviews/CourseGroupWebviewProvider';
 import { ExampleGet } from '../types/generated/examples';
 import { hasExampleAssigned, getExampleVersionId, getDeploymentStatus } from '../utils/deploymentHelpers';
+import type { CourseContentTypeList, CourseList } from '../types/generated/courses';
+import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager';
 
 interface ExampleQuickPickItem extends vscode.QuickPickItem {
   example: ExampleGet;
@@ -556,49 +559,29 @@ export class LecturerCommands {
 
   private async createCourseContent(item: CourseFolderTreeItem | CourseContentTreeItem): Promise<void> {
     let parentPath: string | undefined;
-    let courseId: string;
-    
+    let folderItem: CourseFolderTreeItem;
+    let course: CourseList;
+
     if (item instanceof CourseFolderTreeItem && item.folderType === 'contents') {
-      // Creating at root level
-      parentPath = undefined;
-      courseId = item.course.id;
+      folderItem = item;
+      course = item.course;
     } else if (item instanceof CourseContentTreeItem) {
-      // Creating under parent content
       parentPath = item.courseContent.path;
-      courseId = item.course.id;
-      
-      // TODO: Check if parent content type allows children
-      // This would require fetching the full content type with course_content_kind details
-      // For now, we'll allow creating children under any content item
+      folderItem = new CourseFolderTreeItem('contents', item.course, item.courseFamily, item.organization);
+      course = item.course;
     } else {
       vscode.window.showErrorMessage('Course contents can only be created under the Contents folder or another content item');
       return;
     }
 
-    // Get available content types
-    const contentTypes = await this.apiService.getCourseContentTypes(courseId);
+    const contentTypes = await this.apiService.getCourseContentTypes(course.id);
     if (contentTypes.length === 0) {
       vscode.window.showWarningMessage('No content types available. Please create a content type first.');
       return;
     }
 
-    // Filter content types if creating under parent
-    let availableTypes = contentTypes;
-    if (parentPath) {
-      // TODO: Only show content types that can have ancestors
-      // This would require fetching the full content type with course_content_kind details
-      // For now, we'll show all content types
-      availableTypes = contentTypes;
-    }
-
-    if (availableTypes.length === 0) {
-      vscode.window.showWarningMessage('No suitable content types available for child content.');
-      return;
-    }
-
-    // Select content type
     const selectedType = await vscode.window.showQuickPick(
-      availableTypes.map(t => ({
+      contentTypes.map(t => ({
         label: t.title || t.slug,
         description: t.slug,
         id: t.id,
@@ -620,16 +603,115 @@ export class LecturerCommands {
       return;
     }
 
-    // Automatically generate a slug from the title for the path
-    const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+    const description = await vscode.window.showInputBox({
+      prompt: 'Description (optional)',
+      value: '',
+      ignoreFocusOut: true
+    });
 
-    await this.treeDataProvider.createCourseContent(
-      item instanceof CourseFolderTreeItem ? item : new CourseFolderTreeItem('contents', item.course, item.courseFamily, item.organization), 
-      title, 
-      selectedType.id,
-      parentPath,
-      slug
-    );
+    const initialSlug = title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+    const isAssignment = this.isAssignmentContentType(selectedType.contentType);
+
+    if (!isAssignment) {
+      await this.treeDataProvider.createCourseContent(
+        folderItem,
+        title,
+        selectedType.id,
+        parentPath,
+        initialSlug,
+        description || undefined
+      );
+      return;
+    }
+
+    const identifierInput = await vscode.window.showInputBox({
+      prompt: 'Assignment identifier (ltree, e.g. unit01.assignment1)',
+      placeHolder: 'unit01.assignment1',
+      validateInput: (value) => {
+        if (!value || !value.trim()) {
+          return 'Identifier is required';
+        }
+        const trimmed = value.trim();
+        if (trimmed.includes('..')) {
+          return 'Identifier must not contain ".." segments';
+        }
+        if (/[^a-zA-Z0-9_.\/-]/.test(trimmed)) {
+          return 'Only letters, numbers, dash, underscore, dot, and slash are allowed';
+        }
+        return undefined;
+      }
+    });
+
+    if (!identifierInput) {
+      return;
+    }
+
+    const normalizedIdentifier = identifierInput.trim().replace(/\/+/g, '/').replace(/^\/+|\/+$/g, '');
+    const ltreeIdentifier = normalizedIdentifier
+      .split(/[/.]+/)
+      .filter(Boolean)
+      .join('.');
+
+    if (!ltreeIdentifier) {
+      vscode.window.showErrorMessage('Identifier is invalid.');
+      return;
+    }
+
+    const versionTagInput = await vscode.window.showInputBox({
+      prompt: 'Version tag for this assignment',
+      value: 'v1',
+      ignoreFocusOut: true
+    });
+
+    if (!versionTagInput) {
+      return;
+    }
+
+    const versionTag = versionTagInput.trim();
+    if (!versionTag) {
+      vscode.window.showErrorMessage('Version tag cannot be empty.');
+      return;
+    }
+
+    const segments = ltreeIdentifier.split('.');
+    const slugSegmentSource = segments[segments.length - 1] || ltreeIdentifier;
+    const slug = slugSegmentSource.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || initialSlug || 'assignment';
+
+    try {
+      const createdContent = await this.treeDataProvider.createCourseContent(
+        folderItem,
+        title,
+        selectedType.id,
+        parentPath,
+        slug,
+        description || undefined
+      );
+
+      if (!createdContent) {
+        return;
+      }
+
+      try {
+        await this.apiService.assignExampleSourceToCourseContent(
+          createdContent.id,
+          ltreeIdentifier,
+          versionTag,
+          description || undefined
+        );
+      } catch (error) {
+        console.warn('Failed to assign example source to new assignment:', error);
+      }
+
+      this.treeDataProvider.rememberAssignmentIdentifier(createdContent.id, ltreeIdentifier);
+
+      await this.prepareAssignmentDirectory(course.id, normalizedIdentifier, ltreeIdentifier, versionTag, title, description || '', course);
+
+      await this.treeDataProvider.forceRefreshCourse(course.id);
+      vscode.window.showInformationMessage(`✅ Created assignment "${title}"`);
+    } catch (error) {
+      console.error('Failed to create assignment:', error);
+      vscode.window.showErrorMessage(`Failed to create assignment: ${error}`);
+    }
   }
 
   private async changeCourseContentType(item: CourseContentTreeItem): Promise<void> {
@@ -698,6 +780,84 @@ export class LecturerCommands {
       console.error('Failed to change course content type:', error);
       vscode.window.showErrorMessage(`Failed to change content type: ${error}`);
     }
+  }
+
+  private async prepareAssignmentDirectory(
+    courseId: string,
+    normalizedIdentifier: string,
+    ltreeIdentifier: string,
+    versionTag: string,
+    title: string,
+    description: string,
+    course: CourseList
+  ): Promise<void> {
+    const repoManager = new LecturerRepositoryManager(this.context, this.apiService);
+    const fullCourse = await this.apiService.getCourse(courseId) || course;
+
+    await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Preparing assignments repository...', cancellable: false }, async (progress) => {
+      progress.report({ message: `Syncing assignments for ${fullCourse.title || fullCourse.path}` });
+      await repoManager.syncAssignmentsForCourse(courseId, (message) => progress.report({ message }));
+    });
+
+    const repoRoot = repoManager.getAssignmentsRepoRoot(fullCourse);
+    if (!repoRoot) {
+      vscode.window.showWarningMessage('Assignments repository is not configured for this course. Directory was not created.');
+      return;
+    }
+
+    const parts = normalizedIdentifier.split('/').filter(Boolean);
+    const assignmentPath = path.join(repoRoot, ...parts);
+
+    if (fs.existsSync(assignmentPath)) {
+      vscode.window.showWarningMessage(`Assignment directory already exists: ${assignmentPath}`);
+      return;
+    }
+
+    await fs.promises.mkdir(assignmentPath, { recursive: true });
+
+    const metaContent = this.buildAssignmentMetaContent(ltreeIdentifier, versionTag, title, description);
+    const metaPath = path.join(assignmentPath, 'meta.yaml');
+    await fs.promises.writeFile(metaPath, metaContent, 'utf8');
+
+    try {
+      const doc = await vscode.workspace.openTextDocument(metaPath);
+      await vscode.window.showTextDocument(doc, { preview: true });
+    } catch (error) {
+      console.warn('Failed to open meta.yaml:', error);
+    }
+  }
+
+  private buildAssignmentMetaContent(identifier: string, versionTag: string, title: string, description: string): string {
+    const sanitizedDescription = description.trim();
+    const descriptionBlock = sanitizedDescription
+      ? `description: |\n  ${sanitizedDescription.replace(/\r?\n/g, '\n  ')}`
+      : 'description: ""';
+
+    return [
+      "version: '1.0'",
+      `slug: ${identifier}`,
+      `title: ${title}`,
+      descriptionBlock,
+      'language: en',
+      'license: MIT',
+      'keywords:',
+      `  - version_tag:${versionTag}`,
+      'authors: []',
+      'maintainers: []',
+      'links: []',
+      'supportingMaterial: []',
+      'properties:',
+      '  studentSubmissionFiles: []',
+      '  additionalFiles: []',
+      '  testFiles: []',
+      '  studentTemplates: []',
+      '  testDependencies: []'
+    ].join('\n');
+  }
+
+  private isAssignmentContentType(type: CourseContentTypeList): boolean {
+    const slug = type.slug?.toLowerCase() || '';
+    return type.course_content_kind_id === 'assignment' || slug.includes('assignment');
   }
 
   private async renameCourseContent(item: CourseContentTreeItem): Promise<void> {
