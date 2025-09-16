@@ -9,6 +9,7 @@ import { errorRecoveryService } from '../../../services/ErrorRecoveryService';
 import { performanceMonitor } from '../../../services/PerformanceMonitoringService';
 import { VirtualScrollingService } from '../../../services/VirtualScrollingService';
 import { DragDropManager } from '../../../services/DragDropManager';
+import { GitWrapper } from '../../../git/GitWrapper';
 import { hasExampleAssigned, getExampleVersionId } from '../../../utils/deploymentHelpers';
 import {
   OrganizationTreeItem,
@@ -21,12 +22,14 @@ import {
   CourseGroupTreeItem,
   NoGroupTreeItem,
   CourseMemberTreeItem,
-  LoadMoreTreeItem
+  LoadMoreTreeItem,
+  CourseContentAssignmentInfo
 } from './LecturerTreeItems';
 import type { 
   CourseContentList, 
   CourseContentCreate, 
   CourseContentUpdate, 
+  CourseContentGet,
   CourseList,
   CourseContentTypeList,
   CourseGroupList,
@@ -61,6 +64,13 @@ interface AssignmentDirectoryStatus {
   severity: 'info' | 'warning' | 'error';
 }
 
+interface AssignmentDirectoryResolution {
+  absolutePath: string | null;
+  repositoryPath: string | null;
+  exists: boolean;
+  statusMessage?: AssignmentDirectoryStatus;
+}
+
 interface PaginationInfo {
   offset: number;
   limit: number;
@@ -79,7 +89,6 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   private apiService: ComputorApiService;
   private gitLabTokenManager: GitLabTokenManager;
   private settingsManager: ComputorSettingsManager;
-  private context: vscode.ExtensionContext;
   private expandedStates: Record<string, boolean> = {};
   
   // Pagination state for different node types
@@ -88,12 +97,18 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   // Virtual scrolling services for large datasets
   private virtualScrollServices: Map<string, VirtualScrollingService<any>> = new Map();
 
+  private gitWrapper: GitWrapper;
+  private repositoryManager: LecturerRepositoryManager;
+  private assignmentIdentifierCache: Map<string, string | null> = new Map();
+  private fullCourseCache: Map<string, any> = new Map();
+
   constructor(context: vscode.ExtensionContext, apiService?: ComputorApiService) {
     // Use provided apiService or create a new one
     this.apiService = apiService || new ComputorApiService(context);
     this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
     this.settingsManager = new ComputorSettingsManager(context);
-    this.context = context;
+    this.gitWrapper = new GitWrapper();
+    this.repositoryManager = new LecturerRepositoryManager(context, this.apiService as any);
     
     // Load expanded states on startup
     console.log('Loading expanded states on startup...');
@@ -109,6 +124,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     // Clear ALL backend API caches - organizations, courses, course families, etc.
     this.clearAllCaches();
     this.paginationState.clear();
+    this.assignmentIdentifierCache.clear();
+    this.fullCourseCache.clear();
     
     // Clear all virtual scrolling services
     for (const service of this.virtualScrollServices.values()) {
@@ -479,6 +496,13 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
                     const contentType = contentTypes.find(t => t.id === content.course_content_type_id);
                     const isSubmittable = this.isContentSubmittable(contentType);
                     const isAssignmentLeaf = isSubmittable && !hasChildren;
+                    let assignmentDirectory: string | undefined;
+                    let assignmentInfo: CourseContentAssignmentInfo | undefined;
+                    
+                    if (isSubmittable) {
+                      assignmentDirectory = await this.resolveAssignmentDirectoryName(content);
+                      assignmentInfo = await this.computeAssignmentInfo(element.course, content, assignmentDirectory);
+                    }
                     
                     const nodeId = `content-${content.id}`;
                     const expandedState = hasChildren
@@ -495,7 +519,9 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
                       contentType,
                       isSubmittable,
                       exampleVersionInfo,
-                      expandedState
+                      expandedState,
+                      assignmentInfo,
+                      assignmentDirectory
                     );
                   }));
                   
@@ -553,6 +579,13 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
               const contentType = contentTypes.find(t => t.id === content.course_content_type_id);
               const isSubmittable = this.isContentSubmittable(contentType);
               const isAssignmentLeaf = isSubmittable && !hasChildren;
+              let assignmentDirectory: string | undefined;
+              let assignmentInfo: CourseContentAssignmentInfo | undefined;
+              
+              if (isSubmittable) {
+                assignmentDirectory = await this.resolveAssignmentDirectoryName(content);
+                assignmentInfo = await this.computeAssignmentInfo(element.course, content, assignmentDirectory);
+              }
               
               const nodeId = `content-${content.id}`;
               const expandedState = hasChildren
@@ -569,7 +602,9 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
                 contentType,
                 isSubmittable,
                 exampleVersionInfo,
-                expandedState
+                expandedState,
+                assignmentInfo,
+                assignmentDirectory
               );
             }));
             
@@ -680,6 +715,13 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
           const contentType = contentTypes.find(t => t.id === content.course_content_type_id);
           const isSubmittable = this.isContentSubmittable(contentType);
           const isAssignmentLeaf = isSubmittable && !hasChildren;
+          let assignmentDirectory: string | undefined;
+          let assignmentInfo: CourseContentAssignmentInfo | undefined;
+
+          if (isSubmittable) {
+            assignmentDirectory = await this.resolveAssignmentDirectoryName(content);
+            assignmentInfo = await this.computeAssignmentInfo(element.course, content, assignmentDirectory);
+          }
           
           const nodeId = `content-${content.id}`;
           const expandedState = hasChildren
@@ -696,7 +738,9 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
             contentType,
             isSubmittable,
             exampleVersionInfo,
-            expandedState
+            expandedState,
+            assignmentInfo,
+            assignmentDirectory
           );
         }));
         
@@ -832,13 +876,22 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       return [];
     }
 
-    const directoryName = this.getAssignmentDirectoryName(element.courseContent);
+    const directoryName = element.assignmentDirectory || await this.resolveAssignmentDirectoryName(element.courseContent);
     if (!directoryName) {
       return [new InfoItem('Assignment not initialized in assignments repo', 'info')];
     }
 
+    element.assignmentDirectory = directoryName;
+    this.assignmentIdentifierCache.set(element.courseContent.id, directoryName);
+
     try {
-      const resolution = await this.resolveAssignmentDirectory(element, directoryName);
+      const resolution = await this.resolveAssignmentDirectory(element.course, directoryName, true);
+
+      if (element.assignmentInfo) {
+        element.assignmentInfo.directoryName = directoryName;
+        element.assignmentInfo.folderExists = resolution.exists;
+        element.assignmentInfo.statusMessage = resolution.statusMessage;
+      }
 
       if (!resolution.absolutePath || !resolution.exists) {
         if (resolution.statusMessage) {
@@ -854,75 +907,234 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       return children;
     } catch (error) {
       console.warn('Failed to prepare assignment directory:', error);
+      if (element.assignmentInfo) {
+        element.assignmentInfo.statusMessage = { message: 'Error loading assignment files', severity: 'error' };
+      }
       return [new InfoItem('Error loading assignment files', 'error')];
     }
   }
 
-  private getAssignmentDirectoryName(content: CourseContentList): string | undefined {
-    const deployment = content.deployment as (CourseContentDeploymentList & { deployment_path?: string | null }) | null | undefined;
-    if (!deployment) {
+  private async resolveAssignmentDirectoryName(content: CourseContentList): Promise<string | undefined> {
+    const cached = this.assignmentIdentifierCache.get(content.id);
+    if (cached !== undefined) {
+      return cached || undefined;
+    }
+
+    const deployment = content.deployment as (CourseContentDeploymentList & { deployment_path?: string | null; version_identifier?: string | null }) | null | undefined;
+    const deploymentIdentifier = ((deployment as any)?.deployment_path as string | undefined) || deployment?.example_identifier || undefined;
+    if (deploymentIdentifier) {
+      this.assignmentIdentifierCache.set(content.id, deploymentIdentifier);
+      return deploymentIdentifier;
+    }
+
+    try {
+      const full = await this.apiService.getCourseContent(content.id, true) as CourseContentGet | undefined;
+      const fullDeployment = full?.deployment as (CourseContentDeploymentList & { deployment_path?: string | null; example_identifier?: string | null; version_identifier?: string | null }) | null | undefined;
+      const identifier = ((fullDeployment as any)?.deployment_path as string | undefined)
+        || fullDeployment?.example_identifier;
+      this.assignmentIdentifierCache.set(content.id, identifier ?? null);
+      if (identifier) {
+        return identifier;
+      }
+    } catch (error) {
+      console.warn('Failed to resolve assignment directory name:', error);
+    }
+
+    const fallback = this.extractSlugFromPath(content.path);
+    this.assignmentIdentifierCache.set(content.id, fallback ?? null);
+    return fallback;
+  }
+
+  private extractSlugFromPath(pathValue: string): string | undefined {
+    if (!pathValue) {
       return undefined;
     }
-    const identifier = (deployment?.deployment_path as string | undefined) || deployment.example_identifier || undefined;
-    return identifier || undefined;
+    const segments = pathValue.split('.').filter(Boolean);
+    if (segments.length === 0) {
+      return undefined;
+    }
+    return segments[segments.length - 1];
   }
 
   private async resolveAssignmentDirectory(
-    element: CourseContentTreeItem,
-    directoryName: string
-  ): Promise<{ absolutePath: string | null; exists: boolean; statusMessage?: AssignmentDirectoryStatus }> {
-    const repoMgr = new LecturerRepositoryManager(this.context, this.apiService as any);
-    const fullCourse: any = await this.apiService.getCourse(element.course.id) || element.course;
+    course: CourseList,
+    directoryName: string,
+    attemptSync: boolean = true
+  ): Promise<AssignmentDirectoryResolution> {
+    const fullCourse = await this.getFullCourse(course);
+    const repoRoot = this.repositoryManager.getAssignmentsRepoRoot(fullCourse);
 
-    if (!fullCourse.organization && fullCourse.organization_id) {
-      try {
-        fullCourse.organization = await (this.apiService as any).getOrganization(fullCourse.organization_id);
-      } catch {
-        // Ignore organization lookup failures; downstream logic will handle missing info
-      }
-    }
-
-    let folder = repoMgr.getAssignmentFolderPath(fullCourse, directoryName);
-    if (!folder) {
+    if (!repoRoot) {
       return {
         absolutePath: null,
+        repositoryPath: null,
         exists: false,
         statusMessage: { message: 'Assignments repository not configured for this course', severity: 'warning' }
       };
     }
 
-    let folderExists = fs.existsSync(folder);
+    let folder = this.repositoryManager.getAssignmentFolderPath(fullCourse, directoryName);
+    let folderExists = folder ? fs.existsSync(folder) : false;
     let statusMessage: AssignmentDirectoryStatus | undefined;
 
+    if (!folder && attemptSync) {
+      await this.syncAssignmentsRepository(course.id, fullCourse);
+      folder = this.repositoryManager.getAssignmentFolderPath(fullCourse, directoryName);
+      folderExists = folder ? fs.existsSync(folder) : false;
+    }
+
+    if (!folder) {
+      return {
+        absolutePath: null,
+        repositoryPath: repoRoot,
+        exists: false,
+        statusMessage: { message: 'Assignment directory not configured', severity: 'warning' }
+      };
+    }
+
     if (!folderExists) {
-      try {
-        await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: 'Syncing assignments...' }, async (progress) => {
-          progress.report({ message: `Syncing assignments for ${fullCourse.title || fullCourse.path}` });
-          await repoMgr.syncAssignmentsForCourse(element.course.id);
-        });
-        folder = repoMgr.getAssignmentFolderPath(fullCourse, directoryName);
-        if (!folder) {
-          return {
-            absolutePath: null,
-            exists: false,
-            statusMessage: statusMessage || { message: 'Assignments repository not configured for this course', severity: 'warning' }
-          };
-        }
+      if (attemptSync) {
+        await this.syncAssignmentsRepository(course.id, fullCourse);
         folderExists = fs.existsSync(folder);
-        if (!folderExists) {
-          statusMessage = { message: 'Assignment folder missing locally — run "Sync Assignments"', severity: 'warning' };
-        }
-      } catch (syncError) {
-        console.warn('Failed to sync assignments repository:', syncError);
-        statusMessage = { message: 'Error syncing assignments repository', severity: 'error' };
+      }
+      if (!folderExists) {
+        statusMessage = { message: 'Assignment folder missing locally — run "Sync Assignments"', severity: 'warning' };
       }
     }
 
     return {
-      absolutePath: folder || null,
+      absolutePath: folder,
+      repositoryPath: repoRoot,
       exists: folderExists,
       statusMessage
     };
+  }
+
+  private async syncAssignmentsRepository(courseId: string, course: any): Promise<void> {
+    await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: 'Syncing assignments...' }, async (progress) => {
+      progress.report({ message: `Syncing assignments for ${course.title || course.path}` });
+      await this.repositoryManager.syncAssignmentsForCourse(courseId);
+    });
+  }
+
+  private async computeAssignmentInfo(
+    course: CourseList,
+    content: CourseContentList,
+    directoryName?: string
+  ): Promise<CourseContentAssignmentInfo | undefined> {
+    const deployment = content.deployment as (CourseContentDeploymentList & { deployment_path?: string | null; version_identifier?: string | null }) | null | undefined;
+    const info: CourseContentAssignmentInfo = {
+      directoryName,
+      versionIdentifier: (deployment as any)?.version_identifier || undefined,
+      versionTag: (deployment as any)?.version_tag || undefined,
+      deploymentStatus: deployment?.deployment_status || content.deployment_status || null,
+      hasDeployment: Boolean(deployment)
+    };
+
+    if (!directoryName) {
+      return info;
+    }
+
+    const resolution = await this.resolveAssignmentDirectory(course, directoryName, false);
+    info.folderExists = resolution.exists;
+    info.statusMessage = resolution.statusMessage;
+
+    if (!resolution.repositoryPath || !resolution.absolutePath || !resolution.exists) {
+      return info;
+    }
+
+    const repoPath = resolution.repositoryPath;
+    const directoryPath = resolution.absolutePath;
+    const relativePath = path.relative(repoPath, directoryPath) || '.';
+    const normalizedPath = relativePath.split(path.sep).join('/');
+
+    try {
+      const repo = await this.gitWrapper.getRepository(repoPath);
+
+      let commitExists = false;
+      if (info.versionIdentifier) {
+        try {
+          await repo.revparse([`${info.versionIdentifier}^{commit}`]);
+          commitExists = true;
+        } catch {
+          info.commitMissing = true;
+        }
+      }
+
+      let hasDiff = false;
+      if (info.versionIdentifier && commitExists) {
+        const diffSummary = await repo.diffSummary([info.versionIdentifier, '--', normalizedPath === '.' ? '.' : normalizedPath]);
+        hasDiff = diffSummary.changed > 0;
+      }
+
+      const status = await this.gitWrapper.status(repoPath);
+      const prefix = normalizedPath === '.' ? '' : (normalizedPath.endsWith('/') ? normalizedPath : `${normalizedPath}/`);
+      const hasStatusChanges = this.statusContainsPath(status, prefix);
+
+      info.hasLocalChanges = hasDiff || hasStatusChanges;
+    } catch (error) {
+      info.diffError = error instanceof Error ? error.message : String(error);
+    }
+
+    return info;
+  }
+
+  private statusContainsPath(status: any, prefix: string): boolean {
+    if (!status) {
+      return false;
+    }
+
+    if (!prefix) {
+      return !status.isClean;
+    }
+
+    const matches = (value: string | undefined) => Boolean(value && value.startsWith(prefix));
+    if (status.files?.some((file: { path: string }) => matches(file.path))) {
+      return true;
+    }
+    if (status.created?.some((file: string) => matches(file))) {
+      return true;
+    }
+    if (status.modified?.some((file: string) => matches(file))) {
+      return true;
+    }
+    if (status.deleted?.some((file: string) => matches(file))) {
+      return true;
+    }
+    if (status.conflicted?.some((file: string) => matches(file))) {
+      return true;
+    }
+    if (status.renamed?.some((file: { from: string; to: string }) => matches(file.from) || matches(file.to))) {
+      return true;
+    }
+    return false;
+  }
+
+  private async getFullCourse(course: CourseList): Promise<any> {
+    const cached = this.fullCourseCache.get(course.id);
+    if (cached) {
+      return cached;
+    }
+
+    let fullCourse: any = await this.apiService.getCourse(course.id);
+    if (!fullCourse) {
+      fullCourse = { ...course };
+    }
+
+    if (!fullCourse.organization && fullCourse.organization_id) {
+      try {
+        fullCourse.organization = await (this.apiService as any).getOrganization(fullCourse.organization_id);
+      } catch (error) {
+        console.warn('Failed to load organization for course', error);
+      }
+    }
+
+    this.fullCourseCache.set(course.id, fullCourse);
+    return fullCourse;
+  }
+
+  public rememberAssignmentIdentifier(contentId: string, identifier: string): void {
+    this.assignmentIdentifierCache.set(contentId, identifier);
   }
 
   private async getCourseContents(courseId: string): Promise<CourseContentList[]> {
@@ -1062,7 +1274,15 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   }
 
   // Helper methods for course content management
-  async createCourseContent(folderItem: CourseFolderTreeItem, title: string, contentTypeId: string, parentPath?: string, slug?: string): Promise<void> {
+  async createCourseContent(
+    folderItem: CourseFolderTreeItem,
+    title: string,
+    contentTypeId: string,
+    parentPath?: string,
+    slug?: string,
+    description?: string,
+    properties?: CourseContentCreate['properties']
+  ): Promise<CourseContentGet | undefined> {
     try {
       const position = await this.getNextPosition(folderItem.course.id, parentPath);
       
@@ -1079,13 +1299,15 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       
       const contentData: CourseContentCreate = {
         title,
+        description,
         path,
         position,
         course_id: folderItem.course.id,
         course_content_type_id: contentTypeId,
+        properties
       };
       
-      await this.apiService.createCourseContent(folderItem.course.id, contentData);
+      const created = await this.apiService.createCourseContent(folderItem.course.id, contentData);
       
       // Clear cache and refresh
       // Cache cleared via API
@@ -1100,8 +1322,10 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       } else {
         this.refreshNode(folderItem);
       }
+      return created;
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to create course content: ${error}`);
+      return undefined;
     }
   }
 

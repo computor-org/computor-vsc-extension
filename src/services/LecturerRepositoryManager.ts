@@ -96,6 +96,12 @@ export class LecturerRepositoryManager {
     return path.join(this.workspaceRoot, info.repoDir, deploymentPath || '');
   }
 
+  public getAssignmentsRepoRoot(course: any): string | null {
+    const info = this.getAssignmentsRepoInfo(course);
+    if (!info) return null;
+    return path.join(this.workspaceRoot, info.repoDir);
+  }
+
   private async directoryExists(dir: string): Promise<boolean> {
     try { return (await fs.promises.stat(dir)).isDirectory(); } catch { return false; }
   }

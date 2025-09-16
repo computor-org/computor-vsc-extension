@@ -12,6 +12,19 @@ import {
 import { IconGenerator } from '../../../utils/IconGenerator';
 import { hasExampleAssigned, getExampleVersionId, getDeploymentStatus } from '../../../utils/deploymentHelpers';
 
+export interface CourseContentAssignmentInfo {
+  directoryName?: string;
+  versionIdentifier?: string | null;
+  versionTag?: string | null;
+  deploymentStatus?: string | null;
+  hasDeployment?: boolean;
+  hasLocalChanges?: boolean;
+  folderExists?: boolean;
+  statusMessage?: { message: string; severity: 'info' | 'warning' | 'error' };
+  commitMissing?: boolean;
+  diffError?: string;
+}
+
 export class OrganizationTreeItem extends vscode.TreeItem {
   constructor(
     public readonly organization: OrganizationList,
@@ -70,7 +83,9 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     public readonly contentType?: CourseContentTypeList,
     public readonly isSubmittable: boolean = false,
     public readonly exampleVersionInfo?: any,
-    public readonly providedCollapsibleState?: vscode.TreeItemCollapsibleState
+    public readonly providedCollapsibleState?: vscode.TreeItemCollapsibleState,
+    public assignmentInfo?: CourseContentAssignmentInfo,
+    public assignmentDirectory?: string
   ) {
     super(
       courseContent.title || courseContent.path,
@@ -79,6 +94,9 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     );
     
     this.id = `content-${courseContent.id}`;
+    if (!this.assignmentDirectory && this.assignmentInfo?.directoryName) {
+      this.assignmentDirectory = this.assignmentInfo.directoryName;
+    }
     
     this.contextValue = this.getContextValue();
     this.iconPath = this.getIcon();
@@ -111,6 +129,14 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     
     if (this.hasChildren) {
       parts.push('hasChildren');
+    }
+    
+    if (this.assignmentInfo?.hasLocalChanges) {
+      parts.push('localChanges');
+    }
+
+    if (this.assignmentInfo && this.assignmentInfo.folderExists === false) {
+      parts.push('missingFolder');
     }
     
     return parts.join('.');
@@ -152,13 +178,47 @@ export class CourseContentTreeItem extends vscode.TreeItem {
       const versionId = getExampleVersionId(this.courseContent);
       if (versionId) {
         if (this.exampleVersionInfo) {
-          parts.push(`Version: ${this.exampleVersionInfo.version_tag || this.exampleVersionInfo.version || 'unknown'}`);
+          parts.push(`Version tag: ${this.exampleVersionInfo.version_tag || this.exampleVersionInfo.version || 'unknown'}`);
         } else {
-          parts.push(`Version ID: ${versionId}`);
+          parts.push('Version tag: loading...');
         }
       } else {
-        parts.push(`Version: <not set>`);
+        parts.push('Version tag: <not set>');
       }
+    }
+
+    if (this.assignmentInfo?.directoryName) {
+      parts.push(`Directory: ${this.assignmentInfo.directoryName}`);
+    } else if (this.assignmentDirectory) {
+      parts.push(`Directory: ${this.assignmentDirectory}`);
+    }
+
+    if (this.assignmentInfo?.versionIdentifier) {
+      parts.push(`Deployment commit: ${this.assignmentInfo.versionIdentifier}`);
+    }
+
+    if (this.assignmentInfo?.versionTag) {
+      parts.push(`Version tag: ${this.assignmentInfo.versionTag}`);
+    }
+
+    if (this.assignmentInfo?.hasLocalChanges) {
+      parts.push('Local changes detected since last deployment');
+    }
+
+    if (this.assignmentInfo && this.assignmentInfo.folderExists === false) {
+      parts.push('Assignment directory missing locally');
+    }
+
+    if (this.assignmentInfo?.commitMissing) {
+      parts.push('Deployment commit not found locally');
+    }
+
+    if (this.assignmentInfo?.statusMessage) {
+      parts.push(`${this.assignmentInfo.statusMessage.severity.toUpperCase()}: ${this.assignmentInfo.statusMessage.message}`);
+    }
+
+    if (this.assignmentInfo?.diffError) {
+      parts.push(`Diff error: ${this.assignmentInfo.diffError}`);
     }
     
     return parts.join('\n') || this.courseContent.path;
@@ -166,42 +226,58 @@ export class CourseContentTreeItem extends vscode.TreeItem {
 
   private getDescription(): string | undefined {
     const parts: string[] = [];
-    
-    // Show only version indicator for examples
-    if (hasExampleAssigned(this.courseContent)) {
-      let versionText = '<not set>';
-      if (this.exampleVersionInfo) {
-        versionText = this.exampleVersionInfo.version_tag || this.exampleVersionInfo.version || 'unknown';
-      } else if (getExampleVersionId(this.courseContent)) {
-        versionText = 'loading...';
-      }
-      parts.push(`📦 ${versionText}`);
-    }
-    
-    // Show deployment status only for assignments (submittable content)
-    // Check if it's an assignment based on course_content_kind_id
     const isAssignment = this.contentType?.course_content_kind_id === 'assignment';
-    
-    // Check deployment status from either the new nested structure or old deprecated fields
-    const deploymentStatus = getDeploymentStatus(this.courseContent);
-    
-    if (isAssignment && deploymentStatus) {
-      // According to new model, valid statuses are: pending, in_progress, deployed, failed
-      const statusIcons: { [key: string]: string } = {
-        'pending': '⏳',         // Assigned but not deployed
-        'in_progress': '🔄',     // Currently deploying
-        'deployed': '✅',        // Successfully deployed
-        'failed': '❌',          // Deployment failed
-        // Legacy status mappings (for backwards compatibility)
-        'pending_release': '📤',
-        'assigned': '📎',
-        'deploying': '🔄',
-        'released': '🚀'
+    const assignment = this.assignmentInfo;
+
+    if (isAssignment) {
+      const statusIcons: Record<string, string> = {
+        pending: '⏳',
+        in_progress: '🔄',
+        deployed: '✅',
+        failed: '❌',
+        pending_release: '📤',
+        assigned: '📎',
+        deploying: '🔄',
+        released: '🚀'
       };
-      const icon = statusIcons[deploymentStatus] || '❓';
-      parts.push(`${icon} ${deploymentStatus}`);
+      const statusLabels: Record<string, string> = {
+        pending: 'pending',
+        in_progress: 'in progress',
+        deployed: 'deployed',
+        failed: 'failed',
+        pending_release: 'pending release',
+        assigned: 'assigned',
+        deploying: 'deploying',
+        released: 'released'
+      };
+
+      const deploymentStatus = assignment?.deploymentStatus || getDeploymentStatus(this.courseContent);
+      if (deploymentStatus) {
+        const icon = statusIcons[deploymentStatus] || '❓';
+        const label = statusLabels[deploymentStatus] || deploymentStatus.replace(/_/g, ' ');
+        parts.push(`${icon} ${label}`);
+      } else if (assignment?.hasDeployment) {
+        parts.push('✅ deployed');
+      }
+
+      if (assignment && assignment.folderExists === false) {
+        parts.push('⚠ not synced');
+      }
+
+      if (assignment?.hasDeployment && assignment.hasLocalChanges) {
+        parts.push('✏️ changes');
+      }
+
+      if (assignment?.commitMissing) {
+        parts.push('⚠ commit missing');
+      }
+
+      if (assignment?.statusMessage && assignment.statusMessage.severity !== 'info') {
+        const icon = assignment.statusMessage.severity === 'error' ? '❌' : '⚠';
+        parts.push(`${icon} ${assignment.statusMessage.message}`);
+      }
     }
-    
+
     return parts.length > 0 ? parts.join(' • ') : undefined;
   }
 }
