@@ -1343,6 +1343,17 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         latestVersion.id
       );
 
+      // Trigger assignments sync so files are populated in assignments repo
+      try {
+        await this.apiService.generateAssignments(target.course.id, {
+          course_content_ids: [target.courseContent.id],
+          overwrite_strategy: 'skip_if_exists',
+          commit_message: `Initialize assignment from example ${fullExample.identifier || fullExample.title}`
+        });
+      } catch (e) {
+        console.warn('Failed to trigger assignments generation after assigning example:', e);
+      }
+
       // Clear cache and force refresh to show the updated assignment
       await this.forceRefreshCourse(target.course.id);
 
@@ -1460,6 +1471,16 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
               createdContent.id,
               latestVersion.id
             );
+            // Trigger assignments sync for the newly created content
+            try {
+              await this.apiService.generateAssignments(courseId, {
+                course_content_ids: [createdContent.id],
+                overwrite_strategy: 'skip_if_exists',
+                commit_message: `Initialize assignment from example ${fullExample.identifier || fullExample.title}`
+              });
+            } catch (e) {
+              console.warn('Failed to trigger assignments generation after creating content:', e);
+            }
           } catch (assignError) {
             console.warn('Failed to assign example version:', assignError);
           }

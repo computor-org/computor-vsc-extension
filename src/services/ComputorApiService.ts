@@ -795,13 +795,32 @@ export class ComputorApiService {
     console.log('[ComputorApiService] All caches cleared');
   }
 
-  async generateStudentTemplate(courseId: string): Promise<{ task_id: string }> {
+  async generateStudentTemplate(courseId: string): Promise<{ workflow_id: string; status?: string; contents_to_process?: number }> {
     const client = await this.getHttpClient();
-    const response = await client.post<{ task_id: string }>(
+    // Backend now returns a workflow-based response (Temporal): { workflow_id, status, contents_to_process }
+    const response = await client.post<{ workflow_id: string; status?: string; contents_to_process?: number }>(
       `/system/courses/${courseId}/generate-student-template`,
       {}
     );
     console.log('Generate student template response:', response.data);
+    return response.data;
+  }
+
+  async generateAssignments(courseId: string, params: {
+    assignments_url?: string;
+    course_content_ids?: string[];
+    parent_id?: string;
+    include_descendants?: boolean;
+    all?: boolean;
+    overwrite_strategy?: 'skip_if_exists' | 'force_update';
+    commit_message?: string;
+  }): Promise<{ workflow_id: string; status?: string; contents_to_process?: number }> {
+    const client = await this.getHttpClient();
+    const response = await client.post<{ workflow_id: string; status?: string; contents_to_process?: number }>(
+      `/system/courses/${courseId}/generate-assignments`,
+      params
+    );
+    console.log('Generate assignments response:', response.data);
     return response.data;
   }
 

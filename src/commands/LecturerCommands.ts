@@ -819,6 +819,17 @@ export class LecturerCommands {
       }
     }
 
+    // Trigger assignments sync so files are populated in assignments repo for this content
+    try {
+      await this.apiService.generateAssignments(item.course.id, {
+        course_content_ids: [item.courseContent.id],
+        overwrite_strategy: 'skip_if_exists',
+        commit_message: `Initialize assignment from example ${example.identifier || example.title}`
+      });
+    } catch (e) {
+      console.warn('Failed to trigger assignments generation after assigning example:', e);
+    }
+
     console.log('Example assignment completed, refreshing tree...');
     
     // Clear cache and refresh the specific item
@@ -1231,62 +1242,46 @@ export class LecturerCommands {
   private async executeRelease(courseId: string): Promise<void> {
     await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
-      title: "Releasing course content",
+      title: 'Releasing course content',
       cancellable: false
     }, async (progress) => {
-      progress.report({ increment: 0, message: "Starting release process..." });
-      
-      const result = await this.apiService.generateStudentTemplate(courseId);
-      console.log('Release started, response:', result);
-      
-      // Handle both possible response formats
-      const taskId = result?.task_id || (result as any)?.id;
-      if (!taskId) {
-        console.error('No task ID in response:', result);
-        // If no task ID but the request succeeded (200 OK), consider it a synchronous success
-        if (result) {
-          vscode.window.showInformationMessage('✅ Course content released successfully!');
-          // Clear API cache and force refresh the course data
-          this.apiService.clearCourseCache(courseId);
-          await this.treeDataProvider.forceRefreshCourse(courseId);
-          return;
+      progress.report({ increment: 0, message: 'Preparing release...' });
+
+      // Step 1: Generate assignments for selected/pending contents
+      try {
+        // Get list of pending items again to scope the assignments sync
+        const pendingContents = await this.getPendingReleaseContents(courseId);
+        const contentIds = pendingContents.map((c: any) => c.id);
+        if (contentIds.length > 0) {
+          progress.report({ message: `Syncing ${contentIds.length} assignment(s) to repo...` });
+          await this.apiService.generateAssignments(courseId, {
+            course_content_ids: contentIds,
+            overwrite_strategy: 'skip_if_exists',
+            commit_message: 'Sync assignments prior to student-template release'
+          });
         }
-        throw new Error('Failed to start release process - no task ID returned');
+      } catch (e) {
+        console.warn('Assignments generation failed or not available; continuing to student-template.', e);
       }
-      
-      const taskStatus = await this.pollTaskStatus(taskId, progress);
-      
-      if (taskStatus?.status === 'completed') {
-        vscode.window.showInformationMessage('✅ Course content released successfully!');
-        // Clear API cache and force refresh the course data
-        this.apiService.clearCourseCache(courseId);
-        await this.treeDataProvider.forceRefreshCourse(courseId);
-      } else if (taskStatus?.status === 'failed') {
-        throw new Error(taskStatus.error || 'Release process failed');
-      } else {
-        throw new Error('Release process timed out');
-      }
+
+      // Step 2: Trigger student-template generation (Temporal workflow)
+      progress.report({ message: 'Starting student-template release...' });
+      const result = await this.apiService.generateStudentTemplate(courseId);
+      console.log('Student-template workflow started:', result);
+
+      const items = typeof result?.contents_to_process === 'number' ? result.contents_to_process : undefined;
+      const msg = items && items > 0
+        ? `✅ Release started for ${items} item(s). This runs in background.`
+        : '✅ Release started. This runs in background.';
+      vscode.window.showInformationMessage(msg);
+
+      // Clear API cache and force refresh the course data
+      this.apiService.clearCourseCache(courseId);
+      await this.treeDataProvider.forceRefreshCourse(courseId);
     });
   }
   
-  private async pollTaskStatus(taskId: string, progress: vscode.Progress<{ message?: string; increment?: number }>): Promise<any> {
-    let taskStatus = await this.apiService.getTaskStatus(taskId);
-    let pollCount = 0;
-    const maxPolls = 60; // 5 minutes max
-    
-    while (taskStatus?.status === 'running' && pollCount < maxPolls) {
-      progress.report({ 
-        increment: (100 / maxPolls), 
-        message: `Processing... ${taskStatus.message || ''}` 
-      });
-      
-      await new Promise(resolve => setTimeout(resolve, 5000)); // Poll every 5 seconds
-      taskStatus = await this.apiService.getTaskStatus(taskId);
-      pollCount++;
-    }
-    
-    return taskStatus;
-  }
+  // Removed task polling; backend now returns workflow-based responses for release operations
 
   private async showCourseDetails(item: CourseTreeItem): Promise<void> {
     // Fetch fresh data from API

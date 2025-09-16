@@ -1177,6 +1177,16 @@ Explain how to use this example.
               createdContent.id,
               latestVersion.id
             );
+            // Trigger assignments sync for this single content
+            try {
+              await this.apiService.generateAssignments(courseSelection.id, {
+                course_content_ids: [createdContent.id],
+                overwrite_strategy: 'skip_if_exists',
+                commit_message: `Initialize assignment from example ${fullExample.identifier || fullExample.title}`
+              });
+            } catch (e) {
+              console.warn('Failed to trigger assignments generation after creating content:', e);
+            }
             vscode.window.showInformationMessage(
               `Successfully created assignment "${item.example.title}" with version ${latestVersion.version_tag} in course "${courseSelection.label}"`
             );
