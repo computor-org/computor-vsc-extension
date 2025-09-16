@@ -7,11 +7,13 @@ import { TutorSelectionService } from '../services/TutorSelectionService';
 import simpleGit from 'simple-git';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
 // Import interfaces from generated types (interfaces removed to avoid duplication)
+import { CourseMemberCommentsWebviewProvider } from '../ui/webviews/CourseMemberCommentsWebviewProvider';
 
 export class TutorCommands {
   private context: vscode.ExtensionContext;
   private treeDataProvider: TutorStudentTreeProvider;
   private apiService: ComputorApiService;
+  private commentsWebviewProvider: CourseMemberCommentsWebviewProvider;
 
   constructor(
     context: vscode.ExtensionContext, 
@@ -22,6 +24,7 @@ export class TutorCommands {
     this.treeDataProvider = treeDataProvider;
     // Use provided apiService or create a new one
     this.apiService = apiService || new ComputorApiService(context);
+    this.commentsWebviewProvider = new CourseMemberCommentsWebviewProvider(context, this.apiService);
     // No workspace manager needed for current tutor actions
   }
 
@@ -39,6 +42,12 @@ export class TutorCommands {
           this.apiService.clearCourseContentKindsCache();
         } catch {}
         this.treeDataProvider.refresh();
+      })
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.tutor.showCourseMemberComments', async () => {
+        await this.showCourseMemberComments();
       })
     );
 
@@ -317,5 +326,30 @@ export class TutorCommands {
         }
       })
     );
+  }
+
+  private async showCourseMemberComments(): Promise<void> {
+    try {
+      const selection = TutorSelectionService.getInstance();
+      const memberId = selection.getCurrentMemberId();
+      if (!memberId) {
+        vscode.window.showWarningMessage('No course member selected.');
+        return;
+      }
+
+      const segments: string[] = [];
+      const memberLabel = selection.getCurrentMemberLabel();
+      const courseLabel = selection.getCurrentCourseLabel();
+      if (memberLabel) {
+        segments.push(memberLabel);
+      }
+      if (courseLabel) {
+        segments.push(courseLabel);
+      }
+      const title = segments.length > 0 ? segments.join(' — ') : memberId;
+      await this.commentsWebviewProvider.showComments(memberId, title);
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to open comments: ${error?.message || error}`);
+    }
   }
 }

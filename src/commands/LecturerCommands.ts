@@ -13,9 +13,12 @@ import { OrganizationWebviewProvider } from '../ui/webviews/OrganizationWebviewP
 import { CourseFamilyWebviewProvider } from '../ui/webviews/CourseFamilyWebviewProvider';
 import { CourseContentTypeWebviewProvider } from '../ui/webviews/CourseContentTypeWebviewProvider';
 import { CourseGroupWebviewProvider } from '../ui/webviews/CourseGroupWebviewProvider';
+import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
+import { CourseMemberCommentsWebviewProvider } from '../ui/webviews/CourseMemberCommentsWebviewProvider';
 import { ExampleGet } from '../types/generated/examples';
 import { hasExampleAssigned, getExampleVersionId, getDeploymentStatus } from '../utils/deploymentHelpers';
-import type { CourseContentTypeList, CourseList } from '../types/generated/courses';
+import type { CourseContentTypeList, CourseList, CourseFamilyList, CourseContentGet } from '../types/generated/courses';
+import type { OrganizationList } from '../types/generated/organizations';
 import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager';
 
 interface ExampleQuickPickItem extends vscode.QuickPickItem {
@@ -33,6 +36,8 @@ export class LecturerCommands {
   private courseContentTypeWebviewProvider: CourseContentTypeWebviewProvider;
   private courseGroupWebviewProvider: CourseGroupWebviewProvider;
   private courseGroupCommands: CourseGroupCommands;
+  private messagesWebviewProvider: MessagesWebviewProvider;
+  private commentsWebviewProvider: CourseMemberCommentsWebviewProvider;
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -49,6 +54,8 @@ export class LecturerCommands {
     this.courseFamilyWebviewProvider = new CourseFamilyWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.courseContentTypeWebviewProvider = new CourseContentTypeWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.courseGroupWebviewProvider = new CourseGroupWebviewProvider(context, this.apiService, this.treeDataProvider);
+    this.messagesWebviewProvider = new MessagesWebviewProvider(context, this.apiService);
+    this.commentsWebviewProvider = new CourseMemberCommentsWebviewProvider(context, this.apiService);
     this.courseGroupCommands = new CourseGroupCommands(this.apiService, this.treeDataProvider);
   }
 
@@ -117,6 +124,18 @@ export class LecturerCommands {
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.createCourseContent', async (item: CourseFolderTreeItem | CourseContentTreeItem) => {
         await this.createCourseContent(item);
+      })
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.showMessages', async (item: CourseTreeItem | CourseGroupTreeItem | CourseContentTreeItem) => {
+        await this.showMessages(item);
+      })
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.showCourseMemberComments', async (item: CourseMemberTreeItem) => {
+        await this.showCourseMemberComments(item);
       })
     );
 
@@ -245,6 +264,18 @@ export class LecturerCommands {
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.showCourseGroupDetails', async (item: CourseGroupTreeItem) => {
         await this.showCourseGroupDetails(item);
+      })
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.createAssignmentFolder', async (item: CourseContentTreeItem) => {
+        await this.createAssignmentFolder(item);
+      })
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.createAssignmentFile', async (item: CourseContentTreeItem) => {
+        await this.createAssignmentFile(item);
       })
     );
 
@@ -610,7 +641,7 @@ export class LecturerCommands {
     });
 
     const initialSlug = title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-    const isAssignment = this.isAssignmentContentType(selectedType.contentType);
+    const isAssignment = this.isContentTypeSubmittable(selectedType.contentType);
 
     if (!isAssignment) {
       await this.treeDataProvider.createCourseContent(
@@ -782,6 +813,202 @@ export class LecturerCommands {
     }
   }
 
+  private async createAssignmentFolder(item: CourseContentTreeItem): Promise<void> {
+    try {
+      const context = await this.resolveAssignmentEditingContext(item);
+      if (!context) {
+        return;
+      }
+
+      const folderInput = await vscode.window.showInputBox({
+        title: 'New folder inside assignment',
+        prompt: 'Enter folder name (relative to assignment root)',
+        placeHolder: 'e.g. src/utils',
+        ignoreFocusOut: true
+      });
+      if (!folderInput) {
+        return;
+      }
+
+      const relativePath = this.normalizeRelativePath(folderInput);
+      if (!relativePath) {
+        vscode.window.showErrorMessage('Invalid folder name. Use relative paths without . or .. segments.');
+        return;
+      }
+
+      const targetPath = path.join(context.assignmentRoot, relativePath);
+      if (!this.isWithinAssignmentRoot(context.assignmentRoot, targetPath)) {
+        vscode.window.showErrorMessage('Target folder must remain inside the assignment directory.');
+        return;
+      }
+
+      if (fs.existsSync(targetPath)) {
+        vscode.window.showInformationMessage(`Folder already exists: ${relativePath}`);
+        return;
+      }
+
+      await fs.promises.mkdir(targetPath, { recursive: true });
+      this.treeDataProvider.refreshNode(item);
+      vscode.window.showInformationMessage(`Created folder: ${relativePath}`);
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to create folder: ${error?.message || error}`);
+    }
+  }
+
+  private async createAssignmentFile(item: CourseContentTreeItem): Promise<void> {
+    try {
+      const context = await this.resolveAssignmentEditingContext(item);
+      if (!context) {
+        return;
+      }
+
+      const fileInput = await vscode.window.showInputBox({
+        title: 'New file inside assignment',
+        prompt: 'Enter file name (relative to assignment root)',
+        placeHolder: 'e.g. src/index.ts',
+        ignoreFocusOut: true
+      });
+      if (!fileInput) {
+        return;
+      }
+
+      const relativePath = this.normalizeRelativePath(fileInput);
+      if (!relativePath) {
+        vscode.window.showErrorMessage('Invalid file name. Use relative paths without . or .. segments.');
+        return;
+      }
+
+      const targetPath = path.join(context.assignmentRoot, relativePath);
+      if (!this.isWithinAssignmentRoot(context.assignmentRoot, targetPath)) {
+        vscode.window.showErrorMessage('Target file must remain inside the assignment directory.');
+        return;
+      }
+
+      const targetDirectory = path.dirname(targetPath);
+      await fs.promises.mkdir(targetDirectory, { recursive: true });
+
+      if (fs.existsSync(targetPath)) {
+        const overwrite = await vscode.window.showQuickPick(['Overwrite', 'Cancel'], {
+          title: 'File already exists',
+          placeHolder: `${relativePath} already exists.`,
+          ignoreFocusOut: true
+        });
+        if (overwrite !== 'Overwrite') {
+          return;
+        }
+      }
+
+      await fs.promises.writeFile(targetPath, '');
+      this.treeDataProvider.refreshNode(item);
+      const document = await vscode.workspace.openTextDocument(targetPath);
+      await vscode.window.showTextDocument(document, { preview: false });
+      vscode.window.showInformationMessage(`Created file: ${relativePath}`);
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to create file: ${error?.message || error}`);
+    }
+  }
+
+  private async resolveAssignmentEditingContext(item: CourseContentTreeItem): Promise<{ course: CourseList; content: CourseContentGet; directoryName: string; assignmentRoot: string } | undefined> {
+    if (!item?.course?.id || !item.courseContent?.id) {
+      vscode.window.showWarningMessage('Select an assignment first.');
+      return undefined;
+    }
+
+    const kindId = item.courseContent.course_content_kind_id || item.contentType?.course_content_kind_id;
+    if (kindId !== 'assignment') {
+      vscode.window.showWarningMessage('This action is only available for assignments.');
+      return undefined;
+    }
+
+    const course = await this.apiService.getCourse(item.course.id);
+    const content = await this.apiService.getCourseContent(item.courseContent.id, true) as CourseContentGet | undefined;
+    if (!course || !content) {
+      vscode.window.showErrorMessage('Failed to load assignment details.');
+      return undefined;
+    }
+
+    const directoryName = this.getAssignmentDirectoryName(content);
+    if (!directoryName) {
+      vscode.window.showWarningMessage('Assignment deployment path is not configured yet.');
+      return undefined;
+    }
+
+    const repoManager = new LecturerRepositoryManager(this.context, this.apiService);
+    await this.ensureAssignmentsRepo(course, repoManager);
+
+    const assignmentRoot = repoManager.getAssignmentFolderPath(course, directoryName);
+    if (!assignmentRoot) {
+      vscode.window.showWarningMessage('Assignments repository is not configured for this course.');
+      return undefined;
+    }
+
+    try {
+      await fs.promises.mkdir(assignmentRoot, { recursive: true });
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to prepare assignment directory: ${error?.message || error}`);
+      return undefined;
+    }
+
+    return { course, content, directoryName, assignmentRoot };
+  }
+
+  private async ensureAssignmentsRepo(course: CourseList, repoManager: LecturerRepositoryManager): Promise<void> {
+    const repoRoot = repoManager.getAssignmentsRepoRoot(course);
+    if (repoRoot && fs.existsSync(repoRoot)) {
+      return;
+    }
+
+    await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Syncing assignments repository...' }, async (progress) => {
+      progress.report({ message: `Syncing assignments for ${course.title || course.path}` });
+      await repoManager.syncAssignmentsForCourse(course.id);
+    });
+  }
+
+  private getAssignmentDirectoryName(content: CourseContentGet): string | undefined {
+    const deployment = (content as any)?.deployment;
+    const deploymentPath = typeof deployment?.deployment_path === 'string' && deployment.deployment_path.trim().length > 0
+      ? deployment.deployment_path.trim()
+      : undefined;
+    const exampleIdentifier = typeof deployment?.example_identifier === 'string' && deployment.example_identifier.trim().length > 0
+      ? deployment.example_identifier.trim()
+      : undefined;
+    return deploymentPath || exampleIdentifier || this.extractSlugFromPath(content.path);
+  }
+
+  private extractSlugFromPath(pathValue: string | undefined): string | undefined {
+    if (!pathValue) {
+      return undefined;
+    }
+    const segments = pathValue.split('.').filter(Boolean);
+    if (segments.length === 0) {
+      return undefined;
+    }
+    return segments[segments.length - 1];
+  }
+
+  private normalizeRelativePath(input: string): string | undefined {
+    const trimmed = input.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+
+    const segments = trimmed.split(/[/\\]+/).filter(segment => segment.length > 0);
+    if (segments.length === 0) {
+      return undefined;
+    }
+
+    if (segments.some(segment => segment === '.' || segment === '..' || segment.includes(':'))) {
+      return undefined;
+    }
+
+    return path.join(...segments);
+  }
+
+  private isWithinAssignmentRoot(base: string, candidate: string): boolean {
+    const relative = path.relative(base, candidate);
+    return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+  }
+
   private async prepareAssignmentDirectory(
     courseId: string,
     normalizedIdentifier: string,
@@ -834,14 +1061,13 @@ export class LecturerCommands {
       : 'description: ""';
 
     return [
-      "version: '1.0'",
+      `version: '${versionTag}'`,
       `slug: ${identifier}`,
       `title: ${title}`,
       descriptionBlock,
       'language: en',
       'license: MIT',
-      'keywords:',
-      `  - version_tag:${versionTag}`,
+      'keywords: []',
       'authors: []',
       'maintainers: []',
       'links: []',
@@ -855,9 +1081,69 @@ export class LecturerCommands {
     ].join('\n');
   }
 
-  private isAssignmentContentType(type: CourseContentTypeList): boolean {
-    const slug = type.slug?.toLowerCase() || '';
-    return type.course_content_kind_id === 'assignment' || slug.includes('assignment');
+  private isContentTypeSubmittable(type: CourseContentTypeList): boolean {
+    return type.course_content_kind?.submittable || false;
+  }
+
+  private async showMessages(item: CourseTreeItem | CourseGroupTreeItem | CourseContentTreeItem): Promise<void> {
+    try {
+      let target: MessageTargetContext | undefined;
+
+      if (item instanceof CourseTreeItem) {
+        target = {
+          title: item.course.title || item.course.path,
+          subtitle: this.buildCourseSubtitle(item.course, item.courseFamily, item.organization),
+          query: { course_id: item.course.id },
+          createPayload: { course_id: item.course.id }
+        };
+      } else if (item instanceof CourseGroupTreeItem) {
+        target = {
+          title: item.group.title || `Group ${item.group.id.slice(0, 8)}`,
+          subtitle: `${this.buildCourseSubtitle(item.course, item.courseFamily, item.organization)} › Group`,
+          query: { course_group_id: item.group.id },
+          createPayload: { course_group_id: item.group.id }
+        };
+      } else if (item instanceof CourseContentTreeItem) {
+        target = {
+          title: item.courseContent.title || item.courseContent.path,
+          subtitle: `${this.buildCourseSubtitle(item.course, item.courseFamily, item.organization)} › ${item.courseContent.path}`,
+          query: { course_content_id: item.courseContent.id },
+          createPayload: { course_content_id: item.courseContent.id, course_id: item.course.id }
+        };
+      }
+
+      if (!target) {
+        vscode.window.showWarningMessage('Messages are not available for this item.');
+        return;
+      }
+
+      await this.messagesWebviewProvider.showMessages(target);
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to open messages: ${error?.message || error}`);
+    }
+  }
+
+  private async showCourseMemberComments(item: CourseMemberTreeItem): Promise<void> {
+    try {
+      const given = item.member.user?.given_name;
+      const family = item.member.user?.family_name;
+      const fullName = [given, family].filter(Boolean).join(' ').trim();
+      const displayName = fullName
+        || item.member.user?.username
+        || item.member.user?.email
+        || `Member ${item.member.id.slice(0, 8)}`;
+      const title = `${displayName} — ${item.course.title || item.course.path}`;
+      await this.commentsWebviewProvider.showComments(item.member.id, title);
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to open comments: ${error?.message || error}`);
+    }
+  }
+
+  private buildCourseSubtitle(course: CourseList, courseFamily: CourseFamilyList, organization: OrganizationList): string {
+    const orgName = organization.title || organization.path;
+    const familyName = courseFamily.title || courseFamily.path;
+    const courseName = course.title || course.path;
+    return `${orgName} / ${familyName} / ${courseName}`;
   }
 
   private async renameCourseContent(item: CourseContentTreeItem): Promise<void> {
