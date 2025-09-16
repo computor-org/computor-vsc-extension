@@ -7,10 +7,11 @@ import { ComputorApiService } from '../services/ComputorApiService';
 import { GitBranchManager } from '../services/GitBranchManager';
 import { CourseSelectionService } from '../services/CourseSelectionService';
 import { TestResultService } from '../services/TestResultService';
-import { SubmissionGroupStudentList } from '../types/generated';
+import { SubmissionGroupStudentList, MessageCreate } from '../types/generated';
 import { StudentRepositoryManager } from '../services/StudentRepositoryManager';
 import { execAsync } from '../utils/exec';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
+import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 
 // (Deprecated legacy types removed)
 
@@ -25,6 +26,7 @@ export class StudentCommands {
   private gitBranchManager: GitBranchManager;
   private testResultService: TestResultService;
   private gitlabTokenManager: GitLabTokenManager;
+  private messagesWebviewProvider: MessagesWebviewProvider;
 
   constructor(
     context: vscode.ExtensionContext, 
@@ -43,6 +45,7 @@ export class StudentCommands {
     this.gitlabTokenManager = GitLabTokenManager.getInstance(context);
     // Make sure TestResultService has the API service
     this.testResultService.setApiService(this.apiService);
+    this.messagesWebviewProvider = new MessagesWebviewProvider(context, this.apiService);
     void this.courseContentTreeProvider; // Unused for now
   }
   
@@ -55,6 +58,12 @@ export class StudentCommands {
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.student.refresh', () => {
         this.treeDataProvider.refresh();
+      })
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.student.showMessages', async (item?: any) => {
+        await this.showMessages(item);
       })
     );
 
@@ -598,6 +607,63 @@ export class StudentCommands {
         }
       })
     );
+  }
+
+  private async showMessages(item?: any): Promise<void> {
+    try {
+      const courseSelection = CourseSelectionService.getInstance();
+      const courseInfo = courseSelection.getCurrentCourseInfo();
+      const courseId = courseSelection.getCurrentCourseId();
+      if (!courseId) {
+        vscode.window.showWarningMessage('No course selected.');
+        return;
+      }
+
+      let target: MessageTargetContext | undefined;
+
+      const content = item?.courseContent as any;
+      if (content && typeof content.id === 'string') {
+        const submissionGroup = item?.submissionGroup as SubmissionGroupStudentList | undefined;
+        const contentTitle: string = content.title || content.path || 'Course content';
+        const courseLabel = courseInfo?.title || courseInfo?.path || 'Course';
+        const subtitle = courseLabel ? `${courseLabel} › ${content.path || contentTitle}` : undefined;
+        const query: Record<string, string> = {
+          course_id: content.course_id || courseId,
+          course_content_id: content.id
+        };
+        const createPayload: Partial<MessageCreate> = {
+          course_id: content.course_id || courseId,
+          course_content_id: content.id
+        };
+
+        if (submissionGroup?.id) {
+          query.course_submission_group_id = submissionGroup.id;
+          createPayload.course_submission_group_id = submissionGroup.id;
+        }
+
+        target = {
+          title: contentTitle,
+          subtitle,
+          query,
+          createPayload
+        } satisfies MessageTargetContext;
+      }
+
+      if (!target) {
+        const courseLabel = courseInfo?.title || courseInfo?.path || 'Course messages';
+        const subtitle = courseInfo?.path ? `Course • ${courseInfo.path}` : undefined;
+        target = {
+          title: courseLabel,
+          subtitle,
+          query: { course_id: courseId },
+          createPayload: { course_id: courseId }
+        } satisfies MessageTargetContext;
+      }
+
+      await this.messagesWebviewProvider.showMessages(target);
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to open messages: ${error?.message || error}`);
+    }
   }
 
   // Utility method - currently unused but may be needed in the future

@@ -253,6 +253,12 @@
         "category": "Computor Student"
       },
       {
+        "command": "computor.student.showMessages",
+        "title": "Show Messages",
+        "icon": "$(comment-discussion)",
+        "category": "Computor Student"
+      },
+      {
         "command": "computor.showTestResults",
         "title": "Show Test Results",
         "icon": "$(beaker)",
@@ -271,9 +277,39 @@
         "category": "Computor Tutor"
       },
       {
+        "command": "computor.tutor.showCourseMemberComments",
+        "title": "Show Comments",
+        "icon": "$(note)",
+        "category": "Computor Tutor"
+      },
+      {
         "command": "computor.lecturer.createCourseContent",
         "title": "Create Course Content",
         "icon": "$(add)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.lecturer.showMessages",
+        "title": "Show Messages",
+        "icon": "$(comment-discussion)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.lecturer.createAssignmentFolder",
+        "title": "New Folder",
+        "icon": "$(new-folder)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.lecturer.createAssignmentFile",
+        "title": "New File",
+        "icon": "$(new-file)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.lecturer.showCourseMemberComments",
+        "title": "Show Comments",
+        "icon": "$(note)",
         "category": "Computor Lecturer"
       },
       {
@@ -613,14 +649,49 @@
           "group": "1_content@1"
         },
         {
+          "command": "computor.lecturer.showMessages",
+          "when": "view == computor.lecturer.courses && viewItem =~ /course\\.contents/",
+          "group": "2_discussion@1"
+        },
+        {
           "command": "computor.lecturer.createCourseContent",
           "when": "view == computor.lecturer.courses && viewItem =~ /courseContent\\.nonSubmittable/",
           "group": "1_content@1"
         },
         {
+          "command": "computor.lecturer.showMessages",
+          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent/",
+          "group": "2_discussion@1"
+        },
+        {
+          "command": "computor.lecturer.createAssignmentFolder",
+          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment/",
+          "group": "1_files@1"
+        },
+        {
+          "command": "computor.lecturer.createAssignmentFile",
+          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment/",
+          "group": "1_files@2"
+        },
+        {
           "command": "computor.lecturer.changeCourseContentType",
           "when": "view == computor.lecturer.courses && viewItem =~ /courseContent/",
           "group": "2_edit@2"
+        },
+        {
+          "command": "computor.lecturer.showMessages",
+          "when": "view == computor.lecturer.courses && viewItem == course",
+          "group": "2_discussion@1"
+        },
+        {
+          "command": "computor.lecturer.showMessages",
+          "when": "view == computor.lecturer.courses && viewItem == course.group",
+          "group": "2_discussion@1"
+        },
+        {
+          "command": "computor.lecturer.showMessages",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/",
+          "group": "2_discussion@1"
         },
         {
           "command": "computor.lecturer.createCourseContentType",
@@ -653,13 +724,13 @@
           "group": "3_delete@1"
         },
         {
-          "command": "computor.lecturer.assignExample",
-          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment.*noExample/",
-          "group": "4_example@1"
+          "command": "computor.lecturer.showCourseMemberComments",
+          "when": "view == computor.lecturer.courses && viewItem == course.member",
+          "group": "2_discussion@2"
         },
         {
-          "command": "computor.lecturer.unassignExample",
-          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment.*hasExample/",
+          "command": "computor.lecturer.assignExample",
+          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment.*noExample/",
           "group": "4_example@1"
         },
         {
@@ -728,6 +799,11 @@
           "group": "3_external@1"
         },
         {
+          "command": "computor.tutor.showCourseMemberComments",
+          "when": "view == computor.tutor.courses && viewItem =~ /^tutorStudentContent/",
+          "group": "2_discussion@1"
+        },
+        {
           "command": "computor.lecturer.checkoutExample",
           "when": "view == computor.lecturer.examples && (viewItem == example || viewItem == exampleDownloaded)",
           "group": "1_actions@1"
@@ -751,6 +827,16 @@
           "command": "computor.lecturer.revealExampleInExplorer",
           "when": "view == computor.lecturer.examples && viewItem == exampleDownloaded",
           "group": "1_actions@3"
+        },
+        {
+          "command": "computor.student.showMessages",
+          "when": "view == computor.student.courses && viewItem == studentCourseRoot",
+          "group": "2_discussion@1"
+        },
+        {
+          "command": "computor.student.showMessages",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent/",
+          "group": "2_discussion@1"
         },
         {
           "command": "computor.student.showPreview",

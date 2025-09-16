@@ -40,7 +40,12 @@ import {
   CourseContentDeploymentGet,
   DeploymentHistoryGet,
   CourseContentStudentList,
-  CourseContentStudentUpdate
+  CourseContentStudentUpdate,
+  MessageList,
+  MessageGet,
+  MessageCreate,
+  MessageUpdate,
+  CourseMemberCommentList
 } from '../types/generated';
 
 // Query interface for examples (not generated yet)
@@ -53,6 +58,18 @@ interface ExampleQuery {
   search?: string;
   directory?: string;
 }
+
+type MessageQueryParams = Partial<{
+  id: string;
+  parent_id: string;
+  author_id: string;
+  user_id: string;
+  course_member_id: string;
+  course_submission_group_id: string;
+  course_group_id: string;
+  course_content_id: string;
+  course_id: string;
+}>;
 
 export class ComputorApiService {
   private httpClient?: BasicAuthHttpClient;
@@ -1540,6 +1557,123 @@ export class ComputorApiService {
       console.error('Failed to get result status:', error);
       return undefined;
     }
+  }
+
+  async listMessages(params: MessageQueryParams = {}): Promise<MessageList[]> {
+    return errorRecoveryService.executeWithRecovery(async () => {
+      const client = await this.getHttpClient();
+      const query = Object.fromEntries(
+        Object.entries(params).filter(([, value]) => value !== undefined && value !== null)
+      );
+      const response = await client.get<MessageList[]>('/messages', { params: query });
+      return response.data;
+    }, {
+      maxRetries: 2,
+      exponentialBackoff: true
+    });
+  }
+
+  async getMessage(id: string): Promise<MessageGet | undefined> {
+    return errorRecoveryService.executeWithRecovery(async () => {
+      const client = await this.getHttpClient();
+      const response = await client.get<MessageGet>(`/messages/${id}`);
+      return response.data;
+    }, {
+      maxRetries: 2,
+      exponentialBackoff: true
+    });
+  }
+
+  async createMessage(payload: MessageCreate): Promise<MessageGet> {
+    return errorRecoveryService.executeWithRecovery(async () => {
+      const client = await this.getHttpClient();
+      const response = await client.post<MessageGet>('/messages', payload);
+      return response.data;
+    }, {
+      maxRetries: 2,
+      exponentialBackoff: true
+    });
+  }
+
+  async updateMessage(id: string, updates: MessageUpdate): Promise<MessageGet> {
+    return errorRecoveryService.executeWithRecovery(async () => {
+      const client = await this.getHttpClient();
+      const response = await client.patch<MessageGet>(`/messages/${id}`, updates);
+      return response.data;
+    }, {
+      maxRetries: 2,
+      exponentialBackoff: true
+    });
+  }
+
+  async deleteMessage(id: string): Promise<void> {
+    const client = await this.getHttpClient();
+    await client.delete(`/messages/${id}`);
+  }
+
+  async markMessageRead(id: string): Promise<void> {
+    const client = await this.getHttpClient();
+    await client.post(`/messages/${id}/reads`);
+  }
+
+  async markMessageUnread(id: string): Promise<void> {
+    const client = await this.getHttpClient();
+    await client.delete(`/messages/${id}/reads`);
+  }
+
+  async listCourseMemberComments(courseMemberId: string): Promise<CourseMemberCommentList[]> {
+    return errorRecoveryService.executeWithRecovery(async () => {
+      const client = await this.getHttpClient();
+      const response = await client.get<CourseMemberCommentList[]>(
+        '/course-member-comments',
+        { params: { course_member_id: courseMemberId } }
+      );
+      return response.data;
+    }, {
+      maxRetries: 2,
+      exponentialBackoff: true
+    });
+  }
+
+  async createCourseMemberComment(courseMemberId: string, message: string): Promise<CourseMemberCommentList[]> {
+    return errorRecoveryService.executeWithRecovery(async () => {
+      const client = await this.getHttpClient();
+      const response = await client.post<CourseMemberCommentList[]>(
+        '/course-member-comments',
+        { course_member_id: courseMemberId, message }
+      );
+      return response.data;
+    }, {
+      maxRetries: 2,
+      exponentialBackoff: true
+    });
+  }
+
+  async updateCourseMemberComment(courseMemberId: string, commentId: string, message: string): Promise<CourseMemberCommentList[]> {
+    return errorRecoveryService.executeWithRecovery(async () => {
+      const client = await this.getHttpClient();
+      const response = await client.patch<CourseMemberCommentList[]>(
+        `/course-member-comments/${commentId}`,
+        { message }
+      );
+      return response.data;
+    }, {
+      maxRetries: 2,
+      exponentialBackoff: true
+    });
+  }
+
+  async deleteCourseMemberComment(courseMemberId: string, commentId: string): Promise<CourseMemberCommentList[]> {
+    return errorRecoveryService.executeWithRecovery(async () => {
+      const client = await this.getHttpClient();
+      const response = await client.delete<CourseMemberCommentList[]>(
+        `/course-member-comments/${commentId}`
+      );
+      return response.data;
+    }, {
+      maxRetries: 2,
+      exponentialBackoff: true
+    });
   }
 
   /**
