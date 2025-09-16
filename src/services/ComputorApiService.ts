@@ -795,6 +795,17 @@ export class ComputorApiService {
     console.log('[ComputorApiService] All caches cleared');
   }
 
+  async getLecturerCourses(): Promise<any[] | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const resp = await client.get<any[]>('/lecturers/courses');
+      return resp.data || [];
+    } catch (e) {
+      console.warn('[API] getLecturerCourses failed:', e);
+      return undefined;
+    }
+  }
+
   async generateStudentTemplate(courseId: string): Promise<{ workflow_id: string; status?: string; contents_to_process?: number }> {
     const client = await this.getHttpClient();
     // Backend now returns a workflow-based response (Temporal): { workflow_id, status, contents_to_process }

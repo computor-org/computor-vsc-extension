@@ -46,6 +46,7 @@ interface ActiveSession {
 
 const STUDENT_MARKER = '.computor_student';
 const TUTOR_MARKER = '.computor_tutor';
+const LECTURER_MARKER = '.computor_lecturer';
 
 function getWorkspaceRoot(): string | undefined {
   const ws = vscode.workspace.workspaceFolders;
@@ -235,6 +236,7 @@ abstract class BaseRoleController {
 class LecturerController extends BaseRoleController {
   private tree?: LecturerTreeDataProvider;
   private exampleTree?: LecturerExampleTreeProvider;
+  private repoManager?: any;
 
   async activate(client: ReturnType<typeof buildHttpClient>): Promise<void> {
     const api = await this.setupApi(client);
@@ -246,6 +248,19 @@ class LecturerController extends BaseRoleController {
     } catch (e) {
       vscode.window.showErrorMessage('Lecturer role not available.');
       throw e;
+    }
+
+    // Ensure lecturer workspace marker exists (no course binding)
+    try {
+      const root = getWorkspaceRoot();
+      if (root) {
+        const file = path.join(root, LECTURER_MARKER);
+        if (!fs.existsSync(file)) {
+          await fs.promises.writeFile(file, JSON.stringify({}), 'utf8');
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to ensure .computor_lecturer marker:', err);
     }
 
     this.tree = new LecturerTreeDataProvider(this.context, api);
@@ -280,6 +295,18 @@ class LecturerController extends BaseRoleController {
 
     try { await vscode.commands.executeCommand('workbench.view.extension.computor-main'); } catch {}
     try { await vscode.commands.executeCommand('computor.lecturer.courses.focus'); } catch {}
+
+    // Initialize lecturer assignments repository manager and trigger a background sync
+    try {
+      const { LecturerRepositoryManager } = await import('./services/LecturerRepositoryManager');
+      this.repoManager = new LecturerRepositoryManager(this.context, api);
+      // Fire-and-forget sync on login
+      void this.repoManager.syncAllAssignments((msg: string) => {
+        console.log('[LecturerRepositoryManager]', msg);
+      });
+    } catch (err) {
+      console.warn('LecturerRepositoryManager init failed:', err);
+    }
   }
 }
 

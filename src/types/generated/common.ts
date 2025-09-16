@@ -193,6 +193,8 @@ export interface CourseContentDeploymentUpdate {
   last_attempt_at?: string | null;
   deployment_path?: string | null;
   deployment_metadata?: DeploymentMetadata | null;
+  example_identifier?: string | null;
+  version_tag?: string | null;
 }
 
 /**
@@ -208,12 +210,15 @@ export interface CourseContentDeploymentGet {
   id: string;
   course_content_id: string;
   example_version_id: string | null;
+  example_identifier?: string | null;
+  version_tag?: string | null;
   deployment_status: string;
   deployment_message: string | null;
   assigned_at: string;
   deployed_at: string | null;
   last_attempt_at: string | null;
   deployment_path: string | null;
+  version_identifier?: string | null;
   deployment_metadata: Record<string, any> | null;
   workflow_id: string | null;
   example_version?: any | null;
@@ -227,9 +232,12 @@ export interface CourseContentDeploymentList {
   id: string;
   course_content_id: string;
   example_version_id: string | null;
+  example_identifier?: string | null;
+  version_tag?: string | null;
   deployment_status: string;
   assigned_at: string;
   deployed_at: string | null;
+  version_identifier?: string | null;
   example_version?: ExampleVersionList | null;
 }
 

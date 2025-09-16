@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
+import * as fs from 'fs';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
 import { LecturerTreeDataProvider } from '../ui/tree/lecturer/LecturerTreeDataProvider';
 import { OrganizationTreeItem, CourseFamilyTreeItem, CourseTreeItem, CourseContentTreeItem, CourseFolderTreeItem, CourseContentTypeTreeItem, CourseGroupTreeItem, CourseMemberTreeItem } from '../ui/tree/lecturer/LecturerTreeItems';
@@ -78,6 +79,22 @@ export class LecturerCommands {
     );
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.refreshCourses', refreshHandler)
+    );
+
+    // Sync assignments repositories (manual trigger)
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.syncAssignments', async () => {
+        try {
+          const { LecturerRepositoryManager } = await import('../services/LecturerRepositoryManager');
+          const mgr = new LecturerRepositoryManager(this.context, this.apiService);
+          await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Syncing assignments repositories...', cancellable: false }, async (progress) => {
+            await mgr.syncAllAssignments((m) => progress.report({ message: m }));
+          });
+          vscode.window.showInformationMessage('Assignments repositories synced.');
+        } catch (e) {
+          vscode.window.showErrorMessage(`Failed to sync assignments: ${e}`);
+        }
+      })
     );
 
     // Course management commands
@@ -225,6 +242,30 @@ export class LecturerCommands {
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.showCourseGroupDetails', async (item: CourseGroupTreeItem) => {
         await this.showCourseGroupDetails(item);
+      })
+    );
+
+    // Open local assignment folder for a content
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.openAssignmentFolder', async (item: CourseContentTreeItem) => {
+        if (!item || !item.courseContent?.id || !item.course?.id) { vscode.window.showWarningMessage('Select an assignment'); return; }
+        try {
+          const course = await this.apiService.getCourse(item.course.id);
+          const content = await this.apiService.getCourseContent(item.courseContent.id, true);
+          const deploymentPath = (content as any)?.deployment?.deployment_path || (content as any)?.deployment?.example_identifier || '';
+          if (!course || !deploymentPath) { vscode.window.showWarningMessage('Assignment not initialized in assignments repo yet.'); return; }
+          const { LecturerRepositoryManager } = await import('../services/LecturerRepositoryManager');
+          const mgr = new LecturerRepositoryManager(this.context, this.apiService);
+          const folder = mgr.getAssignmentFolderPath(course, deploymentPath);
+          if (!folder || !fs.existsSync(folder)) {
+            const choice = await vscode.window.showWarningMessage('Assignment folder missing locally. Sync assignments now?', 'Sync', 'Cancel');
+            if (choice === 'Sync') { await vscode.commands.executeCommand('computor.lecturer.syncAssignments'); }
+            return;
+          }
+          await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(folder));
+        } catch (e) {
+          vscode.window.showErrorMessage(`Failed to open assignment folder: ${e}`);
+        }
       })
     );
 
