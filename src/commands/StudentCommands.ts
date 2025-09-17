@@ -67,6 +67,43 @@ export class StudentCommands {
       })
     );
 
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.showTestResults', async (item?: any) => {
+        try {
+          let resultPayload: any | undefined;
+
+          const courseContent = item?.courseContent as any;
+          const result = courseContent?.result;
+          if (result) {
+            resultPayload = result.result_json ?? result;
+          }
+
+          if (resultPayload) {
+            await vscode.commands.executeCommand('computor.results.open', resultPayload);
+          }
+
+          try {
+            await vscode.commands.executeCommand('workbench.view.extension.computor-test-results');
+          } catch (focusError) {
+            console.warn('[StudentCommands] Failed to focus test results view container:', focusError);
+          }
+
+          try {
+            await vscode.commands.executeCommand('computor.testResultsPanel.focus');
+          } catch (panelError) {
+            console.warn('[StudentCommands] Failed to focus test results panel:', panelError);
+          }
+
+          if (!resultPayload) {
+            vscode.window.showInformationMessage('No stored test results yet. Run tests to generate new results.');
+          }
+        } catch (error) {
+          console.error('[StudentCommands] Failed to show test results:', error);
+          vscode.window.showErrorMessage('Failed to open test results. Please run tests again.');
+        }
+      })
+    );
+
     // Show README preview for assignments
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.student.showPreview', async (item?: any) => {

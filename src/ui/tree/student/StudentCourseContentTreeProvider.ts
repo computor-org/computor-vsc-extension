@@ -788,18 +788,19 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         
         // Make assignments with repositories always expandable
         const isAssignment = contentType?.course_content_kind_id === 'assignment';
-        const hasRepository = !!submissionGroup?.repository;
         const directory = (courseContent as any).directory;
         const workspaceFolders = vscode.workspace.workspaceFolders || [];
-        let hasClonedRepo = false;
-        if (isAssignment && directory && workspaceFolders.length > 0 && workspaceFolders[0]) {
-            const assignmentPath = path.join(workspaceFolders[0].uri.fsPath, directory);
-            hasClonedRepo = fs.existsSync(assignmentPath);
-        }
+        const resolvedDirectory = typeof directory === 'string'
+            ? (path.isAbsolute(directory)
+                ? directory
+                : (workspaceFolders[0] ? path.join(workspaceFolders[0].uri.fsPath, directory) : undefined))
+            : undefined;
+        const hasClonedRepo = Boolean(resolvedDirectory && fs.existsSync(resolvedDirectory));
         void hasClonedRepo; // Suppress unused variable warning
-        
-        // Always make assignments with repositories expandable, regardless of clone status
-        const shouldBeExpandable = isAssignment && hasRepository;
+
+        // Always make assignments expandable so we can attempt to surface their files,
+        // even if repository metadata is missing or the directory is not yet available.
+        const shouldBeExpandable = isAssignment;
         const collapsibleState = shouldBeExpandable 
             ? (expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
             : vscode.TreeItemCollapsibleState.None;
