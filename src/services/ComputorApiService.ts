@@ -1183,13 +1183,22 @@ export class ComputorApiService {
     }
   }
 
-  async getStudentCourseContents(courseId?: string): Promise<CourseContentStudentList[]> {
+  async getStudentCourseContents(
+    courseId?: string,
+    options?: { force?: boolean }
+  ): Promise<CourseContentStudentList[]> {
     const cacheKey = courseId ? `studentCourseContents-${courseId}` : 'studentCourseContents-all';
-    
-    // Check cache first
-    const cached = multiTierCache.get<CourseContentStudentList[]>(cacheKey);
-    if (cached) {
-      return cached;
+
+    if (options?.force) {
+      multiTierCache.delete(cacheKey);
+      if (courseId) {
+        multiTierCache.delete('studentCourseContents-all');
+      }
+    } else {
+      const cached = multiTierCache.get<CourseContentStudentList[]>(cacheKey);
+      if (cached) {
+        return cached;
+      }
     }
     
     try {
@@ -1212,13 +1221,19 @@ export class ComputorApiService {
     }
   }
 
-  async getStudentCourseContent(contentId: string): Promise<CourseContentStudentList | undefined> {
+  async getStudentCourseContent(
+    contentId: string,
+    options?: { force?: boolean }
+  ): Promise<CourseContentStudentList | undefined> {
     const cacheKey = `studentCourseContent-${contentId}`;
-    
-    // Check cache first
-    const cached = multiTierCache.get<CourseContentStudentList>(cacheKey);
-    if (cached) {
-      return cached;
+
+    if (options?.force) {
+      multiTierCache.delete(cacheKey);
+    } else {
+      const cached = multiTierCache.get<CourseContentStudentList>(cacheKey);
+      if (cached) {
+        return cached;
+      }
     }
     
     try {

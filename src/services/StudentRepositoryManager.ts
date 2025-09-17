@@ -53,7 +53,7 @@ export class StudentRepositoryManager {
       await fs.promises.mkdir(this.workspaceRoot, { recursive: true });
       
       // Get course contents
-      const courseContents = await this.apiService.getStudentCourseContents(courseId);
+      const courseContents = await this.apiService.getStudentCourseContents(courseId, { force: true });
       
       if (!courseContents || courseContents.length === 0) {
         console.log('[StudentRepositoryManager] No course contents found');

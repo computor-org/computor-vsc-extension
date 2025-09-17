@@ -38,6 +38,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     private contentKinds: CourseContentKindList[] = [];
     private expandedStates: Record<string, boolean> = {};
     private itemIndex: Map<string, TreeItem> = new Map();
+    private forceRefresh: boolean = false;
     // private courseCache: { id: string; title: string } | null = null;
     
     constructor(
@@ -67,6 +68,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     }
     
     refresh(): void {
+        this.forceRefresh = true;
         this.courseContentsCache.clear();
         this.contentKinds = [];
         this.itemIndex.clear();
@@ -84,13 +86,13 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     async refreshContentItem(contentId: string): Promise<void> {
         try {
             const selectedCourseId = this.courseSelection.getCurrentCourseId();
-            const updated = await this.apiService.getStudentCourseContent(contentId);
+            const updated = await this.apiService.getStudentCourseContent(contentId, { force: true });
             if (!updated) { this._onDidChangeTreeData.fire(undefined); return; }
 
             if (selectedCourseId) {
                 let list = this.courseContentsCache.get(selectedCourseId);
                 if (!list) {
-                    list = await this.apiService.getStudentCourseContents(selectedCourseId) || [];
+                    list = await this.apiService.getStudentCourseContents(selectedCourseId, { force: true }) || [];
                 }
                 const idx = list.findIndex(c => c.id === contentId);
                 if (idx >= 0) list[idx] = updated; else list.push(updated);
@@ -216,7 +218,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                             await this.repositoryManager!.autoSetupRepositories(courseId);
                             
                             // Re-fetch course contents to get updated directory paths
-                            const courseContents = await this.apiService.getStudentCourseContents(courseId) || [];
+                            const courseContents = await this.apiService.getStudentCourseContents(courseId, { force: true }) || [];
                             this.courseContentsCache.set(courseId, courseContents);
                             
                             // Update directory paths for existing repositories
@@ -423,11 +425,15 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                 }
 
                 // Ensure contents cached (for counts)
+                const shouldForce = this.forceRefresh;
                 let courseContents = this.courseContentsCache.get(selectedCourseId);
-                if (!courseContents) {
-                    courseContents = await this.apiService.getStudentCourseContents(selectedCourseId) || [];
+                if (!courseContents || shouldForce) {
+                    courseContents = await this.apiService.getStudentCourseContents(selectedCourseId, { force: shouldForce }) || [];
                     this.courseContentsCache.set(selectedCourseId, courseContents);
                     if (this.repositoryManager) this.repositoryManager.updateExistingRepositoryPaths(selectedCourseId, courseContents);
+                }
+                if (shouldForce) {
+                    this.forceRefresh = false;
                 }
 
                 const itemCount = courseContents.length;
@@ -449,10 +455,14 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
             try {
                 // Ensure kinds and contents
                 if (this.contentKinds.length === 0) this.contentKinds = await this.apiService.getCourseContentKinds() || [];
+                const shouldForce = this.forceRefresh;
                 let courseContents = this.courseContentsCache.get(selectedCourseId);
-                if (!courseContents) {
-                    courseContents = await this.apiService.getStudentCourseContents(selectedCourseId) || [];
+                if (!courseContents || shouldForce) {
+                    courseContents = await this.apiService.getStudentCourseContents(selectedCourseId, { force: shouldForce }) || [];
                     this.courseContentsCache.set(selectedCourseId, courseContents);
+                }
+                if (shouldForce) {
+                    this.forceRefresh = false;
                 }
                 if (this.repositoryManager) this.repositoryManager.updateExistingRepositoryPaths(selectedCourseId, courseContents);
 
@@ -473,9 +483,13 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                 const selectedCourseId = this.courseSelection.getCurrentCourseId();
                 if (!selectedCourseId) return this.createTreeItems(element.node);
                 let courseContents = this.courseContentsCache.get(selectedCourseId);
-                if (!courseContents) {
-                    courseContents = await this.apiService.getStudentCourseContents(selectedCourseId) || [];
+                const shouldForce = this.forceRefresh;
+                if (!courseContents || shouldForce) {
+                    courseContents = await this.apiService.getStudentCourseContents(selectedCourseId, { force: shouldForce }) || [];
                     this.courseContentsCache.set(selectedCourseId, courseContents);
+                }
+                if (shouldForce) {
+                    this.forceRefresh = false;
                 }
                 const tree = this.buildContentTree(courseContents, [], [], this.contentKinds);
                 const targetPath = element.node.courseContent?.path;

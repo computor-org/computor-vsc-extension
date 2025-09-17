@@ -146,24 +146,23 @@ export class TestResultService {
                 progress.report({ message: `Running tests... (${elapsed}s)` });
 
                 // Check status
-                const status = await this.apiService!.getResultStatus(resultId) as unknown as number;
+                const status = await this.apiService!.getResultStatus(resultId) as unknown as number | string;
                 console.log(`[TestResultService] Poll ${pollCount}: Status = ${status}`);
 
                 if (status === undefined) {
                   // API error, continue polling
                   return;
                 }
-                console.log("->");
+
                 // Check if test is complete
-                if (status === 0 || status === 1 || status === 6) {
+                if (status === 0 || status === 1 || status === 6 || status === "finished" || status === "failed" || status === "cancelled") {
                   this.stopPolling(resultId);
-                  console.log("-->");
-                  // Get full result
+
                   const fullResult = await this.apiService!.getResult(resultId);
                   
                   if (fullResult) {
                     console.log('[TestResultService] Test complete, full result:', fullResult);
-                    console.log("-->");
+
                     // Display results
                     await this.displayTestResults(fullResult, assignmentTitle);
                     
