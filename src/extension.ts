@@ -9,6 +9,7 @@ import { ComputorApiService } from './services/ComputorApiService';
 import { BasicAuthHttpClient } from './http/BasicAuthHttpClient';
 import { ApiKeyHttpClient } from './http/ApiKeyHttpClient';
 import { JwtHttpClient } from './http/JwtHttpClient';
+import { BackendConnectionService } from './services/BackendConnectionService';
 
 import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataProvider';
 import { LecturerExampleTreeProvider } from './ui/tree/lecturer/LecturerExampleTreeProvider';
@@ -431,6 +432,8 @@ class StudentController extends BaseRoleController {
 let activeSession: ActiveSession | null = null;
 let isAuthenticating = false;
 
+const backendConnectionService = BackendConnectionService.getInstance();
+
 async function loginFlow(context: vscode.ExtensionContext, role: Role): Promise<void> {
   if (isAuthenticating) { vscode.window.showInformationMessage('Login already in progress.'); return; }
   isAuthenticating = true;
@@ -490,11 +493,15 @@ async function loginFlow(context: vscode.ExtensionContext, role: Role): Promise<
   if (!creds) { isAuthenticating = false; return; }
   const auth: StoredAuth = creds;
 
-  const client = buildHttpClient(baseUrl, auth);
-  // Try a light probe to verify connectivity
-  try { await client.get('/health'); } catch {
-    // continue; some backends may not expose /health, validation occurs lazily
+  backendConnectionService.setBaseUrl(baseUrl);
+  const connectionStatus = await backendConnectionService.checkBackendConnection(baseUrl);
+  if (!connectionStatus.isReachable) {
+    await backendConnectionService.showConnectionError(connectionStatus);
+    isAuthenticating = false;
+    return;
   }
+
+  const client = buildHttpClient(baseUrl, auth);
 
   let controller: BaseRoleController;
   if (role === 'Lecturer') controller = new LecturerController(context);
@@ -503,11 +510,13 @@ async function loginFlow(context: vscode.ExtensionContext, role: Role): Promise<
 
   try {
     await controller.activate(client as any);
+    backendConnectionService.startHealthCheck(baseUrl);
     activeSession = { role, deactivate: () => controller.dispose().then(async () => {
       await vscode.commands.executeCommand('setContext', 'computor.isLoggedIn', false);
       await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
       await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
       await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
+      backendConnectionService.stopHealthCheck();
     }) };
     await context.secrets.store(secretKey, JSON.stringify(auth));
     await vscode.commands.executeCommand('setContext', 'computor.isLoggedIn', true);
@@ -515,6 +524,7 @@ async function loginFlow(context: vscode.ExtensionContext, role: Role): Promise<
   } catch (error: any) {
     await controller.dispose();
     vscode.window.showErrorMessage(`Failed to activate ${role}: ${error?.message || error}`);
+    backendConnectionService.stopHealthCheck();
   } finally {
     isAuthenticating = false;
   }
