@@ -263,6 +263,7 @@ export class StudentCommands {
           let assignmentPath: string | undefined;
           let assignmentTitle: string | undefined;
           let submissionGroup: SubmissionGroupStudentList | undefined;
+          let courseContentId: string | undefined;
 
           if (itemOrSubmissionGroup?.courseContent) {
             const item = itemOrSubmissionGroup;
@@ -276,6 +277,7 @@ export class StudentCommands {
               assignmentTitle = tv == null ? assignmentPath : String(tv);
             }
             submissionGroup = item.submissionGroup as SubmissionGroupStudentList | undefined;
+            courseContentId = typeof item.courseContent?.id === 'string' ? item.courseContent.id : undefined;
           } else {
             // Backward compatibility with old signature
             submissionGroup = itemOrSubmissionGroup as SubmissionGroupStudentList | undefined;
@@ -288,6 +290,7 @@ export class StudentCommands {
               assignmentTitle = stv == null ? assignmentPath : String(stv);
             }
 
+
             // Try to resolve directory via current course contents
             const courseId = CourseSelectionService.getInstance().getCurrentCourseId();
             if (courseId) {
@@ -297,6 +300,9 @@ export class StudentCommands {
               }
               const match = contents.find(c => c.submission_group?.id === submissionGroup?.id);
               directory = (match as any)?.directory as string | undefined;
+              if (!courseContentId && match?.id) {
+                courseContentId = String(match.id);
+              }
             }
           }
 
@@ -338,6 +344,7 @@ export class StudentCommands {
 
           // Perform submission using git worktree to keep main worktree on main branch
           let submissionOk = false;
+          let mergeRequestUrl: string | undefined;
           await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
             title: `Submitting ${assignmentTitle}...`,
@@ -405,6 +412,8 @@ export class StudentCommands {
                 await fs.promises.rm(worktreePath, { recursive: true, force: true });
               }
 
+              submissionOk = true;
+
               // Create MR via backend API
               const { stdout: originUrlStdout } = await execAsync('git remote get-url origin', { cwd: repoPath });
               const gitlabOrigin = (this as any).extractGitLabOrigin(originUrlStdout.trim());
@@ -414,16 +423,21 @@ export class StudentCommands {
               }
               if (!token) {
                 vscode.window.showWarningMessage('No GitLab token available; cannot create MR automatically');
+              } else if (!courseContentId) {
+                vscode.window.showWarningMessage('Unable to determine course content ID; merge request was not created automatically.');
               } else {
-                const mr = await this.apiService.submitStudentAssignment(String(itemOrSubmissionGroup?.courseContent?.id || ""), {
+                const mr = await this.apiService.submitStudentAssignment(courseContentId, {
                   branch_name: submissionBranch,
                   gitlab_token: token,
                   title: `Submission: ${assignmentTitle}`,
                   description: commitMessage
                 });
                 if (mr?.web_url) {
-                  submissionOk = true;
-                  await vscode.env.openExternal(vscode.Uri.parse(mr.web_url));
+                  mergeRequestUrl = mr.web_url;
+                } else if (!mr) {
+                  vscode.window.showWarningMessage('Submission branch pushed, but merge request could not be created automatically.');
+                } else {
+                  vscode.window.showInformationMessage('Submission branch pushed, but merge request URL was not provided.');
                 }
               }
             } catch (e) {
@@ -431,7 +445,32 @@ export class StudentCommands {
             }
           });
           if (submissionOk) {
-            vscode.window.showInformationMessage('Assignment submitted successfully.');
+            try {
+              if (courseContentId) {
+                await this.treeDataProvider.refreshContentItem(courseContentId);
+              } else {
+                this.treeDataProvider.refresh();
+              }
+            } catch (refreshError) {
+              console.warn('[StudentCommands] Failed to refresh course content after submission:', refreshError);
+            }
+
+            if (mergeRequestUrl) {
+              const action = await vscode.window.showInformationMessage(
+                'Assignment submitted successfully. Merge request created.',
+                'Copy MR Link'
+              );
+              if (action === 'Copy MR Link') {
+                try {
+                  await vscode.env.clipboard.writeText(mergeRequestUrl);
+                  vscode.window.showInformationMessage('Merge request link copied to clipboard.');
+                } catch (clipError) {
+                  console.warn('[StudentCommands] Failed to copy MR link:', clipError);
+                }
+              }
+            } else {
+              vscode.window.showInformationMessage('Assignment submitted successfully.');
+            }
           }
         } catch (error: any) {
           console.error('Failed to submit assignment:', error);
