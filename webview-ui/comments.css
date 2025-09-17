@@ -1,0 +1,110 @@
+.view-root {
+  font-family: var(--vscode-font-family);
+  color: var(--vscode-foreground);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.view-header h1 {
+  margin: 0;
+  font-size: 20px;
+  color: var(--vscode-titleBar-activeForeground);
+}
+
+.toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.comments-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 55vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.comment-card {
+  border: 1px solid var(--vscode-editorWidget-border);
+  border-radius: 4px;
+  background: var(--vscode-editorWidget-background);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.comment-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.comment-body {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.markdown-body {
+  line-height: 1.5;
+}
+
+.markdown-body pre {
+  background: var(--vscode-editor-inactiveSelectionBackground);
+  padding: 8px;
+  border-radius: 4px;
+  overflow-x: auto;
+}
+
+.markdown-body code {
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.comment-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.form-card {
+  border: 1px solid var(--vscode-editorWidget-border);
+  border-radius: 4px;
+  background: var(--vscode-editorWidget-background);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.form-context {
+  margin: 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.form-row label {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.empty-state,
+.error-state {
+  text-align: center;
+  padding: 24px;
+  border: 1px dashed var(--vscode-editorWidget-border);
+  color: var(--vscode-descriptionForeground);
+}
+
+.comment-card.editing {
+  border-color: var(--vscode-focusBorder);
+}

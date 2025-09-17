@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { ComputorApiService } from '../../services/ComputorApiService';
-import { MessageList, MessageCreate } from '../../types/generated';
+import { MessageList, MessageCreate, MessageUpdate } from '../../types/generated';
 
 export type MessageTargetType = 'course' | 'courseGroup' | 'courseContent' | 'submissionGroup' | 'courseMember';
 
@@ -14,8 +14,16 @@ export interface MessageTargetContext {
 
 interface MessagesWebviewData {
   target: MessageTargetContext;
-  messages: MessageList[];
+  messages: EnrichedMessage[];
+  identity?: { id: string; username: string; full_name?: string };
 }
+
+type EnrichedMessage = MessageList & {
+  author_display?: string;
+  author_name?: string;
+  can_edit?: boolean;
+  can_delete?: boolean;
+};
 
 export class MessagesWebviewProvider extends BaseWebviewProvider {
   private apiService: ComputorApiService;
@@ -26,142 +34,51 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
   }
 
   async showMessages(target: MessageTargetContext): Promise<void> {
-    const messages = await this.apiService.listMessages(target.query);
-    await this.show(`Messages: ${target.title}`, { target, messages } as MessagesWebviewData);
+    const [identity, rawMessages] = await Promise.all([
+      this.apiService.getCurrentUser().catch(() => undefined),
+      this.apiService.listMessages(target.query)
+    ]);
+
+    const messages = this.enrichMessages(rawMessages, identity);
+    const payload: MessagesWebviewData = { target, messages, identity };
+    await this.show(`Messages: ${target.title}`, payload);
   }
 
   protected async getWebviewContent(data?: MessagesWebviewData): Promise<string> {
-    const heading = data?.target?.title ?? 'Messages';
-    const subtitle = data?.target?.subtitle ? `<p class="subtitle">${data.target.subtitle}</p>` : '';
-    const initialState = JSON.stringify(data ?? { target: null, messages: [] });
-    const contentLines = [
-      `<h1>${heading}</h1>`,
-      subtitle,
-      '<div class="actions">',
-      '  <button class="button" id="refreshButton">Refresh</button>',
-      '</div>',
-      '<section class="messages" id="messagesContainer"></section>',
-      '<section class="form-section">',
-      '  <h2>New Message</h2>',
-      '  <form id="messageForm">',
-      '    <div class="form-group">',
-      '      <label for="messageTitle">Title</label>',
-      '      <input id="messageTitle" name="messageTitle" type="text" required />',
-      '    </div>',
-      '    <div class="form-group">',
-      '      <label for="messageBody">Message</label>',
-      '      <textarea id="messageBody" name="messageBody" rows="6" required></textarea>',
-      '    </div>',
-      '    <div class="actions">',
-      '      <button class="button" type="submit">Send Message</button>',
-      '    </div>',
-      '  </form>',
-      '</section>',
-      '<script nonce="{{NONCE}}">',
-      `const state = ${initialState};`,
-      'function escapeHtml(value) {',
-      '  if (value === undefined || value === null) { return \'\'; }',
-      '  return String(value)',
-      '    .replace(/&/g, \'&amp;\')',
-      '    .replace(/</g, \'&lt;\')',
-      '    .replace(/>/g, \'&gt;\')',
-      '    .replace(/"/g, \'&quot;\')',
-      '    .replace(/\'/g, \'&#39;\');',
-      '}',
-      'function renderMessages(messages) {',
-      '  const container = document.getElementById("messagesContainer");',
-      '  if (!container) { return; }',
-      '  if (!messages || messages.length === 0) {',
-      '    container.innerHTML = \'<p class="muted">No messages yet.</p>\';',
-      '    return;',
-      '  }',
-      '  const items = messages.map(function(message) {',
-      '    const timestamp = message.updated_at || message.created_at;',
-      '    const formattedTime = timestamp ? new Date(timestamp).toLocaleString() : \'\';',
-      '    return [',
-      '      \'<article class="message">\'',
-      '      \'  <header class="message-header">\'',
-      '      \'    <span class="message-author">\' + escapeHtml(message.author_id || \'unknown\') + \'</span>\'',
-      '      \'    <span class="message-time">\' + escapeHtml(formattedTime) + \'</span>\'',
-      '      \'  </header>\'',
-      '      \'  <h3 class="message-title">\' + escapeHtml(message.title) + \'</h3>\'',
-      '      \'  <div class="message-body">\' + escapeHtml((message.content || \'\').replace(/\n/g, \'<br/>\')) + \'</div>\'',
-      '      \'</article>\'',
-      '    ].join("\\n");',
-      '  });',
-      '  container.innerHTML = items.join("\\n");',
-      '}',
-      'function updateView(data) {',
-      '  if (!data) { return; }',
-      '  state.target = data.target || state.target;',
-      '  state.messages = data.messages || [];',
-      '  renderMessages(state.messages);',
-      '}',
-      'document.getElementById("refreshButton")?.addEventListener("click", function() {',
-      '  sendMessage(\'refreshMessages\', { target: state.target });',
-      '});',
-      'document.getElementById("messageForm")?.addEventListener("submit", function(event) {',
-      '  event.preventDefault();',
-      '  const titleInput = document.getElementById("messageTitle");',
-      '  const bodyInput = document.getElementById("messageBody");',
-      '  if (!titleInput || !bodyInput) { return; }',
-      '  const title = titleInput.value.trim();',
-      '  const content = bodyInput.value.trim();',
-      '  if (!title || !content) { return; }',
-      '  sendMessage(\'createMessage\', { target: state.target, title, content });',
-      '  bodyInput.value = \'\';',
-      '});',
-      'window.addEventListener("message", function(event) {',
-      '  const message = event.data;',
-      '  if (!message) { return; }',
-      '  if (message.command === "updateMessages") {',
-      '    updateView({ target: state.target, messages: message.data });',
-      '  } else if (message.command === "update") {',
-      '    updateView(message.data);',
-      '  }',
-      '});',
-      'updateView(state);',
-      '</script>',
-      '<style>',
-      '  .subtitle {',
-      '    color: var(--vscode-descriptionForeground);',
-      '    margin-top: -12px;',
-      '  }',
-      '  .messages {',
-      '    margin: 16px 0;',
-      '    display: flex;',
-      '    flex-direction: column;',
-      '    gap: 12px;',
-      '  }',
-      '  .message {',
-      '    border: 1px solid var(--vscode-editorWidget-border);',
-      '    border-radius: 4px;',
-      '    padding: 12px;',
-      '    background: var(--vscode-editorWidget-background);',
-      '  }',
-      '  .message-header {',
-      '    display: flex;',
-      '    justify-content: space-between;',
-      '    font-size: 12px;',
-      '    color: var(--vscode-descriptionForeground);',
-      '    margin-bottom: 8px;',
-      '  }',
-      '  .message-title {',
-      '    margin: 4px 0 8px;',
-      '    font-size: 14px;',
-      '  }',
-      '  .message-body {',
-      '    white-space: pre-wrap;',
-      '    line-height: 1.5;',
-      '  }',
-      '  .muted {',
-      '    color: var(--vscode-descriptionForeground);',
-      '  }',
-      '</style>'
-    ];
+    if (!this.panel) {
+      return this.getBaseHtml('Messages', '<p>Loading…</p>');
+    }
 
-    const content = contentLines.join('\n');
-    return this.getBaseHtml(`Messages: ${heading}`, content);
+    const webview = this.panel.webview;
+    const nonce = this.getNonce();
+    const initialState = JSON.stringify(data ?? { target: null, messages: [] });
+    const componentsCssUri = this.getWebviewUri(webview, 'webview-ui', 'components', 'components.css');
+    const messagesCssUri = this.getWebviewUri(webview, 'webview-ui', 'messages.css');
+    const componentsJsUri = this.getWebviewUri(webview, 'webview-ui', 'components.js');
+    const messagesJsUri = this.getWebviewUri(webview, 'webview-ui', 'messages.js');
+    const markedJsUri = this.getWebviewUri(webview, 'webview-ui', 'lib', 'marked.min.js');
+
+    return `<!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; img-src ${webview.cspSource} https: data:; script-src 'nonce-${nonce}';">
+      <title>Messages</title>
+      <link rel="stylesheet" href="${componentsCssUri}">
+      <link rel="stylesheet" href="${messagesCssUri}">
+    </head>
+    <body>
+      <div id="app"></div>
+      <script nonce="${nonce}">
+        window.vscodeApi = window.vscodeApi || acquireVsCodeApi();
+        window.__INITIAL_STATE__ = ${initialState};
+      </script>
+      <script nonce="${nonce}" src="${markedJsUri}"></script>
+      <script nonce="${nonce}" src="${componentsJsUri}"></script>
+      <script nonce="${nonce}" src="${messagesJsUri}"></script>
+    </body>
+    </html>`;
   }
 
   protected async handleMessage(message: any): Promise<void> {
@@ -173,8 +90,21 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       case 'createMessage':
         await this.handleCreateMessage(message.data);
         break;
+      case 'updateMessage':
+        await this.handleUpdateMessage(message.data);
+        break;
+      case 'deleteMessage':
+        await this.handleDeleteMessage(message.data);
+        break;
       case 'refreshMessages':
         await this.refreshMessages();
+        break;
+      case 'showWarning':
+        if (message.data) {
+          vscode.window.showWarningMessage(String(message.data));
+        }
+        break;
+      default:
         break;
     }
   }
@@ -184,27 +114,72 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     return data?.target;
   }
 
-  private async handleCreateMessage(data: { target: MessageTargetContext; title: string; content: string; parent_id?: string }): Promise<void> {
-    const target = data?.target || this.getCurrentTarget();
+  private getIdentity(): { id: string; username: string; full_name?: string } | undefined {
+    const data = this.currentData as MessagesWebviewData | undefined;
+    return data?.identity;
+  }
+
+  private async handleCreateMessage(data: { title: string; content: string; parent_id?: string }): Promise<void> {
+    const target = this.getCurrentTarget();
     if (!target) {
       vscode.window.showWarningMessage('Unable to post message: target context missing.');
       return;
     }
 
+    const level = this.resolveMessageLevel(data.parent_id);
     const payload: MessageCreate = {
       title: data.title,
       content: data.content,
       parent_id: data.parent_id ?? null,
-      level: data.parent_id ? 1 : 0,
+      level,
       ...target.createPayload
     } as MessageCreate;
 
     try {
+      this.postLoadingState(true);
       await this.apiService.createMessage(payload);
       await this.refreshMessages();
       vscode.window.showInformationMessage('Message sent.');
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to send message: ${error?.message || error}`);
+      this.postLoadingState(false);
+    }
+  }
+
+  private async handleUpdateMessage(data: { messageId: string; title: string; content: string }): Promise<void> {
+    if (!data?.messageId) {
+      return;
+    }
+
+    const updates: MessageUpdate = {
+      title: data.title,
+      content: data.content
+    };
+
+    try {
+      this.postLoadingState(true);
+      await this.apiService.updateMessage(data.messageId, updates);
+      await this.refreshMessages();
+      vscode.window.showInformationMessage('Message updated.');
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to update message: ${error?.message || error}`);
+      this.postLoadingState(false);
+    }
+  }
+
+  private async handleDeleteMessage(data: { messageId: string }): Promise<void> {
+    if (!data?.messageId) {
+      return;
+    }
+
+    try {
+      this.postLoadingState(true);
+      await this.apiService.deleteMessage(data.messageId);
+      await this.refreshMessages();
+      vscode.window.showInformationMessage('Message deleted.');
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to delete message: ${error?.message || error}`);
+      this.postLoadingState(false);
     }
   }
 
@@ -215,11 +190,55 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     }
 
     try {
-      const messages = await this.apiService.listMessages(target.query);
-      this.currentData = { target, messages } satisfies MessagesWebviewData;
+      this.postLoadingState(true);
+      const identity = (await this.apiService.getCurrentUser().catch(() => this.getIdentity())) || this.getIdentity();
+      const rawMessages = await this.apiService.listMessages(target.query);
+      const messages = this.enrichMessages(rawMessages, identity);
+      this.currentData = { target, messages, identity } satisfies MessagesWebviewData;
       this.panel.webview.postMessage({ command: 'updateMessages', data: messages });
+      this.postLoadingState(false);
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to refresh messages: ${error?.message || error}`);
+      this.postLoadingState(false);
     }
+  }
+
+  private enrichMessages(messages: MessageList[], identity?: { id: string; username: string; full_name?: string }): EnrichedMessage[] {
+    const currentUserId = identity?.id;
+
+    return messages.map((message) => {
+      const author = (message as any)?.author || {};
+      const fullName = [author.given_name, author.family_name].filter(Boolean).join(' ');
+      const authorDisplay = (author.full_name as string | undefined)?.trim() || fullName || author.username || message.author_id;
+      const canEdit = currentUserId ? message.author_id === currentUserId : false;
+
+      return {
+        ...message,
+        author_display: authorDisplay || undefined,
+        author_name: author.username || undefined,
+        can_edit: canEdit,
+        can_delete: canEdit
+      } satisfies EnrichedMessage;
+    });
+  }
+
+  private resolveMessageLevel(parentId?: string): number {
+    if (!parentId) {
+      return 0;
+    }
+
+    const currentMessages = (this.currentData as MessagesWebviewData | undefined)?.messages ?? [];
+    const parent = currentMessages.find((message) => message.id === parentId);
+    if (!parent) {
+      return 1;
+    }
+    return (parent.level ?? 0) + 1;
+  }
+
+  private postLoadingState(loading: boolean): void {
+    if (!this.panel) {
+      return;
+    }
+    this.panel.webview.postMessage({ command: 'setLoading', data: { loading } });
   }
 }
