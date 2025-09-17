@@ -19,164 +19,50 @@ export class CourseMemberCommentsWebviewProvider extends BaseWebviewProvider {
 
   async showComments(courseMemberId: string, title: string): Promise<void> {
     const comments = await this.apiService.listCourseMemberComments(courseMemberId);
-    await this.show(`Comments: ${title}`, { courseMemberId, title, comments } as CommentsWebviewData);
+    const payload: CommentsWebviewData = { courseMemberId, title, comments };
+    await this.show(`Comments: ${title}`, payload);
   }
 
   protected async getWebviewContent(data?: CommentsWebviewData): Promise<string> {
-    const heading = data?.title ?? 'Course Member Comments';
-    const initialState = JSON.stringify(data ?? { courseMemberId: '', title: heading, comments: [] });
-
-    const script = `<script nonce="{{NONCE}}">
-const state = ${initialState};
-function escapeHtml(value) {
-  if (value === undefined || value === null) { return ''; }
-  return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-function renderComments(comments) {
-  const container = document.getElementById("commentsContainer");
-  if (!container) { return; }
-  if (!comments || comments.length === 0) {
-    container.innerHTML = '<p class="muted">No comments yet.</p>';
-    return;
-  }
-  const items = comments.map(function(comment) {
-    const timestamp = comment.updated_at || comment.created_at;
-    const formattedTime = timestamp ? new Date(timestamp).toLocaleString() : '';
-    const author = comment.transmitter?.user?.given_name && comment.transmitter?.user?.family_name
-      ? comment.transmitter.user.given_name + ' ' + comment.transmitter.user.family_name
-      : (comment.transmitter_id || 'unknown');
-    return [
-      '<article class="comment" data-id="' + comment.id + '">',
-      '  <header class="comment-header">',
-      '    <span class="comment-author">' + escapeHtml(author) + '</span>',
-      '    <span class="comment-time">' + escapeHtml(formattedTime) + '</span>',
-      '  </header>',
-      '  <div class="comment-body">' + escapeHtml((comment.message || '').replace(/\\n/g, '<br/>')) + '</div>',
-      '  <div class="comment-actions">',
-      '    <button class="button secondary" data-action="edit" data-id="' + comment.id + '">Edit</button>',
-      '    <button class="button secondary" data-action="delete" data-id="' + comment.id + '">Delete</button>',
-      '  </div>',
-      '</article>'
-    ].join('\\n');
-  });
-  container.innerHTML = items.join('\\n');
-}
-function updateView(data) {
-  if (!data) { return; }
-  state.courseMemberId = data.courseMemberId || state.courseMemberId;
-  state.title = data.title || state.title;
-  state.comments = data.comments || [];
-  renderComments(state.comments);
-}
-document.getElementById("refreshButton")?.addEventListener("click", function() {
-  sendMessage('refreshComments', { courseMemberId: state.courseMemberId });
-});
-document.getElementById("commentForm")?.addEventListener("submit", function(event) {
-  event.preventDefault();
-  const messageInput = document.getElementById("commentMessage");
-  if (!messageInput) { return; }
-  const message = messageInput.value.trim();
-  if (!message) { return; }
-  sendMessage('createComment', { courseMemberId: state.courseMemberId, message: message });
-  messageInput.value = '';
-});
-document.getElementById("commentsContainer")?.addEventListener("click", function(event) {
-  const target = event.target;
-  if (!(target instanceof HTMLElement)) { return; }
-  const action = target.dataset.action;
-  const commentId = target.dataset.id;
-  if (!action || !commentId) { return; }
-  if (action === 'edit') {
-    const comment = state.comments.find(function(c) { return c.id === commentId; });
-    if (!comment) { return; }
-    const updated = prompt('Edit comment', comment.message || '');
-    if (updated !== null) {
-      sendMessage('updateComment', { courseMemberId: state.courseMemberId, commentId: commentId, message: updated });
+    if (!this.panel) {
+      return this.getBaseHtml('Comments', '<p>Loading…</p>');
     }
-  } else if (action === 'delete') {
-    const confirmed = confirm('Delete this comment?');
-    if (confirmed) {
-      sendMessage('deleteComment', { courseMemberId: state.courseMemberId, commentId: commentId });
-    }
-  }
-});
-window.addEventListener("message", function(event) {
-  const message = event.data;
-  if (!message) { return; }
-  if (message.command === 'updateComments') {
-    updateView({ courseMemberId: state.courseMemberId, title: state.title, comments: message.data });
-  } else if (message.command === 'update') {
-    updateView(message.data);
-  }
-});
-updateView(state);
-</script>`;
 
-    const style = `<style>
-  .comments {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    margin: 16px 0;
-  }
-  .comment {
-    border: 1px solid var(--vscode-editorWidget-border);
-    border-radius: 4px;
-    padding: 12px;
-    background: var(--vscode-editorWidget-background);
-  }
-  .comment-header {
-    display: flex;
-    justify-content: space-between;
-    font-size: 12px;
-    color: var(--vscode-descriptionForeground);
-    margin-bottom: 8px;
-  }
-  .comment-body {
-    margin-bottom: 8px;
-    white-space: pre-wrap;
-  }
-  .comment-actions {
-    display: flex;
-    gap: 8px;
-  }
-  .muted {
-    color: var(--vscode-descriptionForeground);
-  }
-</style>`;
+    const webview = this.panel.webview;
+    const nonce = this.getNonce();
+    const initialState = JSON.stringify(data ?? { courseMemberId: '', title: 'Comments', comments: [] });
+    const componentsCssUri = this.getWebviewUri(webview, 'webview-ui', 'components', 'components.css');
+    const commentsCssUri = this.getWebviewUri(webview, 'webview-ui', 'comments.css');
+    const componentsJsUri = this.getWebviewUri(webview, 'webview-ui', 'components.js');
+    const commentsJsUri = this.getWebviewUri(webview, 'webview-ui', 'comments.js');
+    const markedJsUri = this.getWebviewUri(webview, 'webview-ui', 'lib', 'marked.min.js');
 
-    const content = `
-<h1>${heading}</h1>
-<div class="actions">
-  <button class="button" id="refreshButton">Refresh</button>
-</div>
-<section class="comments" id="commentsContainer"></section>
-<section class="form-section">
-  <h2>New Comment</h2>
-  <form id="commentForm">
-    <div class="form-group">
-      <label for="commentMessage">Comment</label>
-      <textarea id="commentMessage" name="commentMessage" rows="5" required></textarea>
-    </div>
-    <div class="actions">
-      <button class="button" type="submit">Add Comment</button>
-    </div>
-  </form>
-</section>
-${script}
-${style}
-`;
-
-    return this.getBaseHtml(`Comments: ${heading}`, content);
+    return `<!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; img-src ${webview.cspSource} https: data:; script-src 'nonce-${nonce}';">
+      <title>Course Member Comments</title>
+      <link rel="stylesheet" href="${componentsCssUri}">
+      <link rel="stylesheet" href="${commentsCssUri}">
+    </head>
+    <body>
+      <div id="app"></div>
+      <script nonce="${nonce}">
+        window.vscodeApi = window.vscodeApi || acquireVsCodeApi();
+        window.__INITIAL_STATE__ = ${initialState};
+      </script>
+      <script nonce="${nonce}" src="${markedJsUri}"></script>
+      <script nonce="${nonce}" src="${componentsJsUri}"></script>
+      <script nonce="${nonce}" src="${commentsJsUri}"></script>
+    </body>
+    </html>`;
   }
 
   protected async handleMessage(message: any): Promise<void> {
     if (!message) { return; }
+
     switch (message.command) {
       case 'createComment':
         await this.createComment(message.data);
@@ -190,6 +76,13 @@ ${style}
       case 'refreshComments':
         await this.refreshComments();
         break;
+      case 'showWarning':
+        if (message.data) {
+          vscode.window.showWarningMessage(String(message.data));
+        }
+        break;
+      default:
+        break;
     }
   }
 
@@ -198,45 +91,101 @@ ${style}
     return data?.courseMemberId;
   }
 
-  private async createComment(data: { courseMemberId: string; message: string }): Promise<void> {
+  private updateCurrentData(comments: CourseMemberCommentList[]): void {
+    const current = this.currentData as CommentsWebviewData | undefined;
+    if (!current) {
+      return;
+    }
+    this.currentData = { ...current, comments } satisfies CommentsWebviewData;
+  }
+
+  private postLoadingState(loading: boolean): void {
+    if (!this.panel) {
+      return;
+    }
+    this.panel.webview.postMessage({ command: 'setLoading', data: { loading } });
+  }
+
+  private postComments(comments: CourseMemberCommentList[]): void {
+    if (!this.panel) {
+      return;
+    }
+    this.panel.webview.postMessage({ command: 'updateComments', data: comments });
+  }
+
+  private async createComment(data: { message: string }): Promise<void> {
+    const courseMemberId = this.getCourseMemberId();
+    if (!courseMemberId) {
+      vscode.window.showWarningMessage('Unable to create comment: missing course member context.');
+      return;
+    }
+
     try {
-      const comments = await this.apiService.createCourseMemberComment(data.courseMemberId, data.message);
-      this.currentData = { ...(this.currentData as CommentsWebviewData), comments };
-      this.panel?.webview.postMessage({ command: 'updateComments', data: comments });
+      this.postLoadingState(true);
+      const comments = await this.apiService.createCourseMemberComment(courseMemberId, data.message);
+      this.updateCurrentData(comments);
+      this.postComments(comments);
+      this.postLoadingState(false);
+      vscode.window.showInformationMessage('Comment added.');
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to create comment: ${error?.message || error}`);
+      this.postLoadingState(false);
     }
   }
 
-  private async updateComment(data: { courseMemberId: string; commentId: string; message: string }): Promise<void> {
+  private async updateComment(data: { commentId: string; message: string }): Promise<void> {
+    const courseMemberId = this.getCourseMemberId();
+    if (!courseMemberId || !data?.commentId) {
+      return;
+    }
+
     try {
-      const comments = await this.apiService.updateCourseMemberComment(data.courseMemberId, data.commentId, data.message);
-      this.currentData = { ...(this.currentData as CommentsWebviewData), comments };
-      this.panel?.webview.postMessage({ command: 'updateComments', data: comments });
+      this.postLoadingState(true);
+      const comments = await this.apiService.updateCourseMemberComment(courseMemberId, data.commentId, data.message);
+      this.updateCurrentData(comments);
+      this.postComments(comments);
+      this.postLoadingState(false);
+      vscode.window.showInformationMessage('Comment updated.');
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to update comment: ${error?.message || error}`);
+      this.postLoadingState(false);
     }
   }
 
-  private async deleteComment(data: { courseMemberId: string; commentId: string }): Promise<void> {
+  private async deleteComment(data: { commentId: string }): Promise<void> {
+    const courseMemberId = this.getCourseMemberId();
+    if (!courseMemberId || !data?.commentId) {
+      return;
+    }
+
     try {
-      const comments = await this.apiService.deleteCourseMemberComment(data.courseMemberId, data.commentId);
-      this.currentData = { ...(this.currentData as CommentsWebviewData), comments };
-      this.panel?.webview.postMessage({ command: 'updateComments', data: comments });
+      this.postLoadingState(true);
+      const comments = await this.apiService.deleteCourseMemberComment(courseMemberId, data.commentId);
+      this.updateCurrentData(comments);
+      this.postComments(comments);
+      this.postLoadingState(false);
+      vscode.window.showInformationMessage('Comment deleted.');
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to delete comment: ${error?.message || error}`);
+      this.postLoadingState(false);
     }
   }
 
   private async refreshComments(): Promise<void> {
     const courseMemberId = this.getCourseMemberId();
-    if (!courseMemberId || !this.panel) return;
+    if (!courseMemberId || !this.panel) {
+      return;
+    }
+
     try {
+      this.postLoadingState(true);
       const comments = await this.apiService.listCourseMemberComments(courseMemberId);
-      this.currentData = { ...(this.currentData as CommentsWebviewData), comments };
-      this.panel.webview.postMessage({ command: 'updateComments', data: comments });
+      this.updateCurrentData(comments);
+      this.postComments(comments);
+      this.postLoadingState(false);
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to refresh comments: ${error?.message || error}`);
+      this.postLoadingState(false);
     }
   }
 }

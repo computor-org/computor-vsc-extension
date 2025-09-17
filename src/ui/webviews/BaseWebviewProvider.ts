@@ -6,10 +6,16 @@ export abstract class BaseWebviewProvider {
   protected panel: vscode.WebviewPanel | undefined;
   protected readonly viewType: string;
   protected currentData: any;
-  
-  constructor(context: vscode.ExtensionContext, viewType: string) {
+  private readonly resourceRoots: vscode.Uri[];
+
+  constructor(context: vscode.ExtensionContext, viewType: string, extraResourceRoots: vscode.Uri[] = []) {
     this.context = context;
     this.viewType = viewType;
+    this.resourceRoots = [
+      vscode.Uri.file(path.join(this.context.extensionPath, 'media')),
+      vscode.Uri.file(path.join(this.context.extensionPath, 'webview-ui')),
+      ...extraResourceRoots
+    ];
   }
 
   public async show(title: string, data?: any): Promise<void> {
@@ -26,9 +32,7 @@ export abstract class BaseWebviewProvider {
         {
           enableScripts: true,
           retainContextWhenHidden: true,
-          localResourceRoots: [
-            vscode.Uri.file(path.join(this.context.extensionPath, 'media'))
-          ]
+          localResourceRoots: this.resourceRoots
         }
       );
 
@@ -61,6 +65,10 @@ export abstract class BaseWebviewProvider {
 
   protected getUri(webview: vscode.Webview, extensionUri: vscode.Uri, pathList: string[]): vscode.Uri {
     return webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, ...pathList));
+  }
+
+  protected getWebviewUri(webview: vscode.Webview, ...pathSegments: string[]): vscode.Uri {
+    return webview.asWebviewUri(vscode.Uri.file(path.join(this.context.extensionPath, ...pathSegments)));
   }
 
   protected getNonce(): string {
@@ -174,7 +182,8 @@ export abstract class BaseWebviewProvider {
         ${contentWithNonce}
       </div>
       <script nonce="${nonce}">
-        const vscode = acquireVsCodeApi();
+        const vscode = window.vscodeApi || acquireVsCodeApi();
+        window.vscodeApi = vscode;
         
         // Handle messages from extension
         window.addEventListener('message', event => {

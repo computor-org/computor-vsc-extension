@@ -2,7 +2,7 @@
 
  * Auto-generated TypeScript interfaces from Pydantic models
 
- * Generated on: 2025-09-16T23:15:33.528113
+ * Generated on: 2025-09-17T14:46:20.417476
 
  * Category: Courses
 
@@ -652,7 +652,7 @@ export interface CourseContentList {
   max_submissions?: number | null;
   execution_backend_id?: string | null;
   is_submittable?: boolean;
-  course_content_type?: CourseContentTypeGet | null;
+  course_content_type?: CourseContentTypeList | null;
   /** Whether this content has an example deployment */
   has_deployment?: boolean | null;
   /** Current deployment status if has_deployment=true */

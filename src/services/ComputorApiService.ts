@@ -1111,7 +1111,7 @@ export class ComputorApiService {
     try {
       const result = await errorRecoveryService.executeWithRecovery(async () => {
         const client = await this.getHttpClient();
-        const response = await client.get<any>('/users/me');
+        const response = await client.get<any>('/users');
         return response.data;
       }, {
         maxRetries: 2,
@@ -1594,7 +1594,7 @@ export class ComputorApiService {
       const query = Object.fromEntries(
         Object.entries(params).filter(([, value]) => value !== undefined && value !== null)
       );
-      const response = await client.get<MessageList[]>('/messages', { params: query });
+      const response = await client.get<MessageList[]>('/messages', query);
       return response.data;
     }, {
       maxRetries: 2,
@@ -1655,7 +1655,7 @@ export class ComputorApiService {
       const client = await this.getHttpClient();
       const response = await client.get<CourseMemberCommentList[]>(
         '/course-member-comments',
-        { params: { course_member_id: courseMemberId } }
+        { course_member_id: courseMemberId }
       );
       return response.data;
     }, {
