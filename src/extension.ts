@@ -187,13 +187,27 @@ async function ensureCourseMarker(role: Extract<Role, 'Student' | 'Tutor'>, api:
     }
     return undefined;
   }
-  if (existing?.courseId) return existing.courseId;
-
+  
   const courses = await api.getStudentCourses();
   if (!courses || courses.length === 0) {
     vscode.window.showWarningMessage(`No ${role.toLowerCase()} courses found for your account.`);
     return undefined;
   }
+
+  if (existing?.courseId) {
+    const match = courses.find((course: any) => course.id === existing.courseId);
+    if (match) {
+      return existing.courseId;
+    }
+
+    // Invalid or stale marker – remove and continue as if no marker exists
+    try {
+      await fs.promises.unlink(file);
+    } catch {
+      // Ignore errors when removing invalid marker
+    }
+  }
+
   const pick = await vscode.window.showQuickPick(
     courses.map((c: any) => ({ label: c.title || c.path || c.name || c.id, description: c.path || '', course: c })),
     { title: `${role}: Select Course`, placeHolder: 'Pick your course' }
