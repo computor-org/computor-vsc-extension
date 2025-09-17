@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import { ComputorApiService } from './ComputorApiService';
 import { GitLabTokenManager } from './GitLabTokenManager';
 import { execAsync } from '../utils/exec';
+import { CTGit } from '../git/CTGit';
 
 interface RepositoryInfo {
   cloneUrl: string;
@@ -405,133 +406,197 @@ export class StudentRepositoryManager {
     upstreamUrl: string,
     token?: string
   ): Promise<boolean> {
+    const authenticatedUpstreamUrl = token ? this.addTokenToUrl(upstreamUrl, token) : upstreamUrl;
+    console.log('[StudentRepositoryManager] Authenticated upstream URL:', authenticatedUpstreamUrl);
+
+    let upstreamAddedByUs = false;
+
     try {
-      // Add upstream remote if it doesn't exist
-      const { stdout: remotes } = await execAsync('git remote', { cwd: repoPath });
-      
-      const authenticatedUpstreamUrl = token ? this.addTokenToUrl(upstreamUrl, token) : upstreamUrl;
-      console.log('[StudentRepositoryManager] Authenticated upstream URL:', authenticatedUpstreamUrl);
-      
-      if (!remotes.includes('upstream')) {
-        console.log('[StudentRepositoryManager] Adding upstream remote');
-        await execAsync(`git remote add upstream "${authenticatedUpstreamUrl}"`, { cwd: repoPath });
-      } else {
-        // Update upstream URL in case it changed
-        console.log('[StudentRepositoryManager] Updating upstream remote URL');
-        await execAsync(`git remote set-url upstream "${authenticatedUpstreamUrl}"`, { cwd: repoPath });
+      await this.ensureMergeNotInProgress(repoPath);
+
+      const clean = await this.ensureWorkingTreeClean(repoPath);
+      if (!clean) {
+        return false;
       }
-      
-      // Fetch from upstream
-      console.log('[StudentRepositoryManager] Fetching from upstream');
-      await execAsync('git fetch upstream', {
+
+      const remoteExisted = await this.ensureUpstreamRemote(repoPath, authenticatedUpstreamUrl);
+      upstreamAddedByUs = !remoteExisted;
+
+      const defaultBranch = await this.getUpstreamDefaultBranch(repoPath);
+      if (!defaultBranch) {
+        vscode.window.showWarningMessage('Unable to detect the upstream default branch. Contact your lecturer.');
+        return false;
+      }
+
+      const behindCount = await this.getUpstreamBehindCount(repoPath, defaultBranch);
+      console.log('[StudentRepositoryManager] Fork behind upstream commits:', behindCount);
+
+      if (behindCount <= 0) {
+        return false;
+      }
+
+      const choice = await vscode.window.showInformationMessage(
+        `Your repository fork is ${behindCount} commit(s) behind upstream/${defaultBranch}. Update now?`,
+        'Yes, Update',
+        'Skip'
+      );
+
+      if (choice !== 'Yes, Update') {
+        return false;
+      }
+
+      const gitHelper = new CTGit(repoPath);
+      const updateResult = await gitHelper.forkUpdate(authenticatedUpstreamUrl, {
+        defaultBranch,
+        removeRemote: !remoteExisted
+      });
+
+      if (updateResult.updated) {
+        console.log(`[StudentRepositoryManager] Fork updated from upstream/${defaultBranch}`);
+      } else {
+        console.log('[StudentRepositoryManager] Fork update finished without changes');
+      }
+      return updateResult.updated;
+    } catch (error) {
+      console.error('[StudentRepositoryManager] Failed to sync fork:', error);
+      await this.abortMergeIfPossible(repoPath);
+      return false;
+    } finally {
+      if (upstreamAddedByUs) {
+        await this.removeUpstreamRemote(repoPath);
+      }
+    }
+  }
+
+  private async ensureWorkingTreeClean(repoPath: string): Promise<boolean> {
+    const status = await execAsync('git status --porcelain', { cwd: repoPath });
+    const output = status.stdout.trim();
+    if (!output) {
+      return true;
+    }
+
+    const hasConflicts = output.split('\n').some(line => line.startsWith('U') || line.includes('AA') || line.includes('DD'));
+    if (hasConflicts) {
+      const choice = await vscode.window.showWarningMessage(
+        'Your repository has unresolved merge conflicts. Resolve them manually and try again.',
+        'View Git Output',
+        'Cancel'
+      );
+      if (choice === 'View Git Output') {
+        await vscode.commands.executeCommand('git.showOutput');
+      }
+      return false;
+    }
+
+    const choice = await vscode.window.showWarningMessage(
+      'Your repository has local changes. Syncing upstream will be skipped to avoid overwriting your work.',
+      'View Git Output',
+      'Continue Anyway'
+    );
+
+    if (choice === 'Continue Anyway') {
+      return true;
+    }
+
+    if (choice === 'View Git Output') {
+      await vscode.commands.executeCommand('git.showOutput');
+    }
+    return false;
+  }
+
+  private async ensureMergeNotInProgress(repoPath: string): Promise<void> {
+    try {
+      await fs.promises.access(path.join(repoPath, '.git', 'MERGE_HEAD'));
+      console.warn('[StudentRepositoryManager] Detected unfinished merge. Aborting before continuing.');
+      await this.abortMergeIfPossible(repoPath);
+    } catch {
+      // No merge in progress
+    }
+  }
+
+  private async ensureUpstreamRemote(repoPath: string, remoteUrl: string): Promise<boolean> {
+    const { stdout } = await execAsync('git remote', { cwd: repoPath });
+    const remotes = stdout.split('\n').map(line => line.trim()).filter(Boolean);
+
+    const upstreamExists = remotes.includes('upstream');
+
+    if (!upstreamExists) {
+      await execAsync(`git remote add upstream "${remoteUrl}"`, { cwd: repoPath });
+    } else {
+      await execAsync(`git remote set-url upstream "${remoteUrl}"`, { cwd: repoPath });
+    }
+
+    await execAsync('git fetch upstream', {
+      cwd: repoPath,
+      env: {
+        ...process.env,
+        GIT_TERMINAL_PROMPT: '0'
+      }
+    });
+
+    return upstreamExists;
+  }
+
+  private async removeUpstreamRemote(repoPath: string): Promise<void> {
+    try {
+      await execAsync('git remote remove upstream', { cwd: repoPath });
+    } catch {
+      // Ignore removal errors
+    }
+  }
+
+  private async getUpstreamDefaultBranch(repoPath: string): Promise<string | undefined> {
+    try {
+      const { stdout } = await execAsync('git remote show upstream', {
         cwd: repoPath,
         env: {
           ...process.env,
           GIT_TERMINAL_PROMPT: '0'
         }
       });
-      
-      // Check if there are differences
-      let diffCount = '0';
-      try {
-        // Try main branch first
-        const result = await execAsync('git rev-list --count HEAD..upstream/main', { cwd: repoPath });
-        diffCount = result.stdout;
-        console.log('[StudentRepositoryManager] Checking against upstream/main, commits behind:', diffCount.trim());
-      } catch {
-        // If main doesn't exist, try master
-        try {
-          const result = await execAsync('git rev-list --count HEAD..upstream/master', { cwd: repoPath });
-          diffCount = result.stdout;
-          console.log('[StudentRepositoryManager] Checking against upstream/master, commits behind:', diffCount.trim());
-        } catch (error) {
-          console.error('[StudentRepositoryManager] Failed to check differences with upstream:', error);
-          return false;
-        }
+
+      const match = stdout.match(/HEAD branch:\s*(.+)/);
+      if (match && match[1]) {
+        return match[1].trim();
       }
-      
-      const needsUpdate = parseInt(diffCount.trim()) > 0;
-      console.log('[StudentRepositoryManager] Fork needs update:', needsUpdate);
-      
-      if (needsUpdate) {
-        console.log('[StudentRepositoryManager] Fork needs update from upstream');
-        
-        // Ask user for permission
-        const choice = await vscode.window.showInformationMessage(
-          'Your repository fork is behind the upstream template. Would you like to update it?',
-          'Yes, Update',
-          'Skip'
-        );
-        
-        if (choice === 'Yes, Update') {
-          // Merge upstream changes
-          console.log('[StudentRepositoryManager] Merging upstream changes');
-          const currentBranch = await this.getCurrentBranch(repoPath);
-          
-          if (currentBranch !== 'DETACHED') {
-            try {
-              // Try fast-forward merge first
-              console.log('[StudentRepositoryManager] Attempting fast-forward merge with upstream/main');
-              await execAsync('git merge upstream/main --ff-only', { cwd: repoPath });
-              console.log('[StudentRepositoryManager] Successfully merged upstream/main');
-            } catch (mainError) {
-              console.log('[StudentRepositoryManager] upstream/main merge failed, trying upstream/master');
-              try {
-                await execAsync('git merge upstream/master --ff-only', { cwd: repoPath });
-                console.log('[StudentRepositoryManager] Successfully merged upstream/master');
-              } catch (mergeError) {
-                console.log('[StudentRepositoryManager] Fast-forward merge failed:', mergeError);
-                // If fast-forward fails, we need a regular merge
-                const mergeChoice = await vscode.window.showWarningMessage(
-                  'Cannot fast-forward merge. This will create a merge commit. Continue?',
-                  'Yes, Merge',
-                  'Cancel'
-                );
-                
-                if (mergeChoice === 'Yes, Merge') {
-                  try {
-                    await execAsync('git merge upstream/main', { cwd: repoPath });
-                  } catch {
-                    await execAsync('git merge upstream/master', { cwd: repoPath });
-                  }
-                  
-                  // Push the merge to origin
-                  await execAsync('git push origin', { 
-                    cwd: repoPath,
-                    env: {
-                      ...process.env,
-                      GIT_TERMINAL_PROMPT: '0'
-                    }
-                  });
-                }
-              }
-            }
-          }
-          return true;
-        }
-      } else {
-        console.log('[StudentRepositoryManager] Fork is up to date with upstream');
-      }
-      
-      return false;
     } catch (error) {
-      console.error('[StudentRepositoryManager] Failed to sync fork:', error);
-      return false;
+      console.warn('[StudentRepositoryManager] Failed to detect upstream default branch via remote show:', error);
+    }
+
+    for (const candidate of ['main', 'master']) {
+      try {
+        await execAsync(`git rev-parse --verify upstream/${candidate}`, { cwd: repoPath });
+        return candidate;
+      } catch {
+        // Continue searching
+      }
+    }
+
+    return undefined;
+  }
+
+  private async getUpstreamBehindCount(repoPath: string, branch: string): Promise<number> {
+    try {
+      const { stdout } = await execAsync(`git rev-list --count HEAD..upstream/${branch}`, { cwd: repoPath });
+      const parsed = parseInt(stdout.trim(), 10);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    } catch (error) {
+      console.warn('[StudentRepositoryManager] Failed to compute upstream divergence:', error);
+    }
+
+    return 0;
+  }
+
+  private async abortMergeIfPossible(repoPath: string): Promise<void> {
+    try {
+      await execAsync('git merge --abort', { cwd: repoPath });
+    } catch {
+      // Ignore when there is nothing to abort
     }
   }
   
-  /**
-   * Get current branch name
-   */
-  private async getCurrentBranch(repoPath: string): Promise<string> {
-    try {
-      const { stdout } = await execAsync('git symbolic-ref --short HEAD', { cwd: repoPath });
-      return stdout.trim();
-    } catch {
-      return 'DETACHED';
-    }
-  }
-
   /**
    * Update an existing repository
    */
