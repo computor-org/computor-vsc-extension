@@ -850,12 +850,26 @@ export class ComputorApiService {
     }
   }
 
-  async generateStudentTemplate(courseId: string): Promise<{ workflow_id: string; status?: string; contents_to_process?: number }> {
+  async generateStudentTemplate(
+    courseId: string,
+    payload: {
+      commit_message?: string;
+      force_redeploy?: boolean;
+      release?: {
+        course_content_ids?: string[];
+        parent_id?: string;
+        include_descendants?: boolean;
+        all?: boolean;
+        global_commit?: string;
+        overrides?: any[];
+      } | null;
+    } = {}
+  ): Promise<{ workflow_id: string; status?: string; contents_to_process?: number }> {
     const client = await this.getHttpClient();
     // Backend now returns a workflow-based response (Temporal): { workflow_id, status, contents_to_process }
     const response = await client.post<{ workflow_id: string; status?: string; contents_to_process?: number }>(
       `/system/courses/${courseId}/generate-student-template`,
-      {}
+      payload ?? {}
     );
     console.log('Generate student template response:', response.data);
     return response.data;

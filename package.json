@@ -779,6 +779,16 @@
           "group": "inline@2"
         },
         {
+          "command": "computor.lecturer.releaseCourseContent",
+          "when": "view == computor.lecturer.courses && viewItem == course.contents",
+          "group": "inline@2"
+        },
+        {
+          "command": "computor.lecturer.releaseCourseContent",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/",
+          "group": "inline@2"
+        },
+        {
           "command": "computor.tutor.cloneStudentRepository",
           "when": "view == computor.tutor.courses && viewItem =~ /^tutorStudentContent\\.assignment/",
           "group": "inline@1"
