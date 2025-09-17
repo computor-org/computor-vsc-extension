@@ -332,7 +332,7 @@ class TutorController extends BaseRoleController {
     const api = await this.setupApi(client);
 
     try {
-      const courses = await api.getTutorCourses();
+      const courses = await api.getTutorCourses(false);
       if (!courses || courses.length === 0) {
         vscode.window.showWarningMessage('No tutor courses found.');
       }

@@ -1407,16 +1407,20 @@ export class ComputorApiService {
   }
 
   // Tutor API methods
-  async getTutorCourses(): Promise<any[]> {
+  async getTutorCourses(useRecovery: boolean = true): Promise<any[]> {
     const cacheKey = 'tutorCourses';
     const cached = multiTierCache.get<any[]>(cacheKey);
     if (cached) return cached;
     try {
-      const result = await errorRecoveryService.executeWithRecovery(async () => {
+      const fetchCourses = async () => {
         const client = await this.getHttpClient();
         const response = await client.get<any[]>('/tutors/courses');
         return response.data;
-      }, { maxRetries: 2, exponentialBackoff: true });
+      };
+
+      const result = useRecovery
+        ? await errorRecoveryService.executeWithRecovery(fetchCourses, { maxRetries: 2, exponentialBackoff: true })
+        : await fetchCourses();
       multiTierCache.set(cacheKey, result, 'warm');
       return result || [];
     } catch (error) {
