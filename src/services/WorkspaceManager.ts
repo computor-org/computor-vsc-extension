@@ -47,9 +47,9 @@ export class WorkspaceManager {
 
   private constructor(context: vscode.ExtensionContext) {
     // this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
-    // Initialize workspace in user's home directory under .computor
-    this.workspaceRoot = path.join(os.homedir(), '.computor', 'workspace');
-    this.configPath = path.join(this.workspaceRoot, '.computor', 'workspace.json');
+    // Initialize workspace metadata directory in user's home
+    this.workspaceRoot = path.join(os.homedir(), '.computor');
+    this.configPath = path.join(this.workspaceRoot, 'workspace.json');
   }
 
   static getInstance(context: vscode.ExtensionContext): WorkspaceManager {
@@ -68,16 +68,7 @@ export class WorkspaceManager {
   }
 
   private async createDirectoryStructure(): Promise<void> {
-    const directories = [
-      this.workspaceRoot,
-      path.join(this.workspaceRoot, 'workbench'),
-      path.join(this.workspaceRoot, 'courses'),
-      path.join(this.workspaceRoot, '.computor')
-    ];
-
-    for (const dir of directories) {
-      await fs.promises.mkdir(dir, { recursive: true });
-    }
+    await fs.promises.mkdir(this.workspaceRoot, { recursive: true });
   }
 
   private async loadWorkspaceConfig(): Promise<void> {
