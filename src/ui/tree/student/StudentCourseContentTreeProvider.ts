@@ -584,6 +584,9 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
             
             // Determine if this content is a unit (has descendants)
             const isUnit = contentKind ? contentKind.has_descendants : false;
+            const contentUnread = content.unread_message_count ?? 0;
+            const submissionUnread = submissionGroup?.unread_message_count ?? 0;
+            const totalUnread = contentUnread + submissionUnread;
             
             const node: ContentNode = {
                 name: content.title || content.path.split('.').pop() || content.path,
@@ -593,7 +596,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                 contentType,
                 contentKind,
                 isUnit,
-                unreadMessageCount: content.unread_message_count ?? 0
+                unreadMessageCount: totalUnread
             };
             
             contentMap.set(content.path, node);
@@ -622,7 +625,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     }
 
     private aggregateUnreadCounts(node: ContentNode): number {
-        const ownUnread = node.courseContent?.unread_message_count ?? 0;
+        const ownUnread = (node.courseContent?.unread_message_count ?? 0) + (node.submissionGroup?.unread_message_count ?? 0);
         let total = ownUnread;
 
         node.children.forEach((child) => {
@@ -927,7 +930,7 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         // New compact metrics in brackets: Tests, Submissions, Points
         const entries: string[] = [];
 
-        const unreadCount = this.courseContent?.unread_message_count ?? 0;
+        const unreadCount = (this.courseContent?.unread_message_count ?? 0) + (this.submissionGroup?.unread_message_count ?? 0);
         if (unreadCount > 0) {
             entries.push(`🔔 ${unreadCount}`);
         }
@@ -961,7 +964,7 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
     
     private setupTooltip(): void {
         const lines: string[] = [];
-        const unreadCount = this.courseContent?.unread_message_count ?? 0;
+        const unreadCount = (this.courseContent?.unread_message_count ?? 0) + (this.submissionGroup?.unread_message_count ?? 0);
         
         if (this.contentType) {
             lines.push(`Type: ${this.contentType.title || this.contentType.slug}`);
