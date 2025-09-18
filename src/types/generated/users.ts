@@ -2,7 +2,7 @@
 
  * Auto-generated TypeScript interfaces from Pydantic models
 
- * Generated on: 2025-09-17T14:46:20.415711
+ * Generated on: 2025-09-18T17:27:35.881491
 
  * Category: Users
 
@@ -56,6 +56,17 @@ export interface UserGroupUpdate {
   transient?: boolean | null;
 }
 
+export interface UserGroupQuery {
+  skip?: number | null;
+  limit?: number | null;
+  /** Filter by user ID */
+  user_id?: string | null;
+  /** Filter by group ID */
+  group_id?: string | null;
+  /** Filter by transient status */
+  transient?: boolean | null;
+}
+
 export interface UserRoleCreate {
   user_id: string;
   role_id: string;
@@ -79,6 +90,13 @@ export interface UserRoleList {
 
 export interface UserRoleUpdate {
   role_id: string;
+}
+
+export interface UserRoleQuery {
+  skip?: number | null;
+  limit?: number | null;
+  user_id?: string | null;
+  role_id?: string | null;
 }
 
 export interface UserCreate {
@@ -165,6 +183,20 @@ export interface UserUpdate {
   properties?: any | null;
 }
 
+export interface UserQuery {
+  skip?: number | null;
+  limit?: number | null;
+  id?: string | null;
+  given_name?: string | null;
+  family_name?: string | null;
+  email?: string | null;
+  number?: string | null;
+  user_type?: any | null;
+  properties?: any | null;
+  archived?: boolean | null;
+  username?: string | null;
+}
+
 export interface AccountCreate {
   /** Authentication provider name */
   provider: string;
@@ -225,6 +257,17 @@ export interface AccountUpdate {
   provider_account_id?: string | null;
   /** Provider-specific properties */
   properties?: any | null;
+}
+
+export interface AccountQuery {
+  skip?: number | null;
+  limit?: number | null;
+  id?: string | null;
+  provider?: string | null;
+  type?: string | null;
+  provider_account_id?: string | null;
+  user_id?: string | null;
+  properties?: string | null;
 }
 
 export interface UserPassword {

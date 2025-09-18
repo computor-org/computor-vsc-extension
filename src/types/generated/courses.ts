@@ -2,7 +2,7 @@
 
  * Auto-generated TypeScript interfaces from Pydantic models
 
- * Generated on: 2025-09-17T14:46:20.417476
+ * Generated on: 2025-09-18T17:27:35.883871
 
  * Category: Courses
 
@@ -93,6 +93,19 @@ export interface CourseUpdate {
   properties?: CourseProperties | null;
 }
 
+export interface CourseQuery {
+  skip?: number | null;
+  limit?: number | null;
+  id?: string | null;
+  title?: string | null;
+  description?: string | null;
+  path?: string | null;
+  course_family_id?: string | null;
+  organization_id?: string | null;
+  provider_url?: string | null;
+  full_path?: string | null;
+}
+
 export interface CourseMemberProperties {
   gitlab?: CourseMemberGitLabConfig | null;
 }
@@ -137,6 +150,19 @@ export interface CourseMemberUpdate {
   course_role_id?: string | null;
 }
 
+export interface CourseMemberQuery {
+  skip?: number | null;
+  limit?: number | null;
+  id?: string | null;
+  user_id?: string | null;
+  course_id?: string | null;
+  course_group_id?: string | null;
+  course_role_id?: string | null;
+  properties?: CourseMemberProperties | null;
+  given_name?: string | null;
+  family_name?: string | null;
+}
+
 export interface CourseExecutionBackendCreate {
   execution_backend_id: string;
   course_id: string;
@@ -164,8 +190,24 @@ export interface CourseExecutionBackendUpdate {
   properties?: any | null;
 }
 
+export interface CourseExecutionBackendQuery {
+  skip?: number | null;
+  limit?: number | null;
+  execution_backend_id?: string | null;
+  course_id?: string | null;
+  properties?: string | null;
+}
+
 export interface CourseRoleGet {
   id: string;
+  title?: string | null;
+  description?: string | null;
+}
+
+export interface CourseRoleQuery {
+  skip?: number | null;
+  limit?: number | null;
+  id?: string | null;
   title?: string | null;
   description?: string | null;
 }
@@ -216,6 +258,19 @@ export interface CourseContentTypeUpdate {
   properties?: any | null;
 }
 
+export interface CourseContentTypeQuery {
+  skip?: number | null;
+  limit?: number | null;
+  id?: string | null;
+  slug?: string | null;
+  title?: string | null;
+  color?: string | null;
+  description?: string | null;
+  course_id?: string | null;
+  properties?: string | null;
+  course_content_kind_id?: string | null;
+}
+
 export interface CourseGroupCreate {
   title?: string | null;
   description?: string | null;
@@ -248,6 +303,15 @@ export interface CourseGroupUpdate {
   description?: string | null;
   course_id?: string | null;
   properties?: any | null;
+}
+
+export interface CourseGroupQuery {
+  skip?: number | null;
+  limit?: number | null;
+  id?: string | null;
+  title?: string | null;
+  course_id?: string | null;
+  properties?: string | null;
 }
 
 /**
@@ -304,6 +368,22 @@ export interface CourseSubmissionGroupGradingUpdate {
 }
 
 /**
+ * Query parameters for searching gradings.
+ */
+export interface CourseSubmissionGroupGradingQuery {
+  skip?: number | null;
+  limit?: number | null;
+  id?: string | null;
+  course_submission_group_id?: string | null;
+  graded_by_course_member_id?: string | null;
+  result_id?: string | null;
+  status?: any | null;
+  min_grade?: number | null;
+  max_grade?: number | null;
+  has_feedback?: boolean | null;
+}
+
+/**
  * Repository information for a submission group
  */
 export interface SubmissionGroupRepository {
@@ -350,7 +430,6 @@ export interface SubmissionGroupStudentList {
   repository?: SubmissionGroupRepository | null;
   status?: string | null;
   grading?: number | null;
-  latest_grading?: SubmissionGroupGradingStudent | null;
   count?: number;
   max_submissions?: number | null;
 }
@@ -417,6 +496,22 @@ export interface CourseContentStudentUpdate {
   feedback?: string | null;
 }
 
+export interface CourseContentStudentQuery {
+  skip?: number | null;
+  limit?: number | null;
+  id?: string | null;
+  title?: string | null;
+  path?: string | null;
+  course_id?: string | null;
+  course_content_type_id?: string | null;
+  directory?: string | null;
+  project?: string | null;
+  provider_url?: string | null;
+  nlevel?: number | null;
+  descendants?: string | null;
+  ascendants?: string | null;
+}
+
 export interface CourseStudentRepository {
   provider_url?: string | null;
   full_path?: string | null;
@@ -439,6 +534,20 @@ export interface CourseStudentList {
   organization_id?: string | null;
   path: string;
   repository: CourseStudentRepository;
+}
+
+export interface CourseStudentQuery {
+  skip?: number | null;
+  limit?: number | null;
+  id?: string | null;
+  title?: string | null;
+  description?: string | null;
+  path?: string | null;
+  course_family_id?: string | null;
+  organization_id?: string | null;
+  provider_url?: string | null;
+  full_path?: string | null;
+  full_path_student?: string | null;
 }
 
 export interface CourseContentKindCreate {
@@ -475,6 +584,17 @@ export interface CourseContentKindList {
 export interface CourseContentKindUpdate {
   title?: string | null;
   description?: string | null;
+}
+
+export interface CourseContentKindQuery {
+  skip?: number | null;
+  limit?: number | null;
+  id?: string | null;
+  title?: string | null;
+  description?: string | null;
+  has_ascendants?: boolean | null;
+  has_descendants?: boolean | null;
+  submittable?: boolean | null;
 }
 
 /**
@@ -570,6 +690,17 @@ export interface CourseFamilyUpdate {
   path?: string | null;
   organization_id?: string | null;
   properties?: CourseFamilyProperties | null;
+}
+
+export interface CourseFamilyQuery {
+  skip?: number | null;
+  limit?: number | null;
+  id?: string | null;
+  title?: string | null;
+  description?: string | null;
+  path?: string | null;
+  organization_id?: string | null;
+  properties?: string | null;
 }
 
 /**
@@ -678,6 +809,28 @@ export interface CourseContentUpdate {
   execution_backend_id?: string | null;
 }
 
+/**
+ * Query parameters for course content.
+ */
+export interface CourseContentQuery {
+  skip?: number | null;
+  limit?: number | null;
+  id?: string | null;
+  title?: string | null;
+  path?: string | null;
+  course_id?: string | null;
+  course_content_type_id?: string | null;
+  properties?: CourseContentProperties | null;
+  archived?: boolean | null;
+  position?: number | null;
+  max_group_size?: number | null;
+  max_test_runs?: number | null;
+  max_submissions?: number | null;
+  execution_backend_id?: string | null;
+  /** Filter by whether content has a deployment */
+  has_deployment?: boolean | null;
+}
+
 export interface CourseMemberCommentCreate {
   id?: string | null;
   transmitter_id?: string;
@@ -717,6 +870,14 @@ export interface CourseMemberCommentUpdate {
   message?: string | null;
 }
 
+export interface CourseMemberCommentQuery {
+  skip?: number | null;
+  limit?: number | null;
+  id?: string | null;
+  transmitter_id?: string | null;
+  course_member_id?: string | null;
+}
+
 export interface CourseTutorRepository {
   provider_url?: string | null;
   full_path_reference?: string | null;
@@ -738,6 +899,17 @@ export interface CourseTutorList {
   organization_id?: string | null;
   path: string;
   repository: CourseTutorRepository;
+}
+
+export interface CourseTutorQuery {
+  skip?: number | null;
+  limit?: number | null;
+  id?: string | null;
+  title?: string | null;
+  description?: string | null;
+  path?: string | null;
+  course_family_id?: string | null;
+  organization_id?: string | null;
 }
 
 export interface CourseSignupResponse {

@@ -80,10 +80,24 @@
   }
 
   function getAuthorDisplay(message) {
+    const author = message.author || {};
+    const authorNameFromParts = [author.given_name, author.family_name]
+      .filter((part) => typeof part === 'string' && part.trim().length > 0)
+      .join(' ');
+
+    const displayFromMessage =
+      typeof message.author_display === 'string' && message.author_display.trim().length > 0
+        ? message.author_display.trim()
+        : '';
+    const displayFromAuthorName =
+      typeof message.author_name === 'string' && message.author_name.trim().length > 0
+        ? message.author_name.trim()
+        : '';
+
     return (
-      message.author_display ||
-      message.author_name ||
-      (message.author && message.author.name) ||
+      displayFromMessage ||
+      displayFromAuthorName ||
+      authorNameFromParts ||
       message.author_id ||
       'Unknown'
     );

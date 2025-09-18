@@ -2,13 +2,20 @@
 
  * Auto-generated TypeScript interfaces from Pydantic models
 
- * Generated on: 2025-09-17T14:46:20.415069
+ * Generated on: 2025-09-18T17:27:35.880652
 
  * Category: Auth
 
  */
 
 
+
+export interface MessageAuthor {
+  /** Author's given name */
+  given_name?: string | null;
+  /** Author's family name */
+  family_name?: string | null;
+}
 
 export interface AuthConfig {
 }

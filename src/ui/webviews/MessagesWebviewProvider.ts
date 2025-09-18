@@ -207,15 +207,18 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     const currentUserId = identity?.id;
 
     return messages.map((message) => {
-      const author = (message as any)?.author || {};
-      const fullName = [author.given_name, author.family_name].filter(Boolean).join(' ');
-      const authorDisplay = (author.full_name as string | undefined)?.trim() || fullName || author.username || message.author_id;
+      const author = message.author;
+      const trimmedParts = [author?.given_name, author?.family_name]
+        .map((part) => (typeof part === 'string' ? part.trim() : ''))
+        .filter((part) => part.length > 0);
+      const fullName = trimmedParts.join(' ');
+      const hasFullName = fullName.length > 0;
       const canEdit = currentUserId ? message.author_id === currentUserId : false;
 
       return {
         ...message,
-        author_display: authorDisplay || undefined,
-        author_name: author.username || undefined,
+        author_display: hasFullName ? fullName : undefined,
+        author_name: hasFullName ? fullName : undefined,
         can_edit: canEdit,
         can_delete: canEdit
       } satisfies EnrichedMessage;
