@@ -10,6 +10,7 @@ import { BasicAuthHttpClient } from './http/BasicAuthHttpClient';
 import { ApiKeyHttpClient } from './http/ApiKeyHttpClient';
 import { JwtHttpClient } from './http/JwtHttpClient';
 import { BackendConnectionService } from './services/BackendConnectionService';
+import { GitEnvironmentService } from './services/GitEnvironmentService';
 
 import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataProvider';
 import { LecturerExampleTreeProvider } from './ui/tree/lecturer/LecturerExampleTreeProvider';
@@ -524,6 +525,7 @@ async function loginFlow(context: vscode.ExtensionContext, role: Role): Promise<
 
   try {
     await controller.activate(client as any);
+    await GitEnvironmentService.getInstance().validateGitEnvironment();
     backendConnectionService.startHealthCheck(baseUrl);
     activeSession = { role, deactivate: () => controller.dispose().then(async () => {
       await vscode.commands.executeCommand('setContext', 'computor.isLoggedIn', false);
