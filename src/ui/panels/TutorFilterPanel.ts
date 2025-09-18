@@ -51,7 +51,7 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
     if (!this._view) return;
     const nonce = Math.random().toString(36).slice(2);
     const webview = this._view.webview;
-    const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'media', 'vscode.css'));
+    const stylesUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'media', 'tutor-filters.css'));
     this._view.webview.html = `
       <!DOCTYPE html>
       <html lang="en">
@@ -59,46 +59,150 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
         <meta charset="UTF-8" />
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <link href="${styleUri}" rel="stylesheet" />
+        <link href="${stylesUri}" rel="stylesheet" />
       </head>
       <body>
-        <div>
-          <label>Course</label>
-          <select id="course"></select>
-        </div>
-        <div>
-          <label>Group</label>
-          <select id="group"></select>
-        </div>
-        <div>
-          <label>Member</label>
-          <select id="member"></select>
-        </div>
+        <section class="filter-fields" data-state="loading">
+          <label class="filter-field" for="course">
+            <span class="filter-field__label">Course</span>
+            <div class="filter-field__control">
+              <select id="course" aria-label="Course">
+                <option value="" disabled selected>Loading…</option>
+              </select>
+            </div>
+            <span class="filter-field__hint">Updates groups and members.</span>
+          </label>
+          <label class="filter-field" for="group">
+            <span class="filter-field__label">Group</span>
+            <div class="filter-field__control">
+              <select id="group" aria-label="Group" disabled>
+                <option value="" selected>All groups</option>
+              </select>
+            </div>
+            <span class="filter-field__hint">Optional — narrow to a single group.</span>
+          </label>
+          <label class="filter-field" for="member">
+            <span class="filter-field__label">Member</span>
+            <div class="filter-field__control">
+              <select id="member" aria-label="Member" disabled>
+                <option value="" disabled selected>Waiting for members…</option>
+              </select>
+            </div>
+            <span class="filter-field__hint">Choose who to inspect in the tree.</span>
+          </label>
+        </section>
         <script nonce="${nonce}">
           const vscode = acquireVsCodeApi();
           const courseSel = document.getElementById('course');
           const groupSel = document.getElementById('group');
           const memberSel = document.getElementById('member');
-          window.addEventListener('message', event => {
-            const { command, data, selected } = event.data || {};
+          const fieldsWrapper = document.querySelector('.filter-fields');
+
+          const state = {
+            courses: false,
+            groups: false,
+            members: false
+          };
+
+          const toStringOrEmpty = (value) => (value == null ? '' : String(value));
+          const escapeHtml = (value) => toStringOrEmpty(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+          const getCourseLabel = (course) => course.title || course.name || course.path || course.id;
+          const getGroupLabel = (group) => group.title || group.name || group.id;
+          const getMemberLabel = (member) => {
+            const user = member?.user;
+            return (user?.full_name) || (user?.username) || member.id;
+          };
+
+          const updatePanelState = () => {
+            if (!fieldsWrapper) return;
+            const loading = !state.courses || !state.members;
+            fieldsWrapper.dataset.state = loading ? 'loading' : 'ready';
+          };
+
+          const buildOptions = (items, selectedId, labelSelector) => items.map((item) => {
+            const value = toStringOrEmpty(item.id);
+            const label = escapeHtml(labelSelector(item));
+            const selected = selectedId === value ? ' selected' : '';
+            return '<option value="' + escapeHtml(value) + '"' + selected + '>' + label + '</option>';
+          });
+
+          window.addEventListener('message', (event) => {
+            const { command, data = [], selected } = event.data || {};
+            const selectedId = toStringOrEmpty(selected);
             if (command === 'courses') {
-              courseSel.innerHTML = '<option value="">Select a course</option>' + data.map(c => '<option value="' + c.id + '" ' + (selected===c.id?'selected':'') + '>' + (c.title||c.name||c.path||c.id) + '</option>').join('');
+              state.courses = true;
+              const options = ['<option value=""' + (selectedId ? '' : ' selected') + '>Select a course</option>'];
+              options.push(...buildOptions(data ?? [], selectedId, getCourseLabel));
+              courseSel.innerHTML = options.join('');
+              courseSel.disabled = (data ?? []).length === 0;
+              if (selectedId) {
+                courseSel.value = selectedId;
+              }
+              updatePanelState();
             } else if (command === 'groups') {
-              groupSel.innerHTML = '<option value="">All groups</option>' + data.map(c => '<option value="' + c.id + '" ' + (selected===c.id?'selected':'') + '>' + (c.title||c.name||c.id) + '</option>').join('');
+              state.groups = true;
+              const options = ['<option value=""' + (selectedId ? '' : ' selected') + '>All groups</option>'];
+              options.push(...buildOptions(data ?? [], selectedId, getGroupLabel));
+              groupSel.innerHTML = options.join('');
+              groupSel.disabled = courseSel.disabled || !courseSel.value;
+              if (selectedId) {
+                groupSel.value = selectedId;
+              }
             } else if (command === 'members') {
-              const label = (m) => (m.user && (m.user.full_name || m.user.username)) || m.id;
-              memberSel.innerHTML = data.map(c => '<option value="' + c.id + '" ' + (selected===c.id?'selected':'') + '>' + label(c) + '</option>').join('');
+              state.members = true;
+              const items = data ?? [];
+              if (!items.length) {
+                memberSel.innerHTML = '<option value="" disabled selected>No members found</option>';
+                memberSel.disabled = true;
+              } else {
+                memberSel.innerHTML = buildOptions(items, selectedId, getMemberLabel).join('');
+                memberSel.disabled = false;
+                if (selectedId) {
+                  memberSel.value = selectedId;
+                } else {
+                  memberSel.selectedIndex = 0;
+                }
+              }
+              updatePanelState();
             }
           });
+
           courseSel.addEventListener('change', () => {
+            if (courseSel.disabled) {
+              return;
+            }
             const label = courseSel.options[courseSel.selectedIndex]?.text || null;
+            state.groups = false;
+            state.members = false;
+            groupSel.disabled = true;
+            groupSel.innerHTML = '<option value="" disabled selected>Loading…</option>';
+            memberSel.disabled = true;
+            memberSel.innerHTML = '<option value="" disabled selected>Waiting for members…</option>';
+            updatePanelState();
             vscode.postMessage({ command: 'course-select', id: courseSel.value || null, label });
           });
+
           groupSel.addEventListener('change', () => {
+            if (groupSel.disabled) {
+              return;
+            }
             const label = groupSel.options[groupSel.selectedIndex]?.text || null;
+            state.members = false;
+            memberSel.disabled = true;
+            memberSel.innerHTML = '<option value="" disabled selected>Loading…</option>';
+            updatePanelState();
             vscode.postMessage({ command: 'course-group-select', id: groupSel.value || null, label });
           });
+
           memberSel.addEventListener('change', () => {
+            if (memberSel.disabled) {
+              return;
+            }
             const label = memberSel.options[memberSel.selectedIndex]?.text || null;
             vscode.postMessage({ command: 'course-member-select', id: memberSel.value || null, label });
           });
