@@ -692,7 +692,8 @@ export class StudentCommands {
           title: contentTitle,
           subtitle,
           query,
-          createPayload
+          createPayload,
+          sourceRole: 'student'
         } satisfies MessageTargetContext;
       }
 
@@ -703,7 +704,8 @@ export class StudentCommands {
           title: courseLabel,
           subtitle,
           query: { course_id: courseId },
-          createPayload: { course_id: courseId }
+          createPayload: { course_id: courseId },
+          sourceRole: 'student'
         } satisfies MessageTargetContext;
       }
 

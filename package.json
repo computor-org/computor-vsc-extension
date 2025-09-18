@@ -283,6 +283,12 @@
         "category": "Computor Tutor"
       },
       {
+        "command": "computor.tutor.showMessages",
+        "title": "Show Messages",
+        "icon": "$(comment-discussion)",
+        "category": "Computor Tutor"
+      },
+      {
         "command": "computor.lecturer.createCourseContent",
         "title": "Create Course Content",
         "icon": "$(add)",
@@ -809,9 +815,14 @@
           "group": "3_external@1"
         },
         {
-          "command": "computor.tutor.showCourseMemberComments",
+          "command": "computor.tutor.showMessages",
           "when": "view == computor.tutor.courses && viewItem =~ /^tutorStudentContent/",
           "group": "2_discussion@1"
+        },
+        {
+          "command": "computor.tutor.showCourseMemberComments",
+          "when": "view == computor.tutor.courses && viewItem =~ /^tutorStudentContent/",
+          "group": "2_discussion@2"
         },
         {
           "command": "computor.lecturer.checkoutExample",

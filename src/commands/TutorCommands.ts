@@ -8,12 +8,15 @@ import simpleGit from 'simple-git';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
 // Import interfaces from generated types (interfaces removed to avoid duplication)
 import { CourseMemberCommentsWebviewProvider } from '../ui/webviews/CourseMemberCommentsWebviewProvider';
+import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
+import { MessageCreate, CourseContentStudentList, SubmissionGroupStudentList } from '../types/generated';
 
 export class TutorCommands {
   private context: vscode.ExtensionContext;
   private treeDataProvider: TutorStudentTreeProvider;
   private apiService: ComputorApiService;
   private commentsWebviewProvider: CourseMemberCommentsWebviewProvider;
+  private messagesWebviewProvider: MessagesWebviewProvider;
 
   constructor(
     context: vscode.ExtensionContext, 
@@ -25,6 +28,7 @@ export class TutorCommands {
     // Use provided apiService or create a new one
     this.apiService = apiService || new ComputorApiService(context);
     this.commentsWebviewProvider = new CourseMemberCommentsWebviewProvider(context, this.apiService);
+    this.messagesWebviewProvider = new MessagesWebviewProvider(context, this.apiService);
     // No workspace manager needed for current tutor actions
   }
 
@@ -48,6 +52,12 @@ export class TutorCommands {
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.tutor.showCourseMemberComments', async () => {
         await this.showCourseMemberComments();
+      })
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.tutor.showMessages', async (item?: any) => {
+        await this.showMessages(item);
       })
     );
 
@@ -350,6 +360,78 @@ export class TutorCommands {
       await this.commentsWebviewProvider.showComments(memberId, title);
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to open comments: ${error?.message || error}`);
+    }
+  }
+
+  private async showMessages(item?: any): Promise<void> {
+    try {
+      const selection = TutorSelectionService.getInstance();
+      const courseId = selection.getCurrentCourseId();
+      if (!courseId) {
+        vscode.window.showWarningMessage('Select a course before viewing messages.');
+        return;
+      }
+
+      const memberId = selection.getCurrentMemberId();
+      if (!memberId) {
+        vscode.window.showWarningMessage('Select a course member before viewing messages.');
+        return;
+      }
+
+      const courseLabel = selection.getCurrentCourseLabel();
+      const memberLabel = selection.getCurrentMemberLabel();
+
+      const content: CourseContentStudentList | undefined = item?.content || item?.courseContent;
+      const submissionGroup: SubmissionGroupStudentList | undefined = content?.submission_group || item?.submissionGroup;
+
+      let target: MessageTargetContext | undefined;
+
+      if (content) {
+        const contentTitle = content.title || content.path || 'Course content';
+        const query: Record<string, string> = {
+          course_id: courseId,
+          course_content_id: content.id,
+          course_member_id: memberId
+        };
+        const createPayload: Partial<MessageCreate> = {
+          course_id: courseId,
+          course_content_id: content.id,
+          course_member_id: memberId
+        };
+
+        if (submissionGroup?.id) {
+          query.course_submission_group_id = submissionGroup.id;
+          createPayload.course_submission_group_id = submissionGroup.id;
+        }
+
+        const subtitleSegments = [courseLabel, memberLabel, content.path || contentTitle].filter(Boolean) as string[];
+        const subtitle = subtitleSegments.length > 0 ? subtitleSegments.join(' › ') : undefined;
+        const title = memberLabel ? `${memberLabel} — ${contentTitle}` : contentTitle;
+
+        target = {
+          title,
+          subtitle,
+          query,
+          createPayload,
+          sourceRole: 'tutor'
+        } satisfies MessageTargetContext;
+      }
+
+      if (!target) {
+        const subtitleSegments = [courseLabel, memberLabel].filter(Boolean) as string[];
+        const subtitle = subtitleSegments.length > 0 ? subtitleSegments.join(' › ') : undefined;
+        target = {
+          title: memberLabel ? `${memberLabel} — Course messages` : 'Course member messages',
+          subtitle,
+          query: { course_id: courseId, course_member_id: memberId },
+          createPayload: { course_id: courseId, course_member_id: memberId },
+          sourceRole: 'tutor'
+        } satisfies MessageTargetContext;
+      }
+
+      await this.messagesWebviewProvider.showMessages(target);
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to open messages: ${error?.message || error}`);
     }
   }
 }

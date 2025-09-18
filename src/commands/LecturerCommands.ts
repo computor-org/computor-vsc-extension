@@ -1158,21 +1158,24 @@ export class LecturerCommands {
           title: item.course.title || item.course.path,
           subtitle: this.buildCourseSubtitle(item.course, item.courseFamily, item.organization),
           query: { course_id: item.course.id },
-          createPayload: { course_id: item.course.id }
+          createPayload: { course_id: item.course.id },
+          sourceRole: 'lecturer'
         };
       } else if (item instanceof CourseGroupTreeItem) {
         target = {
           title: item.group.title || `Group ${item.group.id.slice(0, 8)}`,
           subtitle: `${this.buildCourseSubtitle(item.course, item.courseFamily, item.organization)} › Group`,
           query: { course_group_id: item.group.id },
-          createPayload: { course_group_id: item.group.id }
+          createPayload: { course_group_id: item.group.id },
+          sourceRole: 'lecturer'
         };
       } else if (item instanceof CourseContentTreeItem) {
         target = {
           title: item.courseContent.title || item.courseContent.path,
           subtitle: `${this.buildCourseSubtitle(item.course, item.courseFamily, item.organization)} › ${item.courseContent.path}`,
           query: { course_content_id: item.courseContent.id },
-          createPayload: { course_content_id: item.courseContent.id, course_id: item.course.id }
+          createPayload: { course_content_id: item.courseContent.id, course_id: item.course.id },
+          sourceRole: 'lecturer'
         };
       }
 

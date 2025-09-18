@@ -10,6 +10,7 @@ export interface MessageTargetContext {
   subtitle?: string;
   query: Record<string, string>;
   createPayload: Partial<MessageCreate>;
+  sourceRole?: 'student' | 'tutor' | 'lecturer';
 }
 
 interface MessagesWebviewData {
@@ -39,7 +40,10 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       this.apiService.listMessages(target.query)
     ]);
 
-    const messages = this.enrichMessages(rawMessages, identity);
+    const currentUserId = identity?.id;
+    const normalizedMessages = this.normalizeReadState(rawMessages, currentUserId);
+    void this.markUnreadMessagesAsRead(rawMessages, target, currentUserId);
+    const messages = this.enrichMessages(normalizedMessages, identity);
     const payload: MessagesWebviewData = { target, messages, identity };
     await this.show(`Messages: ${target.title}`, payload);
   }
@@ -119,6 +123,87 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     return data?.identity;
   }
 
+  private normalizeReadState(messages: MessageList[], currentUserId?: string): MessageList[] {
+    if (!currentUserId) {
+      return messages;
+    }
+
+    return messages.map((message) => {
+      if (message.is_read || message.author_id === currentUserId) {
+        return message;
+      }
+      return { ...message, is_read: true } satisfies MessageList;
+    });
+  }
+
+  private async markUnreadMessagesAsRead(
+    messages: MessageList[],
+    target: MessageTargetContext | undefined,
+    currentUserId?: string
+  ): Promise<void> {
+    const unreadIds = messages
+      .filter((message) => !message.is_read && message.author_id !== currentUserId)
+      .map((message) => message.id);
+
+    if (unreadIds.length === 0) {
+      return;
+    }
+
+    await Promise.allSettled(
+      unreadIds.map(async (messageId) => {
+        try {
+          await this.apiService.markMessageRead(messageId);
+        } catch (error) {
+          console.error(`Failed to mark message ${messageId} as read:`, error);
+        }
+      })
+    );
+
+    this.notifyIndicatorsUpdated(target, messages);
+  }
+
+  private notifyIndicatorsUpdated(target: MessageTargetContext | undefined, messages: MessageList[]): void {
+    if (!target) {
+      return;
+    }
+
+    const contentIds = new Set<string>();
+    for (const message of messages) {
+      if (typeof message.course_content_id === 'string' && message.course_content_id.length > 0) {
+        contentIds.add(message.course_content_id);
+      }
+    }
+
+    const fallbackContentId = target.createPayload.course_content_id || target.query.course_content_id;
+    if (contentIds.size === 0 && typeof fallbackContentId === 'string' && fallbackContentId.length > 0) {
+      contentIds.add(fallbackContentId);
+    }
+
+    switch (target.sourceRole) {
+      case 'student': {
+        const courseId = target.createPayload.course_id || target.query.course_id;
+        if (typeof courseId === 'string' && courseId.length > 0) {
+          this.apiService.clearStudentCourseContentsCache(courseId);
+        }
+        for (const contentId of contentIds) {
+          this.apiService.clearStudentCourseContentCache(contentId);
+        }
+        void vscode.commands.executeCommand('computor.student.refresh');
+        break;
+      }
+      case 'tutor': {
+        const memberId = target.createPayload.course_member_id || target.query.course_member_id;
+        if (typeof memberId === 'string' && memberId.length > 0) {
+          this.apiService.clearTutorMemberCourseContentsCache(memberId);
+          void vscode.commands.executeCommand('computor.tutor.refresh');
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
   private async handleCreateMessage(data: { title: string; content: string; parent_id?: string }): Promise<void> {
     const target = this.getCurrentTarget();
     if (!target) {
@@ -192,8 +277,11 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     try {
       this.postLoadingState(true);
       const identity = (await this.apiService.getCurrentUser().catch(() => this.getIdentity())) || this.getIdentity();
+      const currentUserId = identity?.id;
       const rawMessages = await this.apiService.listMessages(target.query);
-      const messages = this.enrichMessages(rawMessages, identity);
+      const normalizedMessages = this.normalizeReadState(rawMessages, currentUserId);
+      void this.markUnreadMessagesAsRead(rawMessages, target, currentUserId);
+      const messages = this.enrichMessages(normalizedMessages, identity);
       this.currentData = { target, messages, identity } satisfies MessagesWebviewData;
       this.panel.webview.postMessage({ command: 'updateMessages', data: messages });
       this.postLoadingState(false);

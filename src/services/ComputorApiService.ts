@@ -806,7 +806,7 @@ export class ComputorApiService {
     // Clear all caches related to a specific course
     const cacheKey = `courseContents-${courseId}`;
     multiTierCache.delete(cacheKey);
-    
+
     // Also clear content types cache
     const contentTypesKey = `courseContentTypes-${courseId}`;
     multiTierCache.delete(contentTypesKey);
@@ -827,6 +827,20 @@ export class ComputorApiService {
 
   clearCourseContentKindsCache(): void {
     multiTierCache.delete('courseContentKinds');
+  }
+
+  clearStudentCourseContentCache(contentId: string): void {
+    if (!contentId) {
+      return;
+    }
+    multiTierCache.delete(`studentCourseContent-${contentId}`);
+  }
+
+  clearStudentCourseContentsCache(courseId?: string): void {
+    if (courseId) {
+      multiTierCache.delete(`studentCourseContents-${courseId}`);
+    }
+    multiTierCache.delete('studentCourseContents-all');
   }
 
   clearAllCaches(): void {
