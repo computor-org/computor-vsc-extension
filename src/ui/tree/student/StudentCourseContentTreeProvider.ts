@@ -18,6 +18,7 @@ interface ContentNode {
     contentType?: CourseContentTypeList;
     contentKind?: CourseContentKindList;
     isUnit: boolean;
+    unreadMessageCount?: number;
 }
 
 // Interface for repository cloning items  
@@ -591,7 +592,8 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                 submissionGroup,
                 contentType,
                 contentKind,
-                isUnit
+                isUnit,
+                unreadMessageCount: content.unread_message_count ?? 0
             };
             
             contentMap.set(content.path, node);
@@ -615,7 +617,20 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
             }
         }
         
+        this.aggregateUnreadCounts(root);
         return root;
+    }
+
+    private aggregateUnreadCounts(node: ContentNode): number {
+        const ownUnread = node.courseContent?.unread_message_count ?? 0;
+        let total = ownUnread;
+
+        node.children.forEach((child) => {
+            total += this.aggregateUnreadCounts(child);
+        });
+
+        node.unreadMessageCount = total;
+        return total;
     }
     
     private createTreeItems(node: ContentNode): TreeItem[] {
@@ -761,21 +776,14 @@ class CourseContentPathItem extends TreeItem {
         this.contextValue = 'studentCourseUnit';
         this.id = node.courseContent ? node.courseContent.id : `unit-${name}`;
         
-        // Count total items under this path
-        const count = this.countItems(node);
-        this.description = `${count} item${count !== 1 ? 's' : ''}`;
-        this.tooltip = `Unit: ${name}\n${count} items`;
-        this.tooltip = `Type: ${node.contentType?.title}`;
+        this.applyCounts(node);
     }
-    
+
     public updateFromNode(node: ContentNode): void {
         this.node = node;
-        const count = this.countItems(node);
-        this.description = `${count} item${count !== 1 ? 's' : ''}`;
-        // Keep tooltip type in sync
-        this.tooltip = `Type: ${node.contentType?.title}`;
+        this.applyCounts(node);
     }
-    
+
     private countItems(node: ContentNode): number {
         let count = 0;
         Array.from(node.children.values()).forEach(child => {
@@ -786,6 +794,25 @@ class CourseContentPathItem extends TreeItem {
             }
         });
         return count;
+    }
+
+    private applyCounts(node: ContentNode): void {
+        const count = this.countItems(node);
+        const unread = node.unreadMessageCount ?? 0;
+        const itemLabel = `${count} item${count !== 1 ? 's' : ''}`;
+        this.description = unread > 0 ? `${itemLabel} | new: ${unread}` : itemLabel;
+
+        const tooltipLines = [
+            `Unit: ${this.name}`,
+            `${count} item${count !== 1 ? 's' : ''}`
+        ];
+        if (node.contentType?.title) {
+            tooltipLines.push(`Type: ${node.contentType.title}`);
+        }
+        if (unread > 0) {
+            tooltipLines.push(`${unread} unread message${unread === 1 ? '' : 's'}`);
+        }
+        this.tooltip = tooltipLines.join('\n');
     }
 }
 
@@ -900,6 +927,11 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         // New compact metrics in brackets: Tests, Submissions, Points
         const entries: string[] = [];
 
+        const unreadCount = this.courseContent?.unread_message_count ?? 0;
+        if (unreadCount > 0) {
+            entries.push(`[msg:${unreadCount}]`);
+        }
+
         const testCount = (this.courseContent as any)?.result_count as number | undefined;
         const maxTests = (this.courseContent as any)?.max_test_runs as number | undefined;
         if (typeof testCount === 'number') {
@@ -929,6 +961,7 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
     
     private setupTooltip(): void {
         const lines: string[] = [];
+        const unreadCount = this.courseContent?.unread_message_count ?? 0;
         
         if (this.contentType) {
             lines.push(`Type: ${this.contentType.title || this.contentType.slug}`);
@@ -942,7 +975,11 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
                 lines.push(`Example Version ID: ${versionId}`);
             }
         }
-        
+
+        if (unreadCount > 0) {
+            lines.push(`Unread messages: ${unreadCount}`);
+        }
+
         if (this.submissionGroup?.repository) {
             lines.push(`Repository: ${this.submissionGroup.repository.full_path}`);
         }

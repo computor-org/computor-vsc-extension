@@ -75,6 +75,7 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
             name: i === parts.length - 1 ? ((c.title ?? seg) as string) : seg,
             children: new Map(),
             isUnit: i !== parts.length - 1,
+            unreadMessageCount: c.unread_message_count ?? 0,
           } as ContentNode;
           nodeMap.set(currentPath, node);
           parentNode.children.set(currentPath, node);
@@ -93,7 +94,20 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
       }
     }
 
+    this.aggregateUnreadCounts(root);
     return root;
+  }
+
+  private aggregateUnreadCounts(node: ContentNode): number {
+    const ownUnread = node.courseContent?.unread_message_count ?? 0;
+    let total = ownUnread;
+
+    node.children.forEach((child) => {
+      total += this.aggregateUnreadCounts(child);
+    });
+
+    node.unreadMessageCount = total;
+    return total;
   }
 
   private createTreeItems(node: ContentNode, memberId: string): vscode.TreeItem[] {
@@ -123,6 +137,7 @@ interface ContentNode {
   courseContent?: CourseContentStudentList;
   contentKind?: CourseContentKindList;
   isUnit: boolean;
+  unreadMessageCount?: number;
 }
 
 class MessageItem extends vscode.TreeItem {
@@ -146,6 +161,7 @@ class TutorUnitItem extends vscode.TreeItem {
       this.iconPath = new vscode.ThemeIcon('folder');
     }
     this.id = node.courseContent ? node.courseContent.id : undefined;
+    this.applyCounts();
   }
 
   private deriveColor(node: ContentNode): string | undefined {
@@ -159,6 +175,19 @@ class TutorUnitItem extends vscode.TreeItem {
     // Otherwise, no reliable unit color from the tutor endpoints; fall back to undefined (grey default)
     return undefined;
   }
+
+  private applyCounts(): void {
+    const unread = this.node.unreadMessageCount ?? 0;
+    this.description = unread > 0 ? `new: ${unread}` : undefined;
+
+    const tooltipLines = [
+      `Unit: ${this.label?.toString() ?? 'Unit'}`
+    ];
+    if (unread > 0) {
+      tooltipLines.push(`${unread} unread message${unread === 1 ? '' : 's'}`);
+    }
+    this.tooltip = tooltipLines.join('\n');
+  }
 }
 
 class TutorContentItem extends vscode.TreeItem {
@@ -168,6 +197,7 @@ class TutorContentItem extends vscode.TreeItem {
     const color = ct?.color || 'grey';
     const kindId = ct?.course_content_kind_id;
     const shape = kindId === 'assignment' ? 'square' : 'circle';
+    const unread = (content as any).unread_message_count ?? 0;
     let badge: 'success' | 'failure' | 'none' = 'none';
     let corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none';
     const submission: SubmissionGroupStudentList = content.submission_group!;
@@ -187,6 +217,7 @@ class TutorContentItem extends vscode.TreeItem {
       ? IconGenerator.getColoredIcon(color, shape)
       : IconGenerator.getColoredIconWithBadge(color, shape, badge, corner);
     this.contextValue = kindId === 'assignment' ? 'tutorStudentContent.assignment' : 'tutorStudentContent.reading';
+    this.description = unread > 0 ? `new: ${unread}` : undefined;
     // Tooltip with friendly status label
     const friendlyStatus = (() => {
       if (!status) return undefined;
@@ -200,7 +231,8 @@ class TutorContentItem extends vscode.TreeItem {
     })();
     this.tooltip = [
       friendlyStatus ? `Status: ${friendlyStatus}` : undefined,
-      (typeof grading === 'number') ? `Grading: ${(grading * 100).toFixed(2)}%` : undefined
+      (typeof grading === 'number') ? `Grading: ${(grading * 100).toFixed(2)}%` : undefined,
+      unread > 0 ? `${unread} unread message${unread === 1 ? '' : 's'}` : undefined
     ].filter(Boolean).join('\n');
     this.id = content.id;
     // No IDs in description per request
