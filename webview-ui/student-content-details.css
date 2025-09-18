@@ -164,3 +164,52 @@
   padding: 12px;
   color: var(--vscode-descriptionForeground);
 }
+
+.grading-history .history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.history-item {
+  border: 1px solid var(--vscode-editorWidget-border);
+  background: var(--vscode-editor-background);
+  border-radius: 4px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.history-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.history-grade {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.history-status {
+  font-size: 11px;
+}
+
+.history-date {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  margin-left: auto;
+}
+
+.history-meta {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.history-feedback {
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
