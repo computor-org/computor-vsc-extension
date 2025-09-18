@@ -2,7 +2,7 @@
 
  * Auto-generated TypeScript interfaces from Pydantic models
 
- * Generated on: 2025-09-17T14:46:20.422345
+ * Generated on: 2025-09-18T17:27:35.889627
 
  * Category: Common
 
@@ -92,6 +92,17 @@ export interface ProfileUpdate {
   properties?: any | null;
 }
 
+export interface ProfileQuery {
+  skip?: number | null;
+  limit?: number | null;
+  /** Filter by profile ID */
+  id?: string | null;
+  /** Filter by user ID */
+  user_id?: string | null;
+  /** Filter by nickname */
+  nickname?: string | null;
+}
+
 export interface CourseMemberGitLabConfig {
   settings?: any | null;
   url?: string | null;
@@ -148,6 +159,16 @@ export interface StudentProfileList {
 export interface StudentProfileUpdate {
   student_id?: string | null;
   student_email?: string | null;
+  properties?: any | null;
+}
+
+export interface StudentProfileQuery {
+  skip?: number | null;
+  limit?: number | null;
+  id?: string | null;
+  student_id?: string | null;
+  student_email?: string | null;
+  user_id?: string | null;
   properties?: any | null;
 }
 
@@ -238,6 +259,19 @@ export interface CourseContentDeploymentList {
   deployed_at: string | null;
   version_identifier: string | null;
   example_version?: ExampleVersionList | null;
+}
+
+/**
+ * Query parameters for deployments.
+ */
+export interface CourseContentDeploymentQuery {
+  skip?: number | null;
+  limit?: number | null;
+  course_content_id?: string | null;
+  example_version_id?: string | null;
+  deployment_status?: string | null;
+  deployed?: boolean | null;
+  failed?: boolean | null;
 }
 
 /**
@@ -366,6 +400,15 @@ export interface ExecutionBackendUpdate {
   properties?: any | null;
 }
 
+export interface ExecutionBackendQuery {
+  skip?: number | null;
+  limit?: number | null;
+  id?: string | null;
+  type?: string | null;
+  slug?: string | null;
+  properties?: string | null;
+}
+
 export interface Claims {
   general?: any;
   dependent?: any;
@@ -432,6 +475,19 @@ export interface GroupUpdate {
   group_type?: any | null;
   /** Additional properties */
   properties?: any | null;
+}
+
+export interface GroupQuery {
+  skip?: number | null;
+  limit?: number | null;
+  /** Filter by group ID */
+  id?: string | null;
+  /** Filter by group name */
+  name?: string | null;
+  /** Filter by group type */
+  group_type?: any | null;
+  /** Filter by archived status */
+  archived?: boolean | null;
 }
 
 export interface ListQuery {
@@ -526,6 +582,25 @@ export interface ResultUpdate {
   status?: any | null;
   test_system_id?: string | null;
   properties?: any | null;
+}
+
+export interface ResultQuery {
+  skip?: number | null;
+  limit?: number | null;
+  id?: string | null;
+  submit?: boolean | null;
+  submitter_id?: string | null;
+  course_member_id?: string | null;
+  course_content_id?: string | null;
+  course_content_type_id?: string | null;
+  course_submission_group_id?: string | null;
+  execution_backend_id?: string | null;
+  test_system_id?: string | null;
+  version_identifier?: string | null;
+  status?: any | null;
+  latest?: boolean | null;
+  result?: number | null;
+  result_json?: string | null;
 }
 
 /**
@@ -651,6 +726,21 @@ export interface SessionUpdate {
   properties?: any | null;
 }
 
+export interface SessionQuery {
+  skip?: number | null;
+  limit?: number | null;
+  /** Filter by session ID */
+  id?: string | null;
+  /** Filter by user ID */
+  user_id?: string | null;
+  /** Filter by session identifier */
+  session_id?: string | null;
+  /** Filter for active sessions only */
+  active_only?: boolean | null;
+  /** Filter by IP address */
+  ip_address?: string | null;
+}
+
 export interface GroupClaimCreate {
   /** Group ID this claim belongs to */
   group_id: string;
@@ -695,6 +785,17 @@ export interface GroupClaimList {
 export interface GroupClaimUpdate {
   /** Additional claim properties */
   properties?: any | null;
+}
+
+export interface GroupClaimQuery {
+  skip?: number | null;
+  limit?: number | null;
+  /** Filter by group ID */
+  group_id?: string | null;
+  /** Filter by claim type */
+  claim_type?: string | null;
+  /** Filter by claim value */
+  claim_value?: string | null;
 }
 
 /**
@@ -900,6 +1001,18 @@ export interface SubmissionGroupUpdate {
   status?: string | null;
 }
 
+export interface SubmissionGroupQuery {
+  skip?: number | null;
+  limit?: number | null;
+  id?: string | null;
+  max_group_size?: number | null;
+  max_submissions?: number | null;
+  course_id?: string | null;
+  course_content_id?: string | null;
+  properties?: SubmissionGroupProperties | null;
+  status?: string | null;
+}
+
 /**
  * Query parameters for student submission groups
  */
@@ -973,6 +1086,19 @@ export interface SubmissionGroupMemberList {
 
 export interface SubmissionGroupMemberUpdate {
   course_id?: string | null;
+  grading?: number | null;
+  status?: string | null;
+  properties?: SubmissionGroupMemberProperties | null;
+}
+
+export interface SubmissionGroupMemberQuery {
+  skip?: number | null;
+  limit?: number | null;
+  id?: string | null;
+  course_id?: string | null;
+  course_content_id?: string | null;
+  course_member_id?: string | null;
+  course_submission_group_id?: string | null;
   grading?: number | null;
   status?: string | null;
   properties?: SubmissionGroupMemberProperties | null;
@@ -1068,6 +1194,24 @@ export interface StorageObjectUpdate {
   metadata?: Record<string, string> | null;
   /** Updated MIME type */
   content_type?: string | null;
+}
+
+/**
+ * Query parameters for filtering storage objects
+ */
+export interface StorageObjectQuery {
+  skip?: number | null;
+  limit?: number | null;
+  /** Filter by bucket name */
+  bucket_name?: string | null;
+  /** Filter by object key prefix */
+  prefix?: string | null;
+  /** Filter by content type */
+  content_type?: string | null;
+  /** Minimum object size in bytes */
+  min_size?: number | null;
+  /** Maximum object size in bytes */
+  max_size?: number | null;
 }
 
 /**

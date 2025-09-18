@@ -2,7 +2,7 @@
 
  * Auto-generated TypeScript interfaces from Pydantic models
 
- * Generated on: 2025-09-17T14:46:20.417942
+ * Generated on: 2025-09-18T17:27:35.884444
 
  * Category: Organizations
 
@@ -120,6 +120,28 @@ export interface OrganizationList {
 }
 
 export interface OrganizationUpdate {
+  title?: string | null;
+  description?: string | null;
+  path?: string | null;
+  organization_type?: any | null;
+  user_id?: string | null;
+  properties?: OrganizationProperties | null;
+  number?: string | null;
+  email?: string | null;
+  telephone?: string | null;
+  fax_number?: string | null;
+  url?: string | null;
+  postal_code?: string | null;
+  street_address?: string | null;
+  locality?: string | null;
+  region?: string | null;
+  country?: string | null;
+}
+
+export interface OrganizationQuery {
+  skip?: number | null;
+  limit?: number | null;
+  id?: string | null;
   title?: string | null;
   description?: string | null;
   path?: string | null;
