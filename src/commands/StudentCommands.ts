@@ -7,12 +7,12 @@ import { ComputorApiService } from '../services/ComputorApiService';
 import { GitBranchManager } from '../services/GitBranchManager';
 import { CourseSelectionService } from '../services/CourseSelectionService';
 import { TestResultService } from '../services/TestResultService';
-import { SubmissionGroupStudentList, MessageCreate, CourseContentStudentList, CourseContentTypeList } from '../types/generated';
+import { SubmissionGroupStudentList, MessageCreate, CourseContentStudentList, CourseContentTypeList, CourseSubmissionGroupGradingList } from '../types/generated';
 import { StudentRepositoryManager } from '../services/StudentRepositoryManager';
 import { execAsync } from '../utils/exec';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
-import { StudentCourseContentDetailsWebviewProvider, StudentContentDetailsViewState } from '../ui/webviews/StudentCourseContentDetailsWebviewProvider';
+import { StudentCourseContentDetailsWebviewProvider, StudentContentDetailsViewState, StudentGradingHistoryEntry } from '../ui/webviews/StudentCourseContentDetailsWebviewProvider';
 import { getExampleVersionId } from '../utils/deploymentHelpers';
 
 // (Deprecated legacy types removed)
@@ -733,17 +733,17 @@ export class StudentCommands {
       const courseInfo = courseSelection.getCurrentCourseInfo();
       const currentCourseId = courseSelection.getCurrentCourseId();
 
-      let courseContent: CourseContentStudentList | undefined;
+      let courseContentSummary: CourseContentStudentList | undefined;
+      let submissionGroupSummary: SubmissionGroupStudentList | undefined;
       let contentType: CourseContentTypeList | undefined;
-      let submissionGroup: SubmissionGroupStudentList | undefined;
       let localPath: string | undefined;
       let isCloned = false;
 
       if (arg && typeof arg === 'object') {
         if ('courseContent' in arg) {
-          courseContent = arg.courseContent as CourseContentStudentList;
+          courseContentSummary = arg.courseContent as CourseContentStudentList;
           contentType = arg.contentType as CourseContentTypeList | undefined;
-          submissionGroup = arg.submissionGroup as SubmissionGroupStudentList | undefined;
+          submissionGroupSummary = arg.submissionGroup as SubmissionGroupStudentList | undefined;
           if (typeof arg.getRepositoryPath === 'function') {
             const repoPath = arg.getRepositoryPath();
             if (repoPath) {
@@ -752,64 +752,98 @@ export class StudentCommands {
             }
           }
         } else if ('id' in arg && 'course_content_path' in arg) {
-          submissionGroup = arg as SubmissionGroupStudentList;
+          submissionGroupSummary = arg as SubmissionGroupStudentList;
         } else if ('id' in arg && 'course_content_type_id' in arg) {
-          courseContent = arg as CourseContentStudentList;
+          courseContentSummary = arg as CourseContentStudentList;
         }
       }
 
-      if (!courseContent && submissionGroup) {
-        const courseContentId = (submissionGroup as any).course_content_id as string | undefined;
+      if (!courseContentSummary && submissionGroupSummary) {
+        const courseContentId = (submissionGroupSummary as any).course_content_id as string | undefined;
         if (courseContentId) {
-          courseContent = await this.apiService.getStudentCourseContent(courseContentId, { force: true });
+          courseContentSummary = await this.apiService.getStudentCourseContent(courseContentId, { force: true });
         }
       }
 
-      if (!courseContent && submissionGroup && currentCourseId) {
+      if (!courseContentSummary && submissionGroupSummary && currentCourseId) {
         const contents = await this.apiService.getStudentCourseContents(currentCourseId, { force: false }) || [];
-        courseContent = contents.find(content => {
+        courseContentSummary = contents.find(content => {
           const group = content.submission_group as SubmissionGroupStudentList | undefined;
-          return group?.id === submissionGroup?.id
-            || group?.course_content_path === submissionGroup?.course_content_path
-            || content.id === (submissionGroup as any)?.course_content_id;
+          return group?.id === submissionGroupSummary?.id
+            || group?.course_content_path === submissionGroupSummary?.course_content_path
+            || content.id === (submissionGroupSummary as any)?.course_content_id;
         });
       }
 
-      if (!courseContent) {
+      if (!courseContentSummary) {
         vscode.window.showWarningMessage('No detailed information available for this content yet.');
         return;
       }
 
-      const latestContent = await this.apiService.getStudentCourseContent(courseContent.id, { force: true });
-      if (latestContent) {
-        courseContent = latestContent;
+      const courseContent = (await this.apiService.getStudentCourseContent(courseContentSummary.id, { force: true })) || courseContentSummary;
+
+      if (!submissionGroupSummary) {
+        submissionGroupSummary = courseContentSummary.submission_group as SubmissionGroupStudentList | undefined;
       }
-      submissionGroup = (courseContent.submission_group as SubmissionGroupStudentList | undefined) || submissionGroup;
+      const submissionGroupCombined = (courseContent.submission_group as SubmissionGroupStudentList | undefined) || submissionGroupSummary;
+
       if (!contentType && (courseContent as any).course_content_type) {
         contentType = (courseContent as any).course_content_type as CourseContentTypeList;
       }
 
       if (!localPath) {
-        localPath = this.resolveLocalRepositoryPath(courseContent, submissionGroup);
+        localPath = this.resolveLocalRepositoryPath(courseContentSummary, submissionGroupSummary);
         if (localPath) {
           isCloned = fs.existsSync(localPath);
         }
       }
 
-      const repo = submissionGroup?.repository as any;
-      const latestGrading = (submissionGroup as any)?.latest_grading;
-      const gradingValue = typeof latestGrading?.grading === 'number'
-        ? latestGrading.grading
-        : typeof submissionGroup?.grading === 'number'
-          ? submissionGroup.grading
-          : null;
+      const repo = submissionGroupCombined?.repository as any;
+
+      const gradingHistory = this.buildGradingHistory((submissionGroupCombined as any)?.gradings as CourseSubmissionGroupGradingList[] | undefined);
+      const latestGrading = (submissionGroupCombined as any)?.latest_grading;
+      let latestHistoryEntry = gradingHistory[0];
+
+      const fallbackGradingValue = this.normalizeGradeValue(latestGrading?.grading ?? submissionGroupCombined?.grading);
+      const candidateStatus = (typeof latestGrading?.status === 'string'
+        ? latestGrading.status
+        : latestGrading?.status !== undefined
+          ? String(latestGrading.status)
+          : undefined) || submissionGroupCombined?.status || 'unknown';
+      const candidateGrader = this.formatGraderName((latestGrading as any)?.graded_by_course_member, latestGrading?.graded_by);
+      const candidateGradedAt = latestGrading?.updated_at || latestGrading?.created_at || null;
+      const candidateFeedback = (typeof latestGrading?.feedback === 'string' ? latestGrading.feedback : undefined)
+        || (submissionGroupCombined as any)?.latest_grading_feedback
+        || (submissionGroupCombined as any)?.feedback
+        || null;
+
+      if (!latestHistoryEntry && (fallbackGradingValue !== null || latestGrading)) {
+        const fallbackEntry: StudentGradingHistoryEntry = {
+          id: latestGrading?.id ? String(latestGrading.id) : `${courseContent.id}-latest-grading`,
+          gradePercent: fallbackGradingValue !== null ? fallbackGradingValue * 100 : null,
+          rawGrade: fallbackGradingValue,
+          status: candidateStatus,
+          feedback: candidateFeedback,
+          gradedAt: candidateGradedAt || undefined,
+          graderName: candidateGrader || undefined
+        };
+        gradingHistory.unshift(fallbackEntry);
+        latestHistoryEntry = fallbackEntry;
+      }
+
+      const gradingValue = latestHistoryEntry?.rawGrade ?? fallbackGradingValue;
+      const gradeStatus = latestHistoryEntry?.status || candidateStatus || null;
+      const gradedByDisplay = latestHistoryEntry?.graderName || candidateGrader || null;
+      const gradedAtValue = latestHistoryEntry?.gradedAt || candidateGradedAt || null;
+      const feedbackValue = latestHistoryEntry?.feedback ?? candidateFeedback;
+
       const resultValue = typeof courseContent.result?.result === 'number' ? courseContent.result.result : null;
 
       const viewState: StudentContentDetailsViewState = {
         course: courseInfo,
         content: courseContent,
         contentType,
-        submissionGroup,
+        submissionGroup: submissionGroupCombined ?? null,
         repository: {
           hasRepository: Boolean(repo),
           fullPath: repo?.full_path || repo?.url || repo?.web_url,
@@ -821,34 +855,36 @@ export class StudentCommands {
         metrics: {
           testsRun: typeof courseContent.result_count === 'number' ? courseContent.result_count : undefined,
           maxTests: courseContent.max_test_runs ?? null,
-          submissions: submissionGroup?.count ?? null,
-          maxSubmissions: submissionGroup?.max_submissions ?? null,
+          submissions: submissionGroupCombined?.count ?? null,
+          maxSubmissions: submissionGroupCombined?.max_submissions ?? null,
           submitted: courseContent.submitted ?? null,
           resultPercent: resultValue !== null ? resultValue * 100 : null,
           gradePercent: gradingValue !== null ? gradingValue * 100 : null,
-          gradeStatus: latestGrading?.status || submissionGroup?.status || null,
-          gradedBy: latestGrading?.graded_by || null,
-          gradedAt: latestGrading?.updated_at || latestGrading?.created_at || null,
-          status: submissionGroup?.status || null
+          gradeStatus,
+          gradedBy: gradedByDisplay,
+          gradedAt: gradedAtValue,
+          status: submissionGroupCombined?.status || null,
+          feedback: feedbackValue
         },
         team: {
-          maxSize: submissionGroup?.max_group_size ?? null,
-          currentSize: submissionGroup?.current_group_size ?? null,
-          members: (submissionGroup?.members || []).map(member => ({
+          maxSize: submissionGroupCombined?.max_group_size ?? null,
+          currentSize: submissionGroupCombined?.current_group_size ?? null,
+          members: (submissionGroupCombined?.members || []).map((member: any) => ({
             id: member.course_member_id || member.id,
             name: member.full_name || member.username,
             username: member.username || null
           }))
         },
         example: {
-          identifier: submissionGroup?.example_identifier || null,
-          versionId: getExampleVersionId(courseContent)
+          identifier: submissionGroupCombined?.example_identifier || null,
+          versionId: getExampleVersionId(courseContentSummary)
         },
         actions: {
           localPath,
           webUrl: repo?.web_url,
           cloneUrl: repo?.clone_url
-        }
+        },
+        gradingHistory
       };
 
       await this.contentDetailsWebviewProvider.showDetails(viewState);
@@ -857,6 +893,92 @@ export class StudentCommands {
       vscode.window.showErrorMessage(`Failed to open details: ${error?.message || error}`);
     }
   }
+
+
+  private buildGradingHistory(entries?: CourseSubmissionGroupGradingList[]): StudentGradingHistoryEntry[] {
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return [];
+    }
+
+    const sorted = [...entries].sort((a, b) => {
+      const aTime = Date.parse(a.created_at ?? '') || 0;
+      const bTime = Date.parse(b.created_at ?? '') || 0;
+      return bTime - aTime;
+    });
+
+    return sorted.map((entry) => this.createHistoryEntry(entry));
+  }
+
+  private createHistoryEntry(entry: CourseSubmissionGroupGradingList): StudentGradingHistoryEntry {
+    const grade = this.normalizeGradeValue(entry.grading);
+    const graderName = this.formatGraderName(entry.graded_by_course_member as any, entry.graded_by_course_member_id);
+    const status = typeof entry.status === 'string'
+      ? entry.status
+      : entry.status !== undefined && entry.status !== null
+        ? String(entry.status)
+        : 'unknown';
+
+    return {
+      id: entry.id,
+      gradePercent: grade !== null ? grade * 100 : null,
+      rawGrade: grade,
+      status,
+      feedback: entry.feedback ?? null,
+      gradedAt: entry.created_at || undefined,
+      graderName: graderName || undefined
+    } satisfies StudentGradingHistoryEntry;
+  }
+
+  private normalizeGradeValue(value: unknown): number | null {
+    if (value === undefined || value === null) {
+      return null;
+    }
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || Number.isNaN(numeric)) {
+      return null;
+    }
+    if (numeric > 1) {
+      return numeric / 100;
+    }
+    if (numeric < 0) {
+      return 0;
+    }
+    return numeric;
+  }
+
+  private formatGraderName(
+    gradedByCourseMember?: { user?: { given_name?: string | null; family_name?: string | null }; user_id?: string | null },
+    fallback?: string | null
+  ): string | null {
+    const user = gradedByCourseMember?.user;
+    const parts: string[] = [];
+
+    if (user) {
+      const given = typeof user.given_name === 'string' ? user.given_name.trim() : '';
+      const family = typeof user.family_name === 'string' ? user.family_name.trim() : '';
+      if (given) {
+        parts.push(given);
+      }
+      if (family) {
+        parts.push(family);
+      }
+    }
+
+    if (parts.length > 0) {
+      return parts.join(' ');
+    }
+
+    const userId = gradedByCourseMember?.user_id?.trim();
+    if (userId) {
+      return userId;
+    }
+
+    const fallbackId = typeof fallback === 'string' ? fallback.trim() : '';
+    return fallbackId || null;
+  }
+
+
+
 
   private resolveLocalRepositoryPath(
     courseContent: CourseContentStudentList,

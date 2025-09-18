@@ -45,6 +45,18 @@
     }
   }
 
+  function formatStatus(value) {
+    if (!value) {
+      return 'Unknown';
+    }
+    return String(value)
+      .toLowerCase()
+      .split(/[_\s]+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  }
+
   function sendMessage(command, data) {
     vscode.postMessage({ command, data });
   }
@@ -80,6 +92,44 @@
     }
   }
 
+  function renderGradingHistory(history) {
+    if (!Array.isArray(history) || history.length === 0) {
+      return `
+        <section class="card grading-history">
+          <h2>Grading History</h2>
+          <div class="empty-state">No grading history yet.</div>
+        </section>
+      `;
+    }
+
+    const items = history.map((entry) => {
+      const gradeText = formatPercent(entry.gradePercent);
+      const statusText = formatStatus(entry.status);
+      const gradedAt = formatDate(entry.gradedAt) || '–';
+      const grader = entry.graderName || 'Unknown';
+      const feedback = entry.feedback ? `<div class="history-feedback">${escapeHtml(entry.feedback)}</div>` : '';
+
+      return `
+        <article class="history-item">
+          <div class="history-header">
+            <span class="history-grade">${escapeHtml(gradeText)}</span>
+            <span class="history-status chip">${escapeHtml(statusText)}</span>
+            <span class="history-date">${escapeHtml(gradedAt)}</span>
+          </div>
+          <div class="history-meta">Graded by ${escapeHtml(grader)}</div>
+          ${feedback}
+        </article>
+      `;
+    }).join('');
+
+    return `
+      <section class="card grading-history">
+        <h2>Grading History</h2>
+        <div class="history-list">${items}</div>
+      </section>
+    `;
+  }
+
   function render() {
     const root = document.getElementById('app');
     if (!root) {
@@ -93,6 +143,7 @@
     const repository = data.repository || {};
     const submissionGroup = data.submissionGroup || {};
     const team = data.team || {};
+    const gradingHistory = Array.isArray(data.gradingHistory) ? data.gradingHistory : [];
 
     const headerSubtitleParts = [];
     if (data.course?.title) {
@@ -199,6 +250,10 @@
             <span class="info-item-value">${escapeHtml(metrics.status || submissionGroup.status || '–')}</span>
           </div>
           <div class="info-item">
+            <span class="info-item-label">Feedback</span>
+            <span class="info-item-value">${escapeHtml(metrics.feedback || '–')}</span>
+          </div>
+          <div class="info-item">
             <span class="info-item-label">Graded by</span>
             <span class="info-item-value">${escapeHtml(metrics.gradedBy || 'Pending')}</span>
           </div>
@@ -208,6 +263,8 @@
           </div>
         </div>
       </section>
+
+      ${renderGradingHistory(gradingHistory)}
 
       <section class="card">
         <h2>Repository</h2>

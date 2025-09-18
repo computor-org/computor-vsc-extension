@@ -34,6 +34,7 @@ export interface StudentContentDetailsViewState {
     gradedBy?: string | null;
     gradedAt?: string | null;
     status?: string | null;
+    feedback?: string | null;
   };
   team?: {
     maxSize?: number | null;
@@ -49,6 +50,17 @@ export interface StudentContentDetailsViewState {
     webUrl?: string;
     cloneUrl?: string;
   };
+  gradingHistory?: StudentGradingHistoryEntry[];
+}
+
+export interface StudentGradingHistoryEntry {
+  id: string;
+  gradePercent: number | null;
+  rawGrade: number | null;
+  status: string;
+  feedback?: string | null;
+  gradedAt?: string;
+  graderName?: string;
 }
 
 export class StudentCourseContentDetailsWebviewProvider extends BaseWebviewProvider {
