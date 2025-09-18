@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
-import { CourseContentStudentList, CourseContentTypeList, SubmissionGroupStudentList } from '../../types/generated';
+import { CourseContentStudentList, CourseContentStudentGet, CourseContentTypeList, SubmissionGroupStudentList, SubmissionGroupStudentGet } from '../../types/generated';
 
 export interface StudentContentDetailsViewState {
   course?: {
@@ -10,9 +10,9 @@ export interface StudentContentDetailsViewState {
     title?: string;
     path?: string;
   };
-  content: CourseContentStudentList;
+  content: CourseContentStudentList | CourseContentStudentGet;
   contentType?: CourseContentTypeList;
-  submissionGroup?: SubmissionGroupStudentList | null;
+  submissionGroup?: SubmissionGroupStudentList | SubmissionGroupStudentGet | null;
   repository?: {
     hasRepository: boolean;
     fullPath?: string;

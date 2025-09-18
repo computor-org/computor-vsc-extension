@@ -45,7 +45,8 @@ import {
   MessageGet,
   MessageCreate,
   MessageUpdate,
-  CourseMemberCommentList
+  CourseMemberCommentList,
+  CourseContentStudentGet
 } from '../types/generated';
 
 // Query interface for examples (not generated yet)
@@ -1265,6 +1266,39 @@ export class ComputorApiService {
       return result;
     } catch (error) {
       console.error('Failed to get student course content:', error);
+      return undefined;
+    }
+  }
+
+  async getStudentCourseContentDetails(
+    contentId: string,
+    options?: { force?: boolean }
+  ): Promise<CourseContentStudentGet | undefined> {
+    const cacheKey = `studentCourseContentDetails-${contentId}`;
+
+    if (options?.force) {
+      multiTierCache.delete(cacheKey);
+    } else {
+      const cached = multiTierCache.get<CourseContentStudentGet>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+    }
+
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const response = await client.get<CourseContentStudentGet>(`/students/course-contents/${contentId}`);
+        return response.data;
+      }, {
+        maxRetries: 2,
+        exponentialBackoff: true
+      });
+
+      multiTierCache.set(cacheKey, result, 'warm');
+      return result;
+    } catch (error) {
+      console.error('Failed to get student course content details:', error);
       return undefined;
     }
   }
