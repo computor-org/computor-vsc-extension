@@ -7,7 +7,7 @@ import { ComputorApiService } from '../services/ComputorApiService';
 import { GitBranchManager } from '../services/GitBranchManager';
 import { CourseSelectionService } from '../services/CourseSelectionService';
 import { TestResultService } from '../services/TestResultService';
-import { SubmissionGroupStudentList, MessageCreate, CourseContentStudentList, CourseContentTypeList, CourseSubmissionGroupGradingList } from '../types/generated';
+import { SubmissionGroupStudentList, MessageCreate, CourseContentStudentList, CourseContentTypeList, CourseSubmissionGroupGradingList, SubmissionGroupMemberBasic } from '../types/generated';
 import { StudentRepositoryManager } from '../services/StudentRepositoryManager';
 import { execAsync } from '../utils/exec';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
@@ -780,12 +780,13 @@ export class StudentCommands {
         return;
       }
 
-      const courseContent = (await this.apiService.getStudentCourseContent(courseContentSummary.id, { force: true })) || courseContentSummary;
+      const courseContentDetails = await this.apiService.getStudentCourseContentDetails(courseContentSummary.id, { force: true });
+      const courseContent = courseContentDetails ?? courseContentSummary;
 
       if (!submissionGroupSummary) {
         submissionGroupSummary = courseContentSummary.submission_group as SubmissionGroupStudentList | undefined;
       }
-      const submissionGroupCombined = (courseContent.submission_group as SubmissionGroupStudentList | undefined) || submissionGroupSummary;
+      const submissionGroupCombined = (courseContentDetails?.submission_group as SubmissionGroupStudentList | undefined) || submissionGroupSummary;
 
       if (!contentType && (courseContent as any).course_content_type) {
         contentType = (courseContent as any).course_content_type as CourseContentTypeList;
@@ -839,6 +840,8 @@ export class StudentCommands {
 
       const resultValue = typeof courseContent.result?.result === 'number' ? courseContent.result.result : null;
 
+      const members: SubmissionGroupMemberBasic[] = (submissionGroupCombined?.members as SubmissionGroupMemberBasic[] | undefined) ?? [];
+
       const viewState: StudentContentDetailsViewState = {
         course: courseInfo,
         content: courseContent,
@@ -869,7 +872,7 @@ export class StudentCommands {
         team: {
           maxSize: submissionGroupCombined?.max_group_size ?? null,
           currentSize: submissionGroupCombined?.current_group_size ?? null,
-          members: (submissionGroupCombined?.members || []).map((member: any) => ({
+          members: members.map((member) => ({
             id: member.course_member_id || member.id,
             name: member.full_name || member.username,
             username: member.username || null
