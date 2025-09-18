@@ -1,6 +1,5 @@
 /**
  * Auto-generated TypeScript interfaces from Pydantic models
- * Generated on: 2025-09-18T17:27:35.889895
  */
 
 export * from './auth';
