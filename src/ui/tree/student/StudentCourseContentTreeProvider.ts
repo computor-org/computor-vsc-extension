@@ -800,7 +800,7 @@ class CourseContentPathItem extends TreeItem {
         const count = this.countItems(node);
         const unread = node.unreadMessageCount ?? 0;
         const itemLabel = `${count} item${count !== 1 ? 's' : ''}`;
-        this.description = unread > 0 ? `${itemLabel} | new: ${unread}` : itemLabel;
+        this.description = unread > 0 ? `🔔 ${unread} • ${itemLabel}` : itemLabel;
 
         const tooltipLines = [
             `Unit: ${this.name}`,
@@ -929,34 +929,34 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
 
         const unreadCount = this.courseContent?.unread_message_count ?? 0;
         if (unreadCount > 0) {
-            entries.push(`[msg:${unreadCount}]`);
+            entries.push(`🔔 ${unreadCount}`);
         }
 
         const testCount = (this.courseContent as any)?.result_count as number | undefined;
         const maxTests = (this.courseContent as any)?.max_test_runs as number | undefined;
         if (typeof testCount === 'number') {
-            entries.push(`${typeof maxTests === 'number' ? `[${testCount}/${maxTests}]` : `[${testCount}]`}`);
+            entries.push(typeof maxTests === 'number' ? `[${testCount}/${maxTests}]` : `[${testCount}]`);
         }
 
         const submitCount = this.submissionGroup?.count as number | undefined;
         const maxSubmits = this.submissionGroup?.max_submissions as number | undefined;
         if (typeof submitCount === 'number') {
-            entries.push(`${typeof maxSubmits === 'number' ? `[${submitCount}/${maxSubmits}]` : `[${submitCount}]`}`);
+            entries.push(typeof maxSubmits === 'number' ? `[${submitCount}/${maxSubmits}]` : `[${submitCount}]`);
         }
 
         const testResult = (this.courseContent?.result?.result) as number | undefined;
         if (typeof testResult === 'number') {
             const pts = Math.round(testResult * 100);
-            entries.push(` ${pts}%`);
+            entries.push(`${pts}%`);
         }
 
         const rawGrade = this.submissionGroup?.grading as number | undefined;
         if (typeof rawGrade === 'number') {
             const pts = Math.round(rawGrade * 100);
-            entries.push(` ${pts}%`);
+            entries.push(`${pts}%`);
         }
 
-        this.description = entries.length > 0 ? `${entries.join('')}` : undefined;
+        this.description = entries.length > 0 ? entries.join('  ') : undefined;
     }
     
     private setupTooltip(): void {
