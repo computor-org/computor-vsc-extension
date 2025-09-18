@@ -7,7 +7,7 @@ import { ComputorApiService } from '../services/ComputorApiService';
 import { GitBranchManager } from '../services/GitBranchManager';
 import { CourseSelectionService } from '../services/CourseSelectionService';
 import { TestResultService } from '../services/TestResultService';
-import { SubmissionGroupStudentList, MessageCreate, CourseContentStudentList, CourseContentTypeList, CourseSubmissionGroupGradingList, SubmissionGroupMemberBasic } from '../types/generated';
+import { SubmissionGroupStudentList, SubmissionGroupStudentGet, MessageCreate, CourseContentStudentList, CourseContentTypeList, CourseSubmissionGroupGradingList, SubmissionGroupMemberBasic } from '../types/generated';
 import { StudentRepositoryManager } from '../services/StudentRepositoryManager';
 import { execAsync } from '../utils/exec';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
@@ -786,7 +786,9 @@ export class StudentCommands {
       if (!submissionGroupSummary) {
         submissionGroupSummary = courseContentSummary.submission_group as SubmissionGroupStudentList | undefined;
       }
-      const submissionGroupCombined = (courseContentDetails?.submission_group as SubmissionGroupStudentList | undefined) || submissionGroupSummary;
+
+      const submissionGroupDetails = courseContentDetails?.submission_group as SubmissionGroupStudentGet | undefined;
+      const submissionGroupCombined: SubmissionGroupStudentGet | SubmissionGroupStudentList | undefined = submissionGroupDetails ?? submissionGroupSummary;
 
       if (!contentType && (courseContent as any).course_content_type) {
         contentType = (courseContent as any).course_content_type as CourseContentTypeList;
@@ -801,8 +803,8 @@ export class StudentCommands {
 
       const repo = submissionGroupCombined?.repository as any;
 
-      const gradingHistory = this.buildGradingHistory((submissionGroupCombined as any)?.gradings as CourseSubmissionGroupGradingList[] | undefined);
-      const latestGrading = (submissionGroupCombined as any)?.latest_grading;
+      const gradingHistory = this.buildGradingHistory(submissionGroupDetails?.gradings);
+      const latestGrading = (submissionGroupDetails as any)?.latest_grading ?? (submissionGroupSummary as any)?.latest_grading;
       let latestHistoryEntry = gradingHistory[0];
 
       const fallbackGradingValue = this.normalizeGradeValue(latestGrading?.grading ?? submissionGroupCombined?.grading);
@@ -898,12 +900,26 @@ export class StudentCommands {
   }
 
 
-  private buildGradingHistory(entries?: CourseSubmissionGroupGradingList[]): StudentGradingHistoryEntry[] {
-    if (!Array.isArray(entries) || entries.length === 0) {
+  private buildGradingHistory(entries: unknown): StudentGradingHistoryEntry[] {
+    let normalized: CourseSubmissionGroupGradingList[] = [];
+
+    if (Array.isArray(entries)) {
+      normalized = entries.filter((entry): entry is CourseSubmissionGroupGradingList => Boolean(entry));
+    } else if (entries && typeof entries === 'object') {
+      const maybeItems = (entries as any).items;
+      if (Array.isArray(maybeItems)) {
+        normalized = maybeItems.filter((entry: any): entry is CourseSubmissionGroupGradingList => Boolean(entry));
+      } else {
+        normalized = Object.values(entries as Record<string, CourseSubmissionGroupGradingList>)
+          .filter((entry): entry is CourseSubmissionGroupGradingList => Boolean(entry));
+      }
+    }
+
+    if (normalized.length === 0) {
       return [];
     }
 
-    const sorted = [...entries].sort((a, b) => {
+    const sorted = [...normalized].sort((a, b) => {
       const aTime = Date.parse(a.created_at ?? '') || 0;
       const bTime = Date.parse(b.created_at ?? '') || 0;
       return bTime - aTime;

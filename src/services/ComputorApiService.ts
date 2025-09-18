@@ -1355,7 +1355,7 @@ export class ComputorApiService {
             if (hasRepo !== params.has_repository) continue;
           }
           if (params?.is_graded !== undefined) {
-            const isGraded = !!content.submission_group.latest_grading;
+            const isGraded = typeof content.submission_group?.grading === 'number';
             if (isGraded !== params.is_graded) continue;
           }
           

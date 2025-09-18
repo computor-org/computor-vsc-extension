@@ -893,7 +893,7 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
                 if (typeof result === 'number') {
                     badge = (result === 1) ? 'success' : 'failure';
                 }
-                const status = (this.submissionGroup?.status || this.submissionGroup?.latest_grading?.status)?.toLowerCase();
+        const status = (this.submissionGroup?.status)?.toLowerCase();
                 if (status === 'corrected') corner = 'corrected';
                 else if (status === 'correction_necessary') corner = 'correction_necessary';
                 else if (status === 'correction_possible' || status === 'improvement_possible') corner = 'correction_possible';
@@ -1007,19 +1007,14 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         }
 
         // Show grading percentage (0..1 -> percent)
-        const rawGrade = (this.submissionGroup?.latest_grading?.grading ?? this.submissionGroup?.grading) as number | undefined;
+        const rawGrade = this.submissionGroup?.grading as number | undefined;
         if (typeof rawGrade === 'number') {
             lines.push(`Grading: ${(rawGrade * 100).toFixed(2)}%`);
         }
 
         // Additional grading details and team members
-        if (this.submissionGroup?.latest_grading) {
-            if (this.submissionGroup.latest_grading.status) {
-                lines.push(`Status: ${this.submissionGroup.latest_grading.status}`);
-            }
-            if (this.submissionGroup.latest_grading.graded_by) {
-                lines.push(`Graded by: ${this.submissionGroup.latest_grading.graded_by}`);
-            }
+        if (this.submissionGroup?.grading !== undefined && this.submissionGroup?.status) {
+            lines.push(`Status: ${this.submissionGroup.status}`);
         }
         if (this.submissionGroup?.members && this.submissionGroup.members.length > 1) {
             lines.push('Team members:');
@@ -1061,7 +1056,7 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         }
         
         // Add grading context
-        if (this.submissionGroup?.latest_grading) {
+        if (this.submissionGroup && typeof (this.submissionGroup as any).grading === "number") {
             contexts.push('graded');
         }
         
