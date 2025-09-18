@@ -835,6 +835,7 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             // Determine shape based on course_content_kind_id
             // 'assignment' gets square, 'unit' (or anything else) gets circle
             const shape = this.contentType?.course_content_kind_id === 'assignment' ? 'square' : 'circle';
+            const latestGrading = (this.submissionGroup as any)?.latest_grading;
 
             // Determine success/failure badge for assignments with grading info
             let badge: 'success' | 'failure' | 'none' = 'none';
@@ -848,7 +849,7 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
                 if (typeof result === 'number') {
                     badge = (result === 1) ? 'success' : 'failure';
                 }
-                const status = (this.submissionGroup?.status || this.submissionGroup?.latest_grading?.status)?.toLowerCase();
+                const status = (this.submissionGroup?.status || latestGrading?.status)?.toLowerCase();
                 if (status === 'corrected') corner = 'corrected';
                 else if (status === 'correction_necessary') corner = 'correction_necessary';
                 else if (status === 'correction_possible' || status === 'improvement_possible') corner = 'correction_possible';
@@ -951,19 +952,20 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             lines.push(`Result: ${(resultVal * 100).toFixed(2)}%`);
         }
 
+        const latestGrading = (this.submissionGroup as any)?.latest_grading;
         // Show grading percentage (0..1 -> percent)
-        const rawGrade = (this.submissionGroup?.latest_grading?.grading ?? this.submissionGroup?.grading) as number | undefined;
+        const rawGrade = (latestGrading?.grading ?? this.submissionGroup?.grading) as number | undefined;
         if (typeof rawGrade === 'number') {
             lines.push(`Grading: ${(rawGrade * 100).toFixed(2)}%`);
         }
 
         // Additional grading details and team members
-        if (this.submissionGroup?.latest_grading) {
-            if (this.submissionGroup.latest_grading.status) {
-                lines.push(`Status: ${this.submissionGroup.latest_grading.status}`);
+        if (latestGrading) {
+            if (latestGrading.status) {
+                lines.push(`Status: ${latestGrading.status}`);
             }
-            if (this.submissionGroup.latest_grading.graded_by) {
-                lines.push(`Graded by: ${this.submissionGroup.latest_grading.graded_by}`);
+            if (latestGrading.graded_by) {
+                lines.push(`Graded by: ${latestGrading.graded_by}`);
             }
         }
         if (this.submissionGroup?.members && this.submissionGroup.members.length > 1) {
@@ -1006,7 +1008,8 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         }
         
         // Add grading context
-        if (this.submissionGroup?.latest_grading) {
+        const latestGrading = (this.submissionGroup as any)?.latest_grading;
+        if (latestGrading) {
             contexts.push('graded');
         }
         

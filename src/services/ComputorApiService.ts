@@ -40,7 +40,12 @@ import {
   CourseContentDeploymentGet,
   DeploymentHistoryGet,
   CourseContentStudentList,
-  CourseContentStudentUpdate
+  CourseContentStudentUpdate,
+  MessageCreate,
+  MessageGet,
+  MessageList,
+  MessageQuery,
+  MessageUpdate
 } from '../types/generated';
 
 // Query interface for examples (not generated yet)
@@ -1210,6 +1215,52 @@ export class ComputorApiService {
     }
   }
 
+  async listMessages(query?: MessageQuery): Promise<{ messages: MessageList[]; total?: number }> {
+    return performanceMonitor.measureAsync('listMessages', async () => {
+      const client = await this.getHttpClient();
+      const response = await client.get<MessageList[]>('/messages', query as Record<string, any> | undefined);
+      const totalHeader = response.headers['x-total-count'] ?? response.headers['X-Total-Count'];
+      const parsedTotal = totalHeader !== undefined ? Number(totalHeader) : undefined;
+      return {
+        messages: response.data || [],
+        total: Number.isFinite(parsedTotal) ? parsedTotal : undefined
+      };
+    }, 'api');
+  }
+
+  async getMessage(messageId: string): Promise<MessageGet> {
+    const client = await this.getHttpClient();
+    const response = await client.get<MessageGet>(`/messages/${messageId}`);
+    return response.data;
+  }
+
+  async createMessage(payload: MessageCreate): Promise<MessageGet> {
+    const client = await this.getHttpClient();
+    const response = await client.post<MessageGet>('/messages', payload);
+    return response.data;
+  }
+
+  async updateMessage(messageId: string, updates: MessageUpdate): Promise<MessageGet> {
+    const client = await this.getHttpClient();
+    const response = await client.patch<MessageGet>(`/messages/${messageId}`, updates);
+    return response.data;
+  }
+
+  async deleteMessage(messageId: string): Promise<void> {
+    const client = await this.getHttpClient();
+    await client.delete(`/messages/${messageId}`);
+  }
+
+  async markMessageRead(messageId: string): Promise<void> {
+    const client = await this.getHttpClient();
+    await client.post(`/messages/${messageId}/reads`);
+  }
+
+  async markMessageUnread(messageId: string): Promise<void> {
+    const client = await this.getHttpClient();
+    await client.delete(`/messages/${messageId}/reads`);
+  }
+
   async getStudentSubmissionGroups(params?: {
     course_id?: string;
     course_content_id?: string;
@@ -1234,7 +1285,10 @@ export class ComputorApiService {
             if (hasRepo !== params.has_repository) continue;
           }
           if (params?.is_graded !== undefined) {
-            const isGraded = !!content.submission_group.latest_grading;
+            const latestGrading = (content.submission_group as any)?.latest_grading;
+            const hasLatestGrade = latestGrading !== undefined && latestGrading !== null;
+            const fallbackGrade = typeof content.submission_group.grading === 'number';
+            const isGraded = hasLatestGrade || fallbackGrade;
             if (isGraded !== params.is_graded) continue;
           }
           

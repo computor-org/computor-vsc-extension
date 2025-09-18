@@ -219,9 +219,13 @@ export class TutorCommands {
 
         const prev = (() => {
           const submission: any = content?.submission_group || content?.submission;
-          const latest = submission?.latest_grading || submission?.grading;
-          const grading = typeof latest?.grading === 'number' ? latest.grading as number : undefined;
-          const status = typeof latest?.status === 'string' ? String(latest.status) : undefined;
+          const latest = submission?.latest_grading;
+          const grading = typeof latest?.grading === 'number'
+            ? latest.grading as number
+            : (typeof submission?.grading === 'number' ? submission.grading : undefined);
+          const status = typeof latest?.status === 'string'
+            ? String(latest.status)
+            : (typeof submission?.status === 'string' ? String(submission.status) : undefined);
           return { grading, status } as { grading?: number; status?: string };
         })();
 
@@ -266,12 +270,13 @@ export class TutorCommands {
               const shape = kindId === 'assignment' ? 'square' : 'circle';
               let corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none';
               const submission: any = (updated as any).submission_group || (updated as any).submission;
-              const status = submission?.status?.toLowerCase?.() || submission?.latest_grading?.status?.toLowerCase?.();
+              const latest = submission?.latest_grading;
+              const status = submission?.status?.toLowerCase?.() || latest?.status?.toLowerCase?.();
               if (status === 'corrected') corner = 'corrected';
               else if (status === 'correction_necessary') corner = 'correction_necessary';
               else if (status === 'correction_possible' || status === 'improvement_possible') corner = 'correction_possible';
-              const gradingVal: number | undefined = (typeof submission?.latest_grading?.grading === 'number')
-                ? submission.latest_grading.grading
+              const gradingVal: number | undefined = (typeof latest?.grading === 'number')
+                ? latest.grading
                 : (typeof submission?.grading === 'number' ? submission.grading : undefined);
               const badge: 'success' | 'failure' | 'none' = (typeof gradingVal === 'number') ? (gradingVal === 1 ? 'success' : 'failure') : 'none';
               item.iconPath = (badge === 'none' && corner === 'none')

@@ -413,7 +413,10 @@ export class StudentCommands {
           const groupStr = `${submissionGroup.current_group_size || 0}/${submissionGroup.max_group_size || 1}`;
           const repoStr = submissionGroup.repository?.web_url || submissionGroup.repository?.full_path || 'No repository';
           const members = submissionGroup.members || [];
-          const gradeVal = submissionGroup.latest_grading?.grading;
+          const latestGrading = (submissionGroup as any)?.latest_grading;
+          const gradeVal = typeof latestGrading?.grading === 'number'
+            ? latestGrading.grading
+            : submissionGroup.grading;
           const gradeStr = typeof gradeVal === 'number' ? `${Math.round(gradeVal * 100)}%` : 'Not graded yet';
 
           const info = [
