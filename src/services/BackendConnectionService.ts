@@ -199,12 +199,12 @@ export class BackendConnectionService {
     
     switch (status.error) {
       case 'NOT_RUNNING':
-        detail = 'The backend server appears to be not running.\n\n' +
-                'Please ensure the backend is started:\n' +
-                '1. Navigate to the backend directory\n' +
-                '2. Run: bash startup.sh (or your backend start command)\n' +
-                '3. Wait for the server to fully initialize';
-        actions.push('Open Terminal');
+        detail = 'Unable to reach the backend server.\n\n' +
+                'Possible causes:\n' +
+                '• Backend is temporarily unavailable\n' +
+                '• Network or VPN connection issues\n' +
+                '• Incorrect backend URL configuration';
+        actions.push('Check Settings');
         break;
         
       case 'VPN_REQUIRED':
