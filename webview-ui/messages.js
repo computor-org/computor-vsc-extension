@@ -139,13 +139,33 @@
       className: `message-card level-${message.level ?? depth}`
     });
 
-    const meta = createElement('div', {
-      className: 'message-meta',
-      children: [
-        createElement('span', { textContent: getAuthorDisplay(message) }),
-        createElement('span', { textContent: formatDate(message.updated_at || message.created_at) })
-      ]
+    const meta = createElement('div', { className: 'message-meta' });
+
+    const metaLeft = createElement('div', {
+      className: 'message-meta-left',
+      children: [createElement('span', { textContent: getAuthorDisplay(message) })]
     });
+
+    const metaRight = createElement('div', { className: 'message-meta-right' });
+
+    if (createButton) {
+      const replyButton = createButton({
+        text: 'Reply',
+        size: 'xs',
+        variant: 'secondary',
+        onClick: () => setState({ replyTo: message, editingMessage: undefined })
+      });
+      const replyEl = replyButton.render();
+      replyEl.classList.add('message-reply-button');
+      metaRight.appendChild(replyEl);
+    }
+
+    metaRight.appendChild(
+      createElement('span', { textContent: formatDate(message.updated_at || message.created_at), className: 'message-meta-date' })
+    );
+
+    meta.appendChild(metaLeft);
+    meta.appendChild(metaRight);
 
     const title = createElement('h3', {
       className: 'message-title',
@@ -159,21 +179,8 @@
 
     const actions = createElement('div', { className: 'message-actions' });
 
-    const replyButton = createButton
-      ? createButton({
-          text: 'Reply',
-          size: 'sm',
-          variant: 'secondary',
-          onClick: () => setState({ replyTo: message, editingMessage: undefined })
-        })
-      : null;
-
     const canEdit = Boolean(message.can_edit);
     const canDelete = Boolean(message.can_delete);
-
-    if (replyButton) {
-      actions.appendChild(replyButton.render());
-    }
 
     if (canEdit && createButton) {
       const editBtn = createButton({
@@ -260,6 +267,10 @@
     threads.forEach((thread) => {
       container.appendChild(renderMessageNode(thread, thread.level ?? 0));
     });
+
+    requestAnimationFrame(() => {
+      container.scrollTop = container.scrollHeight;
+    });
   }
 
   function renderForm(formWrapper) {
@@ -293,7 +304,7 @@
     const textarea = createElement('textarea', {
       className: 'vscode-input',
       attributes: {
-        rows: '6',
+        rows: '5',
         placeholder: 'Write your message…'
       }
     });
@@ -388,28 +399,33 @@
     const view = createElement('div', { className: 'view-root' });
 
     const header = createElement('div', { className: 'view-header' });
-    header.appendChild(
-      createElement('h1', {
-        textContent: state.target?.title || 'Messages'
-      })
-    );
-    if (state.target?.subtitle) {
-      header.appendChild(
-        createElement('p', { textContent: state.target.subtitle })
-      );
-    }
+    const headerTop = createElement('div', { className: 'view-header-top' });
 
-    const toolbar = createElement('div', { className: 'toolbar' });
+    const titleEl = createElement('h1', {
+      textContent: state.target?.title || 'Messages'
+    });
+    headerTop.appendChild(titleEl);
+
     if (createButton) {
       const refreshBtn = createButton({
         text: 'Refresh',
         variant: 'secondary',
+        size: 'sm',
         onClick: () => {
           setState({ loading: true });
           vscode.postMessage({ command: 'refreshMessages' });
         }
       });
-      toolbar.appendChild(refreshBtn.render());
+      const refreshEl = refreshBtn.render();
+      refreshEl.classList.add('refresh-button');
+      headerTop.appendChild(refreshEl);
+    }
+
+    header.appendChild(headerTop);
+    if (state.target?.subtitle) {
+      header.appendChild(
+        createElement('p', { textContent: state.target.subtitle })
+      );
     }
 
     const messagesContainer = createElement('div', { className: 'messages-container' });
@@ -424,7 +440,6 @@
     renderForm(formCard);
 
     view.appendChild(header);
-    view.appendChild(toolbar);
     view.appendChild(messagesContainer);
     view.appendChild(formCard);
 
