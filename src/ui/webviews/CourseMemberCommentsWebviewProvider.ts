@@ -70,6 +70,9 @@ export class CourseMemberCommentsWebviewProvider extends BaseWebviewProvider {
       case 'updateComment':
         await this.updateComment(message.data);
         break;
+      case 'requestDeleteComment':
+        await this.requestDeleteComment(message.data);
+        break;
       case 'deleteComment':
         await this.deleteComment(message.data);
         break;
@@ -152,8 +155,25 @@ export class CourseMemberCommentsWebviewProvider extends BaseWebviewProvider {
     }
   }
 
-  private async deleteComment(data: { commentId: string }): Promise<void> {
-    const courseMemberId = this.getCourseMemberId();
+  private async requestDeleteComment(data: { commentId: string; courseMemberId?: string }): Promise<void> {
+    const courseMemberId = data?.courseMemberId || this.getCourseMemberId();
+    if (!courseMemberId || !data?.commentId) {
+      return;
+    }
+
+    const choice = await vscode.window.showWarningMessage(
+      'Delete this comment permanently?',
+      { modal: true },
+      'Delete'
+    );
+
+    if (choice === 'Delete') {
+      await this.deleteComment({ commentId: data.commentId, courseMemberId });
+    }
+  }
+
+  private async deleteComment(data: { commentId: string; courseMemberId?: string }): Promise<void> {
+    const courseMemberId = data?.courseMemberId || this.getCourseMemberId();
     if (!courseMemberId || !data?.commentId) {
       return;
     }

@@ -1713,10 +1713,20 @@ export class ComputorApiService {
   async deleteCourseMemberComment(courseMemberId: string, commentId: string): Promise<CourseMemberCommentList[]> {
     return errorRecoveryService.executeWithRecovery(async () => {
       const client = await this.getHttpClient();
-      const response = await client.delete<CourseMemberCommentList[]>(
-        `/course-member-comments/${commentId}`
+      const response = await client.delete<CourseMemberCommentList[] | null>(
+        `/course-member-comments/${commentId}`,
+        { course_member_id: courseMemberId }
       );
-      return response.data;
+
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+
+      const refreshed = await client.get<CourseMemberCommentList[]>(
+        '/course-member-comments',
+        { course_member_id: courseMemberId }
+      );
+      return refreshed.data || [];
     }, {
       maxRetries: 2,
       exponentialBackoff: true

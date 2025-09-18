@@ -139,32 +139,33 @@
           })
         );
 
+        const actions = createElement('div', { className: 'comment-actions' });
+
         if (createButton) {
-          const actions = createElement('div', { className: 'comment-actions' });
           const editBtn = createButton({
             text: 'Edit',
             size: 'sm',
             variant: 'secondary',
             onClick: () => setState({ editingComment: comment })
           });
-          const deleteBtn = createButton({
-            text: 'Delete',
-            size: 'sm',
-            variant: 'tertiary',
-            onClick: () => {
-              if (confirm('Delete this comment?')) {
-                setState({ loading: true });
-                vscode.postMessage({
-                  command: 'deleteComment',
-                  data: { commentId: comment.id }
-                });
-              }
-            }
-          });
           actions.appendChild(editBtn.render());
-          actions.appendChild(deleteBtn.render());
-          card.appendChild(actions);
         }
+
+        const deleteBtn = createElement('button', {
+          className: 'vscode-button vscode-button--tertiary vscode-button--sm',
+          textContent: 'Delete',
+          type: 'button'
+        });
+
+        deleteBtn.addEventListener('click', () => {
+          vscode.postMessage({
+            command: 'requestDeleteComment',
+            data: { commentId: comment.id, courseMemberId: state.courseMemberId }
+          });
+        });
+
+        actions.appendChild(deleteBtn);
+        card.appendChild(actions);
 
         container.appendChild(card);
       });
