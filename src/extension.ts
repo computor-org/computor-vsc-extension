@@ -24,7 +24,14 @@ import { StudentCommands } from './commands/StudentCommands';
 import { TutorCommands } from './commands/TutorCommands';
 
 import { TestResultsPanelProvider, TestResultsTreeDataProvider } from './ui/panels/TestResultsPanel';
+import {
+  StudentMessagesPanelProvider,
+  TutorMessagesPanelProvider,
+  TutorCommentsPanelProvider,
+  LecturerMessagesPanelProvider
+} from './ui/panels/MessagesPanelProviders';
 import { TestResultService } from './services/TestResultService';
+import type { CourseContentStudentList, SubmissionGroupStudentList, CourseContentList, CourseList } from './types/generated';
 
 type Role = 'Lecturer' | 'Student' | 'Tutor';
 type AuthType = 'basic' | 'apiKey' | 'jwt';
@@ -237,6 +244,7 @@ class LecturerController extends BaseRoleController {
   private tree?: LecturerTreeDataProvider;
   private exampleTree?: LecturerExampleTreeProvider;
   private repoManager?: any;
+  private lecturerMessagesPanel?: LecturerMessagesPanelProvider;
 
   async activate(client: ReturnType<typeof buildHttpClient>): Promise<void> {
     const api = await this.setupApi(client);
@@ -273,6 +281,22 @@ class LecturerController extends BaseRoleController {
       dragAndDropController: this.tree
     });
     this.disposables.push(treeView);
+
+    this.lecturerMessagesPanel = new LecturerMessagesPanelProvider(this.context.extensionUri);
+    this.disposables.push(vscode.window.registerWebviewViewProvider(LecturerMessagesPanelProvider.viewType, this.lecturerMessagesPanel, {
+      webviewOptions: { retainContextWhenHidden: true }
+    }));
+
+    this.disposables.push(treeView.onDidChangeSelection((event) => {
+      const item = event.selection?.[0] as any;
+      const content = item?.courseContent as CourseContentList | undefined;
+      const course = item?.course as CourseList | undefined;
+      this.lecturerMessagesPanel?.updateSelection(content, course);
+    }));
+
+    this.disposables.push(vscode.commands.registerCommand('computor.lecturer.messages.open', async () => {
+      await vscode.commands.executeCommand('computor.lecturer.messages.focus');
+    }));
 
     this.exampleTree = new LecturerExampleTreeProvider(this.context, api);
     const exampleTreeView = vscode.window.createTreeView('computor.lecturer.examples', {
@@ -312,6 +336,9 @@ class LecturerController extends BaseRoleController {
 
 class TutorController extends BaseRoleController {
   private tree?: any;
+  private tutorMessagesPanel?: TutorMessagesPanelProvider;
+  private tutorCommentsPanel?: TutorCommentsPanelProvider;
+  private currentContent?: CourseContentStudentList;
 
   async activate(client: ReturnType<typeof buildHttpClient>): Promise<void> {
     const api = await this.setupApi(client);
@@ -342,6 +369,47 @@ class TutorController extends BaseRoleController {
     this.disposables.push(vscode.window.registerTreeDataProvider('computor.tutor.courses', this.tree));
     const treeView = vscode.window.createTreeView('computor.tutor.courses', { treeDataProvider: this.tree, showCollapseAll: true });
     this.disposables.push(treeView);
+
+    this.tutorMessagesPanel = new TutorMessagesPanelProvider(this.context.extensionUri);
+    this.tutorCommentsPanel = new TutorCommentsPanelProvider(this.context.extensionUri);
+    this.disposables.push(vscode.window.registerWebviewViewProvider(TutorMessagesPanelProvider.viewType, this.tutorMessagesPanel, {
+      webviewOptions: { retainContextWhenHidden: true }
+    }));
+    this.disposables.push(vscode.window.registerWebviewViewProvider(TutorCommentsPanelProvider.viewType, this.tutorCommentsPanel, {
+      webviewOptions: { retainContextWhenHidden: true }
+    }));
+
+    const pushTutorPanelUpdates = () => {
+      this.tutorMessagesPanel?.updateContext({
+        content: this.currentContent,
+        memberId: selection.getCurrentMemberId(),
+        memberLabel: selection.getCurrentMemberLabel()
+      });
+      const memberId = selection.getCurrentMemberId();
+      this.tutorCommentsPanel?.updateMemberContext(memberId ? {
+        id: memberId,
+        label: selection.getCurrentMemberLabel() || memberId
+      } : null);
+    };
+
+    this.disposables.push(treeView.onDidChangeSelection((event) => {
+      const item = event.selection?.[0] as any;
+      this.currentContent = item?.content as CourseContentStudentList | undefined;
+      pushTutorPanelUpdates();
+    }));
+
+    this.disposables.push(selection.onDidChangeSelection(() => {
+      pushTutorPanelUpdates();
+    }));
+
+    pushTutorPanelUpdates();
+
+    this.disposables.push(vscode.commands.registerCommand('computor.tutor.messages.open', async () => {
+      await vscode.commands.executeCommand('computor.tutor.messages.focus');
+    }));
+    this.disposables.push(vscode.commands.registerCommand('computor.tutor.comments.open', async () => {
+      await vscode.commands.executeCommand('computor.tutor.comments.focus');
+    }));
 
     // Status bar: show selection and allow reset
     const tutorStatus = TutorStatusBarService.initialize();
@@ -377,6 +445,7 @@ class StudentController extends BaseRoleController {
   private tree?: StudentCourseContentTreeProvider;
   private repositoryManager?: StudentRepositoryManager;
   private courseSelectionService?: CourseSelectionService;
+  private studentMessagesPanel?: StudentMessagesPanelProvider;
 
   async activate(client: ReturnType<typeof buildHttpClient>): Promise<void> {
     const api = await this.setupApi(client);
@@ -394,6 +463,22 @@ class StudentController extends BaseRoleController {
     this.disposables.push(vscode.window.registerTreeDataProvider('computor.student.courses', this.tree));
     const treeView = vscode.window.createTreeView('computor.student.courses', { treeDataProvider: this.tree, showCollapseAll: true });
     this.disposables.push(treeView);
+
+    this.studentMessagesPanel = new StudentMessagesPanelProvider(this.context.extensionUri);
+    this.disposables.push(vscode.window.registerWebviewViewProvider(StudentMessagesPanelProvider.viewType, this.studentMessagesPanel, {
+      webviewOptions: { retainContextWhenHidden: true }
+    }));
+
+    this.disposables.push(treeView.onDidChangeSelection((event) => {
+      const item = event.selection?.[0] as any;
+      const courseContent = item?.courseContent as CourseContentStudentList | undefined;
+      const submissionGroup = item?.submissionGroup as SubmissionGroupStudentList | undefined;
+      this.studentMessagesPanel?.updateSelection(courseContent, submissionGroup);
+    }));
+
+    this.disposables.push(vscode.commands.registerCommand('computor.student.messages.open', async () => {
+      await vscode.commands.executeCommand('computor.student.messages.focus');
+    }));
 
     // Set selected course into service
     await this.courseSelectionService!.selectCourse(courseId);

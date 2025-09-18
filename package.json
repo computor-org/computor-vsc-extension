@@ -18,7 +18,7 @@
     "commands": [
       {
         "command": "computor.tutor.assignment.grading",
-        "title": "Grading…",
+        "title": "Grading\u2026",
         "category": "Computor Tutor"
       },
       {
@@ -426,6 +426,26 @@
         "title": "Open Folder",
         "icon": "$(folder-opened)",
         "category": "File Explorer"
+      },
+      {
+        "command": "computor.student.messages.open",
+        "title": "Open Student Messages",
+        "category": "Computor"
+      },
+      {
+        "command": "computor.tutor.messages.open",
+        "title": "Open Tutor Messages",
+        "category": "Computor"
+      },
+      {
+        "command": "computor.lecturer.messages.open",
+        "title": "Open Lecturer Messages",
+        "category": "Computor"
+      },
+      {
+        "command": "computor.tutor.comments.open",
+        "title": "Open Tutor Comments",
+        "category": "Computor"
       }
     ],
     "viewsContainers": {
@@ -442,6 +462,16 @@
           "id": "computor-test-results",
           "title": "Results",
           "icon": "$(beaker)"
+        },
+        {
+          "id": "computor-messages",
+          "title": "Messages",
+          "icon": "$(comment-discussion)"
+        },
+        {
+          "id": "computor-comments",
+          "title": "Comments",
+          "icon": "$(comment)"
         }
       ]
     },
@@ -505,6 +535,42 @@
           "name": "Result Tree",
           "icon": "$(beaker)",
           "contextualTitle": "Test Results"
+        }
+      ],
+      "computor-messages": [
+        {
+          "id": "computor.student.messages",
+          "type": "webview",
+          "name": "Student Messages",
+          "icon": "$(comment-discussion)",
+          "contextualTitle": "Student Messages",
+          "when": "computor.student.show"
+        },
+        {
+          "id": "computor.tutor.messages",
+          "type": "webview",
+          "name": "Tutor Messages",
+          "icon": "$(comment-discussion)",
+          "contextualTitle": "Tutor Messages",
+          "when": "computor.tutor.show"
+        },
+        {
+          "id": "computor.lecturer.messages",
+          "type": "webview",
+          "name": "Lecturer Messages",
+          "icon": "$(comment-discussion)",
+          "contextualTitle": "Lecturer Messages",
+          "when": "computor.lecturer.show"
+        }
+      ],
+      "computor-comments": [
+        {
+          "id": "computor.tutor.comments",
+          "type": "webview",
+          "name": "Tutor Comments",
+          "icon": "$(comment)",
+          "contextualTitle": "Tutor Comments",
+          "when": "computor.tutor.show"
         }
       ]
     },
@@ -781,7 +847,27 @@
           "command": "computor.student.viewSubmissionGroup",
           "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment/",
           "group": "2_details@1"
-        }
+        },
+        {
+        "command": "computor.student.messages.open",
+        "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent/",
+        "group": "navigation@80"
+      },
+      {
+        "command": "computor.tutor.messages.open",
+        "when": "view == computor.tutor.courses && viewItem =~ /^tutorStudentContent/",
+        "group": "navigation@80"
+      },
+      {
+        "command": "computor.tutor.comments.open",
+        "when": "view == computor.tutor.courses && viewItem =~ /^tutorStudentContent/",
+        "group": "navigation@81"
+      },
+      {
+        "command": "computor.lecturer.messages.open",
+        "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent/",
+        "group": "navigation@80"
+      }
       ]
     }
   },
