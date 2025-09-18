@@ -875,7 +875,7 @@
         },
         {
           "command": "computor.student.viewSubmissionGroup",
-          "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment/",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent/",
           "group": "2_details@1"
         }
       ]
