@@ -2,7 +2,7 @@
   "name": "computor-vsc-extension",
   "displayName": "Computor VS Code Extension",
   "description": "VS Code extension for computor teaching software",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "publisher": "itpcptugraz",
   "engines": {
     "vscode": "^1.74.0"
