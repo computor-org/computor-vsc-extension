@@ -178,7 +178,7 @@ class TutorUnitItem extends vscode.TreeItem {
 
   private applyCounts(): void {
     const unread = this.node.unreadMessageCount ?? 0;
-    this.description = unread > 0 ? `new: ${unread}` : undefined;
+    this.description = unread > 0 ? `🔔 ${unread}` : undefined;
 
     const tooltipLines = [
       `Unit: ${this.label?.toString() ?? 'Unit'}`
@@ -217,7 +217,7 @@ class TutorContentItem extends vscode.TreeItem {
       ? IconGenerator.getColoredIcon(color, shape)
       : IconGenerator.getColoredIconWithBadge(color, shape, badge, corner);
     this.contextValue = kindId === 'assignment' ? 'tutorStudentContent.assignment' : 'tutorStudentContent.reading';
-    this.description = unread > 0 ? `new: ${unread}` : undefined;
+    this.description = unread > 0 ? `🔔 ${unread}` : undefined;
     // Tooltip with friendly status label
     const friendlyStatus = (() => {
       if (!status) return undefined;
