@@ -1,19 +1,61 @@
-.view-root {
-  font-family: var(--vscode-font-family);
+html,
+body,
+#app {
+  height: 100%;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--vscode-editorPane-background);
   color: var(--vscode-foreground);
+  font-family: var(--vscode-font-family);
+  overflow: hidden;
+}
+
+.view-root {
+  height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 8px;
+  padding: 12px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.view-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.view-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.view-header-top h1 {
+  flex: 1 1 auto;
+  margin: 0;
+}
+
+.refresh-button {
+  flex-shrink: 0;
+  padding: 2px 6px;
 }
 
 .view-header h1 {
   margin: 0;
-  font-size: 20px;
+  font-size: 18px;
   color: var(--vscode-titleBar-activeForeground);
 }
 
 .view-header p {
-  margin: 4px 0 0;
+  margin: 0;
+  font-size: 12px;
   color: var(--vscode-descriptionForeground);
 }
 
@@ -21,33 +63,43 @@
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .messages-container {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  max-height: 55vh;
+  gap: 8px;
+  flex: 1 1 auto;
   overflow-y: auto;
-  padding-right: 4px;
+  padding-right: 6px;
+}
+
+.messages-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.messages-container::-webkit-scrollbar-thumb {
+  background-color: var(--vscode-scrollbarSlider-background);
+  border-radius: 3px;
 }
 
 .message-card {
   border: 1px solid var(--vscode-editorWidget-border);
   border-radius: 4px;
   background: var(--vscode-editorWidget-background);
-  padding: 12px;
+  padding: 10px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .message-card.level-1 {
-  margin-left: 16px;
+  margin-left: 14px;
 }
 
 .message-card.level-2 {
-  margin-left: 32px;
+  margin-left: 24px;
 }
 
 .message-meta {
@@ -58,38 +110,65 @@
   color: var(--vscode-descriptionForeground);
 }
 
+.message-meta-left {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.message-meta-right {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.message-reply-button {
+  padding: 2px 6px;
+}
+
+.message-meta-date {
+  font-size: 11px;
+}
+
 .message-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   margin: 0;
 }
 
 .message-body {
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .message-actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
 }
 
 .empty-state,
 .error-state {
   text-align: center;
-  padding: 24px;
+  padding: 16px;
   border: 1px dashed var(--vscode-editorWidget-border);
   color: var(--vscode-descriptionForeground);
+  font-size: 12px;
 }
 
 .form-card {
   border: 1px solid var(--vscode-editorWidget-border);
   border-radius: 4px;
   background: var(--vscode-editorWidget-background);
-  padding: 16px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.form-card h2 {
+  margin: 0;
+  font-size: 14px;
 }
 
 .form-context {
@@ -110,16 +189,26 @@
 }
 
 .markdown-body {
-  line-height: 1.5;
+  line-height: 1.4;
+  font-size: 12px;
 }
 
 .markdown-body pre {
   background: var(--vscode-editor-inactiveSelectionBackground);
-  padding: 8px;
+  padding: 6px;
   border-radius: 4px;
   overflow-x: auto;
 }
 
 .markdown-body code {
   font-family: var(--vscode-editor-font-family, monospace);
+}
+
+textarea.vscode-input {
+  resize: vertical;
+  min-height: 80px;
+  max-height: 200px;
+  font-family: var(--vscode-font-family);
+  font-size: 12px;
+  line-height: 1.4;
 }
