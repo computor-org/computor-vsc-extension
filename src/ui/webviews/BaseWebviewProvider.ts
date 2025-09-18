@@ -54,6 +54,10 @@ export abstract class BaseWebviewProvider {
       );
     }
 
+    if (this.panel && this.panel.title !== title) {
+      this.panel.title = title;
+    }
+
     // Update content if data is provided
     if (data && this.panel) {
       this.panel.webview.postMessage({ command: 'update', data });

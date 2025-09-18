@@ -7,11 +7,13 @@ import { ComputorApiService } from '../services/ComputorApiService';
 import { GitBranchManager } from '../services/GitBranchManager';
 import { CourseSelectionService } from '../services/CourseSelectionService';
 import { TestResultService } from '../services/TestResultService';
-import { SubmissionGroupStudentList, MessageCreate } from '../types/generated';
+import { SubmissionGroupStudentList, MessageCreate, CourseContentStudentList, CourseContentTypeList } from '../types/generated';
 import { StudentRepositoryManager } from '../services/StudentRepositoryManager';
 import { execAsync } from '../utils/exec';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
+import { StudentCourseContentDetailsWebviewProvider, StudentContentDetailsViewState } from '../ui/webviews/StudentCourseContentDetailsWebviewProvider';
+import { getExampleVersionId } from '../utils/deploymentHelpers';
 
 // (Deprecated legacy types removed)
 
@@ -27,6 +29,7 @@ export class StudentCommands {
   private testResultService: TestResultService;
   private gitlabTokenManager: GitLabTokenManager;
   private messagesWebviewProvider: MessagesWebviewProvider;
+  private contentDetailsWebviewProvider: StudentCourseContentDetailsWebviewProvider;
 
   constructor(
     context: vscode.ExtensionContext, 
@@ -46,6 +49,7 @@ export class StudentCommands {
     // Make sure TestResultService has the API service
     this.testResultService.setApiService(this.apiService);
     this.messagesWebviewProvider = new MessagesWebviewProvider(context, this.apiService);
+    this.contentDetailsWebviewProvider = new StudentCourseContentDetailsWebviewProvider(context);
     void this.courseContentTreeProvider; // Unused for now
   }
   
@@ -482,40 +486,7 @@ export class StudentCommands {
     // View submission group details (accepts tree item || raw submission group)
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.student.viewSubmissionGroup', async (arg: any) => {
-        try {
-          // Resolve submission group from tree item || direct arg
-          const submissionGroup: SubmissionGroupStudentList | undefined = arg?.submissionGroup
-            ? (arg.submissionGroup as SubmissionGroupStudentList)
-            : (arg as SubmissionGroupStudentList);
-
-          if (!submissionGroup) {
-            vscode.window.showWarningMessage('No details available for this item');
-            return;
-          }
-
-          const title = submissionGroup.course_content_title || 'Assignment';
-          const pathStr = submissionGroup.course_content_path || '';
-          const groupStr = `${submissionGroup.current_group_size || 0}/${submissionGroup.max_group_size || 1}`;
-          const repoStr = submissionGroup.repository?.web_url || submissionGroup.repository?.full_path || 'No repository';
-          const members = submissionGroup.members || [];
-          const gradeVal = submissionGroup.latest_grading?.grading;
-          const gradeStr = typeof gradeVal === 'number' ? `${Math.round(gradeVal * 100)}%` : 'Not graded yet';
-
-          const info = [
-            `• ${title}`,
-            `• Path: ${pathStr}`,
-            `• Group: ${groupStr}`,
-            `• Repository: ${repoStr}`,
-            members.length ? '• Members:' : undefined,
-            ...members.map(m => `   - ${m.full_name || m.username}`),
-            `• Latest Grade: ${gradeStr}`
-          ].filter(Boolean).join('\n');
-
-          vscode.window.showInformationMessage(info, { modal: true });
-        } catch (e: any) {
-          console.error('Failed to show submission group details:', e);
-          vscode.window.showErrorMessage('Failed to show details');
-        }
+        await this.showContentDetails(arg);
       })
     );
 
@@ -753,6 +724,178 @@ export class StudentCommands {
     }
   }
   */
+
+  private async showContentDetails(arg: any): Promise<void> {
+    try {
+      const courseSelection = CourseSelectionService.getInstance();
+      const courseInfo = courseSelection.getCurrentCourseInfo();
+      const currentCourseId = courseSelection.getCurrentCourseId();
+
+      let courseContent: CourseContentStudentList | undefined;
+      let contentType: CourseContentTypeList | undefined;
+      let submissionGroup: SubmissionGroupStudentList | undefined;
+      let localPath: string | undefined;
+      let isCloned = false;
+
+      if (arg && typeof arg === 'object') {
+        if ('courseContent' in arg) {
+          courseContent = arg.courseContent as CourseContentStudentList;
+          contentType = arg.contentType as CourseContentTypeList | undefined;
+          submissionGroup = arg.submissionGroup as SubmissionGroupStudentList | undefined;
+          if (typeof arg.getRepositoryPath === 'function') {
+            const repoPath = arg.getRepositoryPath();
+            if (repoPath) {
+              localPath = repoPath;
+              isCloned = fs.existsSync(repoPath);
+            }
+          }
+        } else if ('id' in arg && 'course_content_path' in arg) {
+          submissionGroup = arg as SubmissionGroupStudentList;
+        } else if ('id' in arg && 'course_content_type_id' in arg) {
+          courseContent = arg as CourseContentStudentList;
+        }
+      }
+
+      if (!courseContent && submissionGroup) {
+        const courseContentId = (submissionGroup as any).course_content_id as string | undefined;
+        if (courseContentId) {
+          courseContent = await this.apiService.getStudentCourseContent(courseContentId, { force: true });
+        }
+      }
+
+      if (!courseContent && submissionGroup && currentCourseId) {
+        const contents = await this.apiService.getStudentCourseContents(currentCourseId, { force: false }) || [];
+        courseContent = contents.find(content => {
+          const group = content.submission_group as SubmissionGroupStudentList | undefined;
+          return group?.id === submissionGroup?.id
+            || group?.course_content_path === submissionGroup?.course_content_path
+            || content.id === (submissionGroup as any)?.course_content_id;
+        });
+      }
+
+      if (!courseContent) {
+        vscode.window.showWarningMessage('No detailed information available for this content yet.');
+        return;
+      }
+
+      const latestContent = await this.apiService.getStudentCourseContent(courseContent.id, { force: true });
+      if (latestContent) {
+        courseContent = latestContent;
+      }
+      submissionGroup = (courseContent.submission_group as SubmissionGroupStudentList | undefined) || submissionGroup;
+      if (!contentType && (courseContent as any).course_content_type) {
+        contentType = (courseContent as any).course_content_type as CourseContentTypeList;
+      }
+
+      if (!localPath) {
+        localPath = this.resolveLocalRepositoryPath(courseContent, submissionGroup);
+        if (localPath) {
+          isCloned = fs.existsSync(localPath);
+        }
+      }
+
+      const repo = submissionGroup?.repository as any;
+      const latestGrading = (submissionGroup as any)?.latest_grading;
+      const gradingValue = typeof latestGrading?.grading === 'number'
+        ? latestGrading.grading
+        : typeof submissionGroup?.grading === 'number'
+          ? submissionGroup.grading
+          : null;
+      const resultValue = typeof courseContent.result?.result === 'number' ? courseContent.result.result : null;
+
+      const viewState: StudentContentDetailsViewState = {
+        course: courseInfo,
+        content: courseContent,
+        contentType,
+        submissionGroup,
+        repository: {
+          hasRepository: Boolean(repo),
+          fullPath: repo?.full_path || repo?.url || repo?.web_url,
+          cloneUrl: repo?.clone_url,
+          webUrl: repo?.web_url,
+          localPath,
+          isCloned
+        },
+        metrics: {
+          testsRun: typeof courseContent.result_count === 'number' ? courseContent.result_count : undefined,
+          maxTests: courseContent.max_test_runs ?? null,
+          submissions: submissionGroup?.count ?? null,
+          maxSubmissions: submissionGroup?.max_submissions ?? null,
+          submitted: courseContent.submitted ?? null,
+          resultPercent: resultValue !== null ? resultValue * 100 : null,
+          gradePercent: gradingValue !== null ? gradingValue * 100 : null,
+          gradeStatus: latestGrading?.status || submissionGroup?.status || null,
+          gradedBy: latestGrading?.graded_by || null,
+          gradedAt: latestGrading?.updated_at || latestGrading?.created_at || null,
+          status: submissionGroup?.status || null
+        },
+        team: {
+          maxSize: submissionGroup?.max_group_size ?? null,
+          currentSize: submissionGroup?.current_group_size ?? null,
+          members: (submissionGroup?.members || []).map(member => ({
+            id: member.course_member_id || member.id,
+            name: member.full_name || member.username,
+            username: member.username || null
+          }))
+        },
+        example: {
+          identifier: submissionGroup?.example_identifier || null,
+          versionId: getExampleVersionId(courseContent)
+        },
+        actions: {
+          localPath,
+          webUrl: repo?.web_url,
+          cloneUrl: repo?.clone_url
+        }
+      };
+
+      await this.contentDetailsWebviewProvider.showDetails(viewState);
+    } catch (error: any) {
+      console.error('Failed to show course content details:', error);
+      vscode.window.showErrorMessage(`Failed to open details: ${error?.message || error}`);
+    }
+  }
+
+  private resolveLocalRepositoryPath(
+    courseContent: CourseContentStudentList,
+    submissionGroup?: SubmissionGroupStudentList
+  ): string | undefined {
+    const directory = (courseContent as any)?.directory as string | undefined;
+    if (!directory) {
+      return undefined;
+    }
+
+    if (path.isAbsolute(directory)) {
+      return directory;
+    }
+
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceRoot) {
+      return undefined;
+    }
+
+    const repo = submissionGroup?.repository as any;
+    let repoName: string | undefined;
+    if (repo) {
+      if (typeof repo.full_path === 'string' && repo.full_path.length > 0) {
+        const parts = repo.full_path.split('/');
+        repoName = parts[parts.length - 1] || undefined;
+      } else if (typeof repo.clone_url === 'string' && repo.clone_url.length > 0) {
+        const clean = repo.clone_url.replace(/\.git$/, '');
+        const parts = clean.split('/');
+        repoName = parts[parts.length - 1] || undefined;
+      } else if (typeof repo.web_url === 'string' && repo.web_url.length > 0) {
+        const parts = repo.web_url.split('/');
+        repoName = parts[parts.length - 1] || undefined;
+      }
+    }
+
+    if (repoName) {
+      return path.join(workspaceRoot, repoName, directory);
+    }
+
+    return path.join(workspaceRoot, directory);
+  }
 }
 
 // Private helpers
