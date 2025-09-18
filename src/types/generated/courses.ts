@@ -350,6 +350,7 @@ export interface SubmissionGroupStudentList {
   repository?: SubmissionGroupRepository | null;
   status?: string | null;
   grading?: number | null;
+  latest_grading?: SubmissionGroupGradingStudent | null;
   count?: number;
   max_submissions?: number | null;
 }
