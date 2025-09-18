@@ -5,6 +5,8 @@ import { TutorSelectionService } from '../../services/TutorSelectionService';
 export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'computor.tutor.filters';
   private _view?: vscode.WebviewView;
+  private currentGroupFetchCourseId?: string | null;
+  private currentMemberFetchKey?: { courseId: string | null; groupId: string | null };
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -229,20 +231,38 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
 
   private async postCourseGroups(): Promise<void> {
     const courseId = this.selection.getCurrentCourseId();
+    this.currentGroupFetchCourseId = courseId;
+
     let groups: any[] = [];
     if (courseId) {
       groups = await (this.api as any).getTutorCourseGroups?.(courseId) || [];
     }
+
+    if (this.currentGroupFetchCourseId !== courseId || courseId !== this.selection.getCurrentCourseId()) {
+      return;
+    }
+
     this._view?.webview.postMessage({ command: 'groups', data: groups, selected: this.selection.getCurrentGroupId() });
   }
 
   private async postCourseMembers(): Promise<void> {
     const courseId = this.selection.getCurrentCourseId();
     const groupId = this.selection.getCurrentGroupId();
+    this.currentMemberFetchKey = { courseId, groupId };
+
     let members: any[] = [];
     if (courseId) {
       members = await this.api.getTutorCourseMembers(courseId, groupId || undefined) || [];
     }
+
+    const latest = this.currentMemberFetchKey;
+    if (!latest || latest.courseId !== courseId || latest.groupId !== groupId) {
+      return;
+    }
+    if (courseId !== this.selection.getCurrentCourseId() || groupId !== this.selection.getCurrentGroupId()) {
+      return;
+    }
+
     let selected = this.selection.getCurrentMemberId();
     if ((!selected || selected === '') && members && members.length > 0) {
       const first = members[0];
