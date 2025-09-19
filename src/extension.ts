@@ -27,6 +27,7 @@ import { TutorCommands } from './commands/TutorCommands';
 
 import { TestResultsPanelProvider, TestResultsTreeDataProvider } from './ui/panels/TestResultsPanel';
 import { TestResultService } from './services/TestResultService';
+import { manageGitLabTokens } from './commands/manageGitLabTokens';
 
 type Role = 'Lecturer' | 'Student' | 'Tutor';
 type AuthType = 'basic' | 'apiKey' | 'jwt';
@@ -562,6 +563,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(vscode.commands.registerCommand('computor.lecturer.login', async () => loginFlow(context, 'Lecturer')));
   context.subscriptions.push(vscode.commands.registerCommand('computor.student.login', async () => loginFlow(context, 'Student')));
   context.subscriptions.push(vscode.commands.registerCommand('computor.tutor.login', async () => loginFlow(context, 'Tutor')));
+  context.subscriptions.push(vscode.commands.registerCommand('computor.manageGitLabTokens', async () => {
+    await manageGitLabTokens(context);
+  }));
   
   // Check for pending login after workspace change
   const pendingLogin = context.globalState.get<{ role: Extract<Role, 'Student' | 'Tutor'>; timestamp: number }>('pendingLogin');

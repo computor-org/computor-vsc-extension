@@ -865,6 +865,9 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         // Overwrite backing fields (readonly at type-level only)
         (this as any).courseContent = updatedContent;
         (this as any).submissionGroup = updatedContent.submission_group;
+        if ((updatedContent as any)?.course_content_type) {
+            (this as any).contentType = (updatedContent as any).course_content_type;
+        }
         // Recompute visual aspects
         this.setupIcon();
         this.setupDescription();
@@ -874,12 +877,13 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
     
     private setupIcon(): void {
         // Use the color from contentType, or grey as default
-        const color = this.contentType?.color || 'grey';
-        
+        const derivedContentType = this.contentType || (this.courseContent as any)?.course_content_type;
+        const color = derivedContentType?.color || (this.courseContent as any)?.color || 'grey';
+
         try {
             // Determine shape based on course_content_kind_id
             // 'assignment' gets square, 'unit' (or anything else) gets circle
-            const shape = this.contentType?.course_content_kind_id === 'assignment' ? 'square' : 'circle';
+            const shape = derivedContentType?.course_content_kind_id === 'assignment' ? 'square' : 'circle';
 
             // Determine success/failure badge for assignments with grading info
             let badge: 'success' | 'failure' | 'none' = 'none';
@@ -913,16 +917,17 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
     }
     
     private isAssignment(): boolean {
-        if (!this.contentType) return hasExampleAssigned(this.courseContent);
-        
+        const effectiveContentType = this.contentType || (this.courseContent as any)?.course_content_type;
+        if (!effectiveContentType) return hasExampleAssigned(this.courseContent);
+
         // First check the explicit kind_id
-        if (this.contentType.course_content_kind_id === 'assignment') {
+        if (effectiveContentType.course_content_kind_id === 'assignment') {
             return true;
         }
-        
+
         // Fall back to checking slug for assignment-related keywords
         const assignmentTypes = ['assignment', 'exercise', 'homework', 'task', 'lab', 'quiz', 'exam'];
-        const slug = this.contentType.slug?.toLowerCase() || '';
+        const slug = effectiveContentType.slug?.toLowerCase() || '';
         return assignmentTypes.some(type => slug.includes(type));
     }
     
@@ -966,8 +971,9 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         const lines: string[] = [];
         const unreadCount = (this.courseContent?.unread_message_count ?? 0) + (this.submissionGroup?.unread_message_count ?? 0);
         
-        if (this.contentType) {
-            lines.push(`Type: ${this.contentType.title || this.contentType.slug}`);
+        const tooltipContentType = this.contentType || (this.courseContent as any)?.course_content_type;
+        if (tooltipContentType) {
+            lines.push(`Type: ${tooltipContentType.title || tooltipContentType.slug}`);
         }
         
         if (hasExampleAssigned(this.courseContent)) {
