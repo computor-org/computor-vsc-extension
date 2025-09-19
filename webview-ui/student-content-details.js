@@ -167,8 +167,7 @@
     if (metrics.submitted) {
       addStatusChip('Submitted');
     }
-    addStatusChip(metrics.gradeStatus);
-    addStatusChip(submissionGroup.status);
+    addStatusChip(metrics.gradeStatus || submissionGroup.status);
 
     const repoInfoItems = [];
     if (repository.fullPath) {
@@ -250,7 +249,7 @@
         <div class="info-grid">
           <div class="info-item">
             <span class="info-item-label">Status</span>
-            <span class="info-item-value">${escapeHtml(metrics.status || submissionGroup.status || '–')}</span>
+            <span class="info-item-value">${escapeHtml(formatStatus(metrics.gradeStatus || submissionGroup.status || '–'))}</span>
           </div>
           <div class="info-item">
             <span class="info-item-label">Feedback</span>

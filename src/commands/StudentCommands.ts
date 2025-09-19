@@ -808,11 +808,7 @@ export class StudentCommands {
       let latestHistoryEntry = gradingHistory[0];
 
       const fallbackGradingValue = this.normalizeGradeValue(latestGrading?.grading ?? submissionGroupCombined?.grading);
-      const candidateStatus = (typeof latestGrading?.status === 'string'
-        ? latestGrading.status
-        : latestGrading?.status !== undefined
-          ? String(latestGrading.status)
-          : undefined) || submissionGroupCombined?.status || 'unknown';
+      const candidateStatus = this.mapGradingStatus(latestGrading?.status) || submissionGroupCombined?.status || 'unknown';
       const candidateGrader = this.formatGraderName((latestGrading as any)?.graded_by_course_member, latestGrading?.graded_by);
       const candidateGradedAt = latestGrading?.updated_at || latestGrading?.created_at || null;
       const candidateFeedback = (typeof latestGrading?.feedback === 'string' ? latestGrading.feedback : undefined)
@@ -931,11 +927,7 @@ export class StudentCommands {
   private createHistoryEntry(entry: CourseSubmissionGroupGradingList): StudentGradingHistoryEntry {
     const grade = this.normalizeGradeValue(entry.grading);
     const graderName = this.formatGraderName(entry.graded_by_course_member as any, entry.graded_by_course_member_id);
-    const status = typeof entry.status === 'string'
-      ? entry.status
-      : entry.status !== undefined && entry.status !== null
-        ? String(entry.status)
-        : 'unknown';
+    const status = this.mapGradingStatus(entry.status) || 'unknown';
 
     return {
       id: entry.id,
@@ -994,6 +986,23 @@ export class StudentCommands {
 
     const fallbackId = typeof fallback === 'string' ? fallback.trim() : '';
     return fallbackId || null;
+  }
+
+  private mapGradingStatus(value: unknown): string | undefined {
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+    if (typeof value === 'string') {
+      return value;
+    }
+    const map: Record<string, string> = {
+      '0': 'pending',
+      '1': 'correction_necessary',
+      '2': 'improvement_possible',
+      '3': 'corrected'
+    };
+    const key = String(value);
+    return map[key] || key;
   }
 
 
