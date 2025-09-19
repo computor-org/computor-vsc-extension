@@ -500,7 +500,7 @@ export interface CourseContentStudentGet {
   result?: ResultStudentList | null;
   directory?: string | null;
   color: string;
-  submission_group?: SubmissionGroupStudentList | null;
+  submission_group?: SubmissionGroupStudentGet | null;
 }
 
 export interface CourseContentStudentList {
