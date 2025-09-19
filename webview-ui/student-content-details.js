@@ -130,6 +130,56 @@
     `;
   }
 
+  function renderResultsHistory(results) {
+    if (!Array.isArray(results) || results.length === 0) {
+      return `
+        <section class="card results-history">
+          <h2>Results History</h2>
+          <div class="empty-state">No test results yet.</div>
+        </section>
+      `;
+    }
+
+    const items = results.map((entry) => {
+      const scoreText = formatPercent(entry.resultPercent);
+      const statusText = formatStatus(entry.status);
+      const executedAt = formatDate(entry.createdAt || entry.updatedAt) || '–';
+      const details = [];
+
+      if (typeof entry.submit === 'boolean') {
+        details.push(entry.submit ? 'Submission run' : 'Test run');
+      }
+      if (entry.versionIdentifier) {
+        details.push(`Version ${escapeHtml(entry.versionIdentifier)}`);
+      }
+      if (entry.testSystemId) {
+        details.push(escapeHtml(entry.testSystemId));
+      }
+
+      const meta = details.length > 0
+        ? `<div class="history-meta">${details.join(' • ')}</div>`
+        : '';
+
+      return `
+        <article class="history-item">
+          <div class="history-header">
+            <span class="history-grade">${escapeHtml(scoreText)}</span>
+            <span class="history-status chip">${escapeHtml(statusText)}</span>
+            <span class="history-date">${escapeHtml(executedAt)}</span>
+          </div>
+          ${meta}
+        </article>
+      `;
+    }).join('');
+
+    return `
+      <section class="card results-history">
+        <h2>Results History</h2>
+        <div class="history-list">${items}</div>
+      </section>
+    `;
+  }
+
   function render() {
     const root = document.getElementById('app');
     if (!root) {
@@ -144,6 +194,7 @@
     const submissionGroup = data.submissionGroup || {};
     const team = data.team || {};
     const gradingHistory = Array.isArray(data.gradingHistory) ? data.gradingHistory : [];
+    const resultsHistory = Array.isArray(data.resultsHistory) ? data.resultsHistory : [];
 
     const headerSubtitleParts = [];
     if (data.course?.title) {
@@ -278,6 +329,8 @@
         <h2>Team</h2>
         ${teamItems.length > 0 ? `<div class="team-list">${teamItems.join('')}</div>` : '<div class="empty-state">No additional team members.</div>'}
       </section>
+
+      ${renderResultsHistory(resultsHistory)}
     `;
 
     const actionsContainer = root.querySelector('[data-actions]');

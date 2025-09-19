@@ -46,7 +46,8 @@ import {
   MessageCreate,
   MessageUpdate,
   CourseMemberCommentList,
-  CourseContentStudentGet
+  CourseContentStudentGet,
+  ResultWithGrading
 } from '../types/generated';
 
 // Query interface for examples (not generated yet)
@@ -1300,6 +1301,57 @@ export class ComputorApiService {
     } catch (error) {
       console.error('Failed to get student course content details:', error);
       return undefined;
+    }
+  }
+
+  async getStudentCourseContentResults(
+    contentId: string,
+    options?: { submissionGroupId?: string; limit?: number; force?: boolean }
+  ): Promise<ResultWithGrading[]> {
+    const cacheKey = [
+      'studentCourseContentResults',
+      contentId,
+      options?.submissionGroupId ?? 'all',
+      options?.limit ?? 'all'
+    ].join('-');
+
+    if (options?.force) {
+      multiTierCache.delete(cacheKey);
+    } else {
+      const cached = multiTierCache.get<ResultWithGrading[]>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+    }
+
+    try {
+      const client = await this.getHttpClient();
+      const params: Record<string, any> = {
+        course_content_id: contentId
+      };
+      if (options?.limit) {
+        params.limit = options.limit;
+      }
+      if (options?.submissionGroupId) {
+        params.course_submission_group_id = options.submissionGroupId;
+      }
+
+      const response = await client.get<ResultWithGrading[] | { items?: ResultWithGrading[] }>(
+        '/results',
+        params
+      );
+
+      const payload = Array.isArray(response.data)
+        ? response.data
+        : Array.isArray((response.data as any)?.items)
+          ? (response.data as any).items
+          : [];
+
+      multiTierCache.set(cacheKey, payload, 'warm');
+      return payload;
+    } catch (error) {
+      console.error('Failed to get student course content results:', error);
+      return [];
     }
   }
 
