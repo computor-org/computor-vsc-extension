@@ -154,18 +154,21 @@
     }
 
     const statusChips = [];
+    function addStatusChip(value) {
+      if (!value) return;
+      const formatted = formatStatus(value);
+      if (!statusChips.includes(formatted)) {
+        statusChips.push(formatted);
+      }
+    }
     if (contentType && (contentType.title || contentType.slug)) {
-      statusChips.push(escapeHtml(contentType.title || contentType.slug));
+      addStatusChip(contentType.title || contentType.slug);
     }
     if (metrics.submitted) {
-      statusChips.push('Submitted');
+      addStatusChip('Submitted');
     }
-    if (metrics.gradeStatus) {
-      statusChips.push(escapeHtml(metrics.gradeStatus));
-    }
-    if (submissionGroup.status && !statusChips.includes(submissionGroup.status)) {
-      statusChips.push(escapeHtml(submissionGroup.status));
-    }
+    addStatusChip(metrics.gradeStatus);
+    addStatusChip(submissionGroup.status);
 
     const repoInfoItems = [];
     if (repository.fullPath) {
