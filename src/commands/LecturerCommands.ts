@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import * as fs from 'fs';
 import * as path from 'path';
-import { GitLabTokenManager } from '../services/GitLabTokenManager';
 import { LecturerTreeDataProvider } from '../ui/tree/lecturer/LecturerTreeDataProvider';
 import { OrganizationTreeItem, CourseFamilyTreeItem, CourseTreeItem, CourseContentTreeItem, CourseFolderTreeItem, CourseContentTypeTreeItem, CourseGroupTreeItem, CourseMemberTreeItem } from '../ui/tree/lecturer/LecturerTreeItems';
 import { CourseGroupCommands } from './lecturer/courseGroupCommands';
@@ -35,7 +34,6 @@ interface ReleaseScope {
 
 export class LecturerCommands {
   private settingsManager: ComputorSettingsManager;
-  private gitLabTokenManager: GitLabTokenManager;
   private apiService: ComputorApiService;
   private courseWebviewProvider: CourseWebviewProvider;
   private courseContentWebviewProvider: CourseContentWebviewProvider;
@@ -53,7 +51,6 @@ export class LecturerCommands {
     apiService?: ComputorApiService
   ) {
     this.settingsManager = new ComputorSettingsManager(context);
-    this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
     // Use provided apiService or create a new one
     this.apiService = apiService || new ComputorApiService(context);
     this.courseWebviewProvider = new CourseWebviewProvider(context, this.apiService, this.treeDataProvider);
@@ -214,13 +211,6 @@ export class LecturerCommands {
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.openGitLabRepo', async (item: CourseTreeItem | CourseMemberTreeItem) => {
         await this.openGitLabRepository(item);
-      })
-    );
-
-    // GitLab token management
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.manageGitLabTokens', async () => {
-        await this.manageGitLabTokens();
       })
     );
 
@@ -1604,71 +1594,6 @@ export class LecturerCommands {
         await this.treeDataProvider.refresh();
       } catch (error) {
         vscode.window.showErrorMessage(`Failed to delete content type: ${error}`);
-      }
-    }
-  }
-
-  private async manageGitLabTokens(): Promise<void> {
-    // Get stored GitLab URLs from settings (for now)
-    const settings = await this.settingsManager.getSettings();
-    const urls = Object.keys(settings.workspace?.gitlabTokens || {});
-    
-    if (urls.length === 0) {
-      vscode.window.showInformationMessage('No GitLab tokens configured yet. Tokens will be requested when needed.');
-      return;
-    }
-
-    const items = urls.map(url => ({
-      label: url,
-      description: 'GitLab Instance',
-      detail: 'Click to manage token'
-    }));
-
-    items.push({
-      label: '$(add) Add New GitLab Instance',
-      description: 'Manually add a GitLab token',
-      detail: ''
-    });
-
-    const selected = await vscode.window.showQuickPick(items, {
-      placeHolder: 'Select GitLab instance to manage'
-    });
-
-    if (!selected) {
-      return;
-    }
-
-    if (selected.label.startsWith('$(add)')) {
-      // Add new token
-      const url = await vscode.window.showInputBox({
-        prompt: 'Enter GitLab instance URL',
-        placeHolder: 'https://gitlab.example.com'
-      });
-      
-      if (url) {
-        const token = await this.gitLabTokenManager.ensureTokenForUrl(url);
-        if (token) {
-          vscode.window.showInformationMessage(`Token added for ${url}`);
-        }
-      }
-    } else {
-      // Manage existing token
-      const action = await vscode.window.showQuickPick(
-        ['Update Token', 'Remove Token', 'Test Token'],
-        { placeHolder: `Manage token for ${selected.label}` }
-      );
-
-      if (action === 'Update Token') {
-        const token = await this.gitLabTokenManager.ensureTokenForUrl(selected.label);
-        if (token) {
-          vscode.window.showInformationMessage('Token updated successfully');
-        }
-      } else if (action === 'Remove Token') {
-        await this.gitLabTokenManager.removeToken(selected.label);
-        vscode.window.showInformationMessage('Token removed successfully');
-      } else if (action === 'Test Token') {
-        // TODO: Implement token testing
-        vscode.window.showInformationMessage('Token testing not yet implemented');
       }
     }
   }
