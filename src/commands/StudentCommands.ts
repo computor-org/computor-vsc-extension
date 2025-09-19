@@ -7,12 +7,12 @@ import { ComputorApiService } from '../services/ComputorApiService';
 import { GitBranchManager } from '../services/GitBranchManager';
 import { CourseSelectionService } from '../services/CourseSelectionService';
 import { TestResultService } from '../services/TestResultService';
-import { SubmissionGroupStudentList, SubmissionGroupStudentGet, MessageCreate, CourseContentStudentList, CourseContentTypeList, CourseSubmissionGroupGradingList, SubmissionGroupMemberBasic } from '../types/generated';
+import { SubmissionGroupStudentList, SubmissionGroupStudentGet, MessageCreate, CourseContentStudentList, CourseContentTypeList, CourseSubmissionGroupGradingList, SubmissionGroupMemberBasic, ResultWithGrading } from '../types/generated';
 import { StudentRepositoryManager } from '../services/StudentRepositoryManager';
 import { execAsync } from '../utils/exec';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
-import { StudentCourseContentDetailsWebviewProvider, StudentContentDetailsViewState, StudentGradingHistoryEntry } from '../ui/webviews/StudentCourseContentDetailsWebviewProvider';
+import { StudentCourseContentDetailsWebviewProvider, StudentContentDetailsViewState, StudentGradingHistoryEntry, StudentResultHistoryEntry } from '../ui/webviews/StudentCourseContentDetailsWebviewProvider';
 import { getExampleVersionId } from '../utils/deploymentHelpers';
 
 // (Deprecated legacy types removed)
@@ -803,6 +803,13 @@ export class StudentCommands {
 
       const repo = submissionGroupCombined?.repository as any;
 
+      const resultsHistoryRaw = await this.apiService.getStudentCourseContentResults(courseContent.id, {
+        submissionGroupId: submissionGroupCombined?.id ?? undefined,
+        limit: 20,
+        force: true
+      });
+      const resultsHistory = this.buildResultHistory(resultsHistoryRaw);
+
       const gradingHistory = this.buildGradingHistory(submissionGroupDetails?.gradings);
       const latestGrading = (submissionGroupDetails as any)?.latest_grading ?? (submissionGroupSummary as any)?.latest_grading;
       let latestHistoryEntry = gradingHistory[0];
@@ -885,7 +892,8 @@ export class StudentCommands {
           webUrl: repo?.web_url,
           cloneUrl: repo?.clone_url
         },
-        gradingHistory
+        gradingHistory,
+        resultsHistory
       };
 
       await this.contentDetailsWebviewProvider.showDetails(viewState);
@@ -893,6 +901,36 @@ export class StudentCommands {
       console.error('Failed to show course content details:', error);
       vscode.window.showErrorMessage(`Failed to open details: ${error?.message || error}`);
     }
+  }
+  
+  private buildResultHistory(entries: ResultWithGrading[] | undefined | null): StudentResultHistoryEntry[] {
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return [];
+    }
+
+    const sorted = [...entries].sort((a, b) => {
+      const aTime = Date.parse(a.created_at ?? '') || 0;
+      const bTime = Date.parse(b.created_at ?? '') || 0;
+      return bTime - aTime;
+    });
+
+    return sorted.map((entry) => this.createResultHistoryEntry(entry));
+  }
+
+  private createResultHistoryEntry(entry: ResultWithGrading): StudentResultHistoryEntry {
+    const normalizedResult = this.normalizeGradeValue(entry.result);
+
+    return {
+      id: entry.id,
+      resultPercent: normalizedResult !== null ? normalizedResult * 100 : null,
+      rawResult: normalizedResult,
+      status: entry.status ?? null,
+      submit: typeof entry.submit === 'boolean' ? entry.submit : null,
+      createdAt: entry.created_at ?? null,
+      updatedAt: entry.updated_at ?? null,
+      versionIdentifier: entry.version_identifier ?? null,
+      testSystemId: entry.test_system_id ?? null
+    } satisfies StudentResultHistoryEntry;
   }
 
 

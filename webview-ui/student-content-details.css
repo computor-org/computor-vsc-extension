@@ -165,7 +165,8 @@
   color: var(--vscode-descriptionForeground);
 }
 
-.grading-history .history-list {
+.grading-history .history-list,
+.results-history .history-list {
   display: flex;
   flex-direction: column;
   gap: 10px;

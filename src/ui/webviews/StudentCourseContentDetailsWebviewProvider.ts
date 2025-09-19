@@ -51,6 +51,7 @@ export interface StudentContentDetailsViewState {
     cloneUrl?: string;
   };
   gradingHistory?: StudentGradingHistoryEntry[];
+  resultsHistory?: StudentResultHistoryEntry[];
 }
 
 export interface StudentGradingHistoryEntry {
@@ -61,6 +62,18 @@ export interface StudentGradingHistoryEntry {
   feedback?: string | null;
   gradedAt?: string;
   graderName?: string;
+}
+
+export interface StudentResultHistoryEntry {
+  id: string;
+  resultPercent: number | null;
+  rawResult: number | null;
+  status?: string | null;
+  submit?: boolean | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  versionIdentifier?: string | null;
+  testSystemId?: string | null;
 }
 
 export class StudentCourseContentDetailsWebviewProvider extends BaseWebviewProvider {
