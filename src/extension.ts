@@ -910,16 +910,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   }
 
-  // Logout command
-  context.subscriptions.push(vscode.commands.registerCommand('computor.logout', async () => {
-    if (!activeSession) { vscode.window.showInformationMessage('Not logged in.'); return; }
-    const activeViews = activeSession.getActiveViews();
-    await activeSession.deactivate();
-    activeSession = null;
-    await vscode.commands.executeCommand('setContext', 'computor.isLoggedIn', false);
-    vscode.window.showInformationMessage(`Logged out from views: ${activeViews.join(', ')}.`);
-  }));
-
   // Change backend URL command
   context.subscriptions.push(vscode.commands.registerCommand('computor.changeRealmUrl', async () => {
     const settings = new ComputorSettingsManager(context);
