@@ -972,7 +972,7 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             entries.push(`${pts}%`);
         }
 
-        this.description = entries.length > 0 ? entries.join('  ') : undefined;
+        this.description = entries.length > 0 ? entries.join('') : undefined;
     }
     
     private setupTooltip(): void {

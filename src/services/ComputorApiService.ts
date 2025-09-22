@@ -1930,9 +1930,7 @@ export class ComputorApiService {
       return response.data;
     } catch (error: any) {
       console.error('Failed to create student submission:', error);
-      const message = error?.message || 'Failed to create submission via backend';
-      vscode.window.showErrorMessage(message);
-      return undefined;
+      throw error;
     }
   }
 

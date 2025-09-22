@@ -387,16 +387,12 @@ export class StudentCommands {
                 version_identifier: submissionVersion || undefined
               }, archive);
 
-              if (!submissionResponse) {
-                throw new Error('Submission API did not return a response.');
-              }
-
               submissionOk = true;
             } catch (e) {
               throw e;
             }
           });
-          if (submissionOk) {
+          if (submissionOk && submissionResponse) {
             try {
               if (courseContentId) {
                 await this.treeDataProvider.refreshContentItem(courseContentId);
@@ -425,10 +421,17 @@ export class StudentCommands {
                 console.warn('[StudentCommands] Failed to copy result ID:', clipError);
               }
             }
+          } else if (submissionOk && !submissionResponse) {
+            vscode.window.showWarningMessage('Submission completed without a response from the server.');
           }
         } catch (error: any) {
           console.error('Failed to submit assignment:', error?.response?.data || error);
-          vscode.window.showErrorMessage(`Failed to submit assignment: ${error?.message || error}`);
+          const message = typeof error?.message === 'string'
+            ? error.message
+            : typeof error === 'string'
+              ? error
+              : 'Failed to submit assignment.';
+          vscode.window.showErrorMessage(message);
         }
       })
     );
