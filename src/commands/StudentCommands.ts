@@ -50,7 +50,27 @@ export class StudentCommands {
     this.contentDetailsWebviewProvider = new StudentCourseContentDetailsWebviewProvider(context);
     void this.courseContentTreeProvider; // Unused for now
   }
-  
+
+  private async pushWithAuthRetry(repoPath: string): Promise<void> {
+    try {
+      await this.gitBranchManager.pushCurrentBranch(repoPath);
+    } catch (error) {
+      const originalError = error;
+      try {
+        if (this.repositoryManager && this.repositoryManager.isAuthenticationError(error)) {
+          const refreshed = await this.repositoryManager.refreshRepositoryAuth(repoPath);
+          if (refreshed) {
+            await this.gitBranchManager.pushCurrentBranch(repoPath);
+            return;
+          }
+        }
+      } catch (secondaryError) {
+        console.error('[StudentCommands] Push retry after credential refresh failed:', secondaryError);
+      }
+      throw originalError instanceof Error ? originalError : new Error(String(originalError));
+    }
+  }
+
   setCourseContentTreeProvider(provider: any): void {
     this.courseContentTreeProvider = provider;
   }
@@ -513,8 +533,8 @@ export class StudentCommands {
             await execAsync(`git commit -m ${JSON.stringify(commitMessage)}`, { cwd: repoPath });
 
             progress.report({ increment: 60, message: 'Pushing to remote...' });
-            // Push to main branch
-            await this.gitBranchManager.pushCurrentBranch(repoPath);
+            // Push to main branch, prompting for new token if required
+            await this.pushWithAuthRetry(repoPath);
 
             progress.report({ increment: 100, message: 'Successfully committed and pushed!' });
           });
@@ -577,7 +597,7 @@ export class StudentCommands {
               await this.gitBranchManager.commitChanges(directory, commitMessage);
 
               progress.report({ message: 'Pushing to remote...' });
-              await this.gitBranchManager.pushCurrentBranch(directory);
+              await this.pushWithAuthRetry(directory);
               progress.report({ message: 'Getting commit hash...' });
               commitHash = await this.gitBranchManager.getLatestCommitHash(directory);
             } else {

@@ -1,6 +1,10 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { OrganizationList, CourseList } from '../types/generated';
+import { execAsync } from '../utils/exec';
+import { addTokenToGitUrl, extractOriginFromGitUrl, stripCredentialsFromGitUrl } from '../utils/gitUrlHelpers';
 
 /**
  * GitLab Token Manager - Singleton service for managing GitLab tokens
@@ -162,11 +166,19 @@ export class GitLabTokenManager {
   async storeToken(gitlabUrl: string, token: string): Promise<void> {
     // Store in secure storage
     await this.context.secrets.store(`gitlab-token-${gitlabUrl}`, token);
-    
+
+    // Persist in config for management commands
+    await this.settingsManager.setGitLabToken(gitlabUrl, token);
+
     // Update cache
     this.tokenCache.set(gitlabUrl, token);
-    
+
     vscode.window.showInformationMessage(`GitLab token stored for ${gitlabUrl}`);
+
+    // Refresh any repositories that already use this origin
+    void this.updateWorkspaceRemotes(gitlabUrl, token).catch((error) => {
+      console.warn('[GitLabTokenManager] Failed to refresh workspace remotes:', error);
+    });
   }
 
   /**
@@ -178,6 +190,13 @@ export class GitLabTokenManager {
     
     // Remove from cache
     this.tokenCache.delete(gitlabUrl);
+
+    // Remove from persisted config if present
+    const settings = await this.settingsManager.getSettings();
+    if (settings.workspace?.gitlabTokens && gitlabUrl in settings.workspace.gitlabTokens) {
+      delete settings.workspace.gitlabTokens[gitlabUrl];
+      await this.settingsManager.saveSettings(settings);
+    }
   }
 
   /**
@@ -214,6 +233,123 @@ export class GitLabTokenManager {
     } catch {
       // If URL parsing fails, try basic concatenation
       return repoUrl.replace('https://', `https://oauth2:${token}@`);
+    }
+  }
+
+  async refreshWorkspaceGitCredentials(gitlabUrl: string): Promise<void> {
+    const token = await this.getToken(gitlabUrl);
+    if (!token) {
+      return;
+    }
+    await this.updateWorkspaceRemotes(gitlabUrl, token);
+  }
+
+  private async updateWorkspaceRemotes(gitlabUrl: string, token: string): Promise<void> {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+      return;
+    }
+
+    const processed = new Set<string>();
+
+    for (const folder of workspaceFolders) {
+      const repoPaths = await this.collectGitRepositories(folder.uri.fsPath);
+      for (const repoPath of repoPaths) {
+        if (processed.has(repoPath)) {
+          continue;
+        }
+        processed.add(repoPath);
+        await this.updateRepositoryRemote(repoPath, gitlabUrl, token);
+      }
+    }
+  }
+
+  private async collectGitRepositories(rootPath: string, maxDepth: number = 3): Promise<string[]> {
+    const repositories: string[] = [];
+    const stack: Array<{ dir: string; depth: number }> = [{ dir: rootPath, depth: 0 }];
+    const skipDirectories = new Set(['.git', 'node_modules', '.vscode', 'dist', 'build', '.idea', 'out']);
+
+    while (stack.length > 0) {
+      const current = stack.pop()!;
+
+      let entries: fs.Dirent[];
+      try {
+        entries = await fs.promises.readdir(current.dir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+
+      const hasGitDir = entries.some((entry) => entry.isDirectory() && entry.name === '.git');
+      if (hasGitDir) {
+        repositories.push(current.dir);
+        continue;
+      }
+
+      if (current.depth >= maxDepth) {
+        continue;
+      }
+
+      for (const entry of entries) {
+        if (!entry.isDirectory() || entry.isSymbolicLink()) {
+          continue;
+        }
+
+        if (skipDirectories.has(entry.name)) {
+          continue;
+        }
+
+        // Skip hidden directories except .computor (contains workspace metadata)
+        if (entry.name.startsWith('.') && entry.name !== '.computor') {
+          continue;
+        }
+
+        const nextPath = path.join(current.dir, entry.name);
+        stack.push({ dir: nextPath, depth: current.depth + 1 });
+      }
+    }
+
+    return repositories;
+  }
+
+  private async updateRepositoryRemote(repoPath: string, gitlabUrl: string, token: string): Promise<void> {
+    try {
+      const { stdout } = await execAsync('git remote', { cwd: repoPath });
+      const remoteNames = stdout
+        .split(/\r?\n/)
+        .map((name) => name.trim())
+        .filter((name) => name.length > 0);
+
+      for (const remote of remoteNames) {
+        try {
+          const { stdout: urlOutput } = await execAsync(`git remote get-url ${remote}`, { cwd: repoPath });
+          const currentUrl = urlOutput.trim();
+          if (!currentUrl) {
+            continue;
+          }
+
+          const sanitizedUrl = stripCredentialsFromGitUrl(currentUrl);
+          if (!sanitizedUrl) {
+            continue;
+          }
+
+          const origin = extractOriginFromGitUrl(sanitizedUrl);
+          if (!origin || origin !== gitlabUrl) {
+            continue;
+          }
+
+          const updatedUrl = addTokenToGitUrl(sanitizedUrl, token);
+          if (updatedUrl === currentUrl) {
+            continue;
+          }
+
+          await execAsync(`git remote set-url ${remote} "${updatedUrl}"`, { cwd: repoPath });
+          console.log(`[GitLabTokenManager] Updated remote ${remote} for repository ${repoPath}`);
+        } catch (remoteError) {
+          console.warn(`[GitLabTokenManager] Failed to update remote ${remote} in ${repoPath}:`, remoteError);
+        }
+      }
+    } catch (error) {
+      console.warn(`[GitLabTokenManager] Could not enumerate remotes for ${repoPath}:`, error);
     }
   }
 }

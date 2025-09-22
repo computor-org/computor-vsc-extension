@@ -7,6 +7,7 @@ import { GitLabTokenManager } from './GitLabTokenManager';
 import { execAsync } from '../utils/exec';
 import { CTGit } from '../git/CTGit';
 import { createRepositoryBackup, isHistoryRewriteError } from '../utils/repositoryBackup';
+import { addTokenToGitUrl, extractOriginFromGitUrl, stripCredentialsFromGitUrl } from '../utils/gitUrlHelpers';
 
 interface RepositoryInfo {
   cloneUrl: string;
@@ -167,7 +168,9 @@ export class StudentRepositoryManager {
       console.warn('[StudentRepositoryManager] No GitLab token available, skipping clone');
       return;
     }
-    
+
+    void this.gitLabTokenManager.refreshWorkspaceGitCredentials(gitlabUrl);
+
     // Get course information to find upstream repository
     let upstreamUrl: string | undefined;
     try {
@@ -372,7 +375,7 @@ export class StudentRepositoryManager {
     upstreamUrl: string,
     token?: string
   ): Promise<boolean> {
-    const authenticatedUpstreamUrl = token ? this.addTokenToUrl(upstreamUrl, token) : upstreamUrl;
+    const authenticatedUpstreamUrl = token ? addTokenToGitUrl(upstreamUrl, token) : upstreamUrl;
     console.log('[StudentRepositoryManager] Authenticated upstream URL:', authenticatedUpstreamUrl);
 
     let upstreamAddedByUs = false;
@@ -595,7 +598,7 @@ export class StudentRepositoryManager {
   
   private async cloneRepository(repoPath: string, cloneUrl: string, token: string): Promise<string> {
     const attemptClone = async (activeToken: string): Promise<void> => {
-      const authenticatedUrl = this.addTokenToUrl(cloneUrl, activeToken);
+      const authenticatedUrl = addTokenToGitUrl(cloneUrl, activeToken);
       await execAsync(`git clone "${authenticatedUrl}" "${repoPath}"`, {
         env: {
           ...process.env,
@@ -729,22 +732,54 @@ export class StudentRepositoryManager {
   }
 
   /**
-   * Add authentication token to Git URL
+   * Refresh remote credentials by prompting for a new token and updating the remote URL.
    */
-  private addTokenToUrl(url: string, token: string): string {
-    // Handle both http and https URLs
-    if (url.startsWith('https://')) {
-      return url.replace('https://', `https://oauth2:${token}@`);
-    } else if (url.startsWith('http://')) {
-      return url.replace('http://', `http://oauth2:${token}@`);
+  public async refreshRepositoryAuth(repoPath: string, remoteName: string = 'origin'): Promise<boolean> {
+    try {
+      const { stdout } = await execAsync(`git remote get-url ${remoteName}`, { cwd: repoPath });
+      const currentUrl = stdout.trim();
+      if (!currentUrl) {
+        vscode.window.showErrorMessage(`Remote "${remoteName}" is not configured for this repository.`);
+        return false;
+      }
+
+      const sanitizedUrl = stripCredentialsFromGitUrl(currentUrl);
+      if (!sanitizedUrl) {
+        vscode.window.showErrorMessage('Unsupported remote URL format. Update the remote manually and retry.');
+        return false;
+      }
+
+      const origin = extractOriginFromGitUrl(sanitizedUrl);
+      if (!origin) {
+        vscode.window.showErrorMessage('Unable to determine GitLab host for this repository.');
+        return false;
+      }
+
+      const existingToken = await this.gitLabTokenManager.getToken(origin);
+      const token = await this.gitLabTokenManager.requestAndStoreToken(origin, existingToken);
+      if (!token) {
+        return false;
+      }
+
+      const updatedUrl = addTokenToGitUrl(sanitizedUrl, token);
+      if (updatedUrl === currentUrl) {
+        return true;
+      }
+
+      await execAsync(`git remote set-url ${remoteName} "${updatedUrl}"`, { cwd: repoPath });
+      console.log(`[StudentRepositoryManager] Updated ${remoteName} remote for ${repoPath}`);
+      return true;
+    } catch (error) {
+      console.error('[StudentRepositoryManager] Failed to refresh repository credentials:', error);
+      vscode.window.showErrorMessage('Could not update Git credentials. Please try again.');
+      return false;
     }
-    return url;
   }
 
   /**
-   * Check if error is an authentication error
+   * Expose authentication error detection for other services.
    */
-  private isAuthenticationError(error: any): boolean {
+  public isAuthenticationError(error: any): boolean {
     const message = error?.message || error?.toString() || '';
     return message.includes('Authentication failed') ||
            message.includes('Access denied') ||
@@ -752,4 +787,5 @@ export class StudentRepositoryManager {
            message.includes('401') ||
            message.includes('403');
   }
+
 }
