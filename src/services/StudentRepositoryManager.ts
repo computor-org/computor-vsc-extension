@@ -410,12 +410,14 @@ export class StudentRepositoryManager {
     console.log('[StudentRepositoryManager] Authenticated upstream URL:', authenticatedUpstreamUrl);
 
     let upstreamAddedByUs = false;
+    let stashRef: string | undefined;
 
     try {
       await this.ensureMergeNotInProgress(repoPath);
 
-      const clean = await this.ensureWorkingTreeClean(repoPath);
-      if (!clean) {
+      const cleanResult = await this.ensureWorkingTreeClean(repoPath);
+      stashRef = cleanResult.stashRef;
+      if (!cleanResult.proceed) {
         return false;
       }
 
@@ -462,17 +464,20 @@ export class StudentRepositoryManager {
       await this.abortMergeIfPossible(repoPath);
       return false;
     } finally {
+      if (stashRef) {
+        await this.restoreStash(repoPath, stashRef);
+      }
       if (upstreamAddedByUs) {
         await this.removeUpstreamRemote(repoPath);
       }
     }
   }
 
-  private async ensureWorkingTreeClean(repoPath: string): Promise<boolean> {
+  private async ensureWorkingTreeClean(repoPath: string): Promise<{ proceed: boolean; stashRef?: string }> {
     const status = await execAsync('git status --porcelain', { cwd: repoPath });
     const output = status.stdout.trim();
     if (!output) {
-      return true;
+      return { proceed: true };
     }
 
     const hasConflicts = output.split('\n').some(line => line.startsWith('U') || line.includes('AA') || line.includes('DD'));
@@ -485,23 +490,22 @@ export class StudentRepositoryManager {
       if (choice === 'View Git Output') {
         await vscode.commands.executeCommand('git.showOutput');
       }
-      return false;
+      return { proceed: false };
     }
 
-    const choice = await vscode.window.showWarningMessage(
-      'Your repository has local changes. Syncing upstream will be skipped to avoid overwriting your work.',
-      'View Git Output',
-      'Continue Anyway'
-    );
-
-    if (choice === 'Continue Anyway') {
-      return true;
+    try {
+      const stashMessage = `computor-auto-sync-${Date.now()}`;
+      await execAsync(`git stash push --include-untracked --message ${JSON.stringify(stashMessage)}`, { cwd: repoPath });
+      const stashRef = await this.findStashReference(repoPath, stashMessage);
+      if (stashRef) {
+        console.log(`[StudentRepositoryManager] Stashed local changes as ${stashRef} before syncing.`);
+      }
+      return { proceed: true, stashRef };
+    } catch (error) {
+      console.error('[StudentRepositoryManager] Failed to stash local changes automatically:', error);
+      vscode.window.showWarningMessage('Could not stash local changes before syncing repositories. Please resolve your changes manually and try again.');
+      return { proceed: false };
     }
-
-    if (choice === 'View Git Output') {
-      await vscode.commands.executeCommand('git.showOutput');
-    }
-    return false;
   }
 
   private async ensureMergeNotInProgress(repoPath: string): Promise<void> {
@@ -542,6 +546,32 @@ export class StudentRepositoryManager {
       await execAsync('git remote remove upstream', { cwd: repoPath });
     } catch {
       // Ignore removal errors
+    }
+  }
+
+  private async findStashReference(repoPath: string, marker: string): Promise<string | undefined> {
+    try {
+      const { stdout } = await execAsync('git stash list --pretty=format:%gd::%gs', { cwd: repoPath });
+      const lines = stdout.split('\n').map(line => line.trim()).filter(Boolean);
+      for (const line of lines) {
+        const [ref, message] = line.split('::');
+        if (message && message.includes(marker)) {
+          return ref?.trim();
+        }
+      }
+    } catch (error) {
+      console.warn('[StudentRepositoryManager] Unable to read stash list:', error);
+    }
+    return undefined;
+  }
+
+  private async restoreStash(repoPath: string, stashRef: string): Promise<void> {
+    try {
+      await execAsync(`git stash pop ${stashRef}`, { cwd: repoPath });
+      console.log(`[StudentRepositoryManager] Restored stashed changes from ${stashRef}.`);
+    } catch (error) {
+      console.error(`[StudentRepositoryManager] Failed to restore stashed changes from ${stashRef}:`, error);
+      vscode.window.showWarningMessage('Automatic restoration of stashed changes failed. Please run "git stash pop" manually to recover your work.');
     }
   }
 

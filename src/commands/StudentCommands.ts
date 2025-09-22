@@ -327,11 +327,11 @@ export class StudentCommands {
             const dirty = await this.gitBranchManager.hasChanges(repoPath);
             if (dirty) {
               const choice = await vscode.window.showWarningMessage(
-                'Repository has uncommitted changes. Submission will ignore your working directory and restore assignment files from origin/main into a separate submission branch.',
-                'Proceed anyway',
+                'Repository has uncommitted changes. Submission will stage, commit, and push them automatically.',
+                'Continue',
                 'Cancel'
               );
-              if (choice !== 'Proceed anyway') {
+              if (choice !== 'Continue') {
                 return;
               }
             }
@@ -339,7 +339,7 @@ export class StudentCommands {
             // If status fails, continue without blocking
           }
 
-          // Perform submission using git worktree to keep main worktree on main branch
+          // Perform submission by ensuring latest work is committed and pushed
           let submissionOk = false;
           let submissionVersion: string | undefined;
           let submissionResponse: SubmissionUploadResponseModel | undefined;
@@ -349,69 +349,46 @@ export class StudentCommands {
             cancellable: false
           }, async (progress) => {
             try {
-              const relAssignmentPath = path.relative(repoPath, directory!);
               const assignmentId = String(itemOrSubmissionGroup?.courseContent?.id || submissionGroup?.id || assignmentPath);
-              const submissionBranch = `submission-${assignmentId}`;
+              const commitLabel = assignmentTitle || assignmentPath || assignmentId;
 
-              progress.report({ message: 'Fetching origin/main...' });
-              await execAsync('git fetch origin main', { cwd: repoPath });
+              progress.report({ message: 'Staging changes...' });
+              await execAsync('git add -A', { cwd: repoPath });
 
-              const tempRoot = path.join(require('os').tmpdir(), 'computor', 'submit');
-              await fs.promises.mkdir(tempRoot, { recursive: true });
-              const repoName = path.basename(repoPath);
-              const time = Date.now().toString();
-              const worktreePath = path.join(tempRoot, `${repoName}-${submissionBranch}-${time}`);
+              const { stdout: stagedStdout } = await execAsync('git diff --cached --name-only', { cwd: repoPath });
+              const stagedFiles = stagedStdout
+                .split(/\r?\n/g)
+                .map(line => line.trim())
+                .filter(line => line.length > 0);
 
-              const { stdout: lsRemote } = await execAsync(`git ls-remote --heads origin ${submissionBranch}`, { cwd: repoPath });
-              const existsRemote = lsRemote.trim().length > 0;
-              progress.report({ message: existsRemote ? 'Checking out submission branch...' : 'Creating submission branch...' });
-              if (existsRemote) {
-                await execAsync(`git worktree add "${worktreePath}" "${submissionBranch}"`, { cwd: repoPath });
-              } else {
-                await execAsync(`git worktree add "${worktreePath}" -b "${submissionBranch}" origin/main`, { cwd: repoPath });
-              }
-
-              // Clear worktree contents except .git
-              progress.report({ message: 'Clearing worktree...' });
-              const entries = await fs.promises.readdir(worktreePath, { withFileTypes: true });
-              for (const entry of entries) {
-                if (entry.name === '.git') continue;
-                await fs.promises.rm(path.join(worktreePath, entry.name), { recursive: true, force: true });
-              }
-
-              // Restore assignment folder from origin/main
-              progress.report({ message: 'Restoring assignment files...' });
-              await execAsync(`git checkout origin/main -- ${JSON.stringify(relAssignmentPath)}`, { cwd: worktreePath });
-
-              // Stage and commit
-              await execAsync(`git add ${JSON.stringify(relAssignmentPath)}`, { cwd: worktreePath });
-              const { stdout: diffCheck } = await execAsync('git diff --cached --name-only', { cwd: worktreePath });
-              if (diffCheck.trim().length > 0) {
+              if (stagedFiles.length > 0) {
                 const commitDate = new Date().toISOString();
-                progress.report({ message: 'Committing...' });
-                await execAsync(`git commit -m ${JSON.stringify(`Submit ${assignmentId} at ${commitDate}`)}`, { cwd: worktreePath });
+                const commitMessage = `Submit ${commitLabel} at ${commitDate}`;
+                progress.report({ message: 'Committing changes...' });
+                await execAsync(`git commit -m ${JSON.stringify(commitMessage)}`, { cwd: repoPath });
               } else {
-                progress.report({ message: 'No changes to commit' });
+                progress.report({ message: 'No new changes detected; using latest commit.' });
               }
 
-              // Push branch
-              progress.report({ message: 'Pushing submission branch...' });
+              const { stdout: branchStdout } = await execAsync('git rev-parse --abbrev-ref HEAD', { cwd: repoPath });
+              const currentBranch = branchStdout.trim();
+              if (!currentBranch) {
+                throw new Error('Could not determine current branch.');
+              }
+
+              progress.report({ message: `Pushing ${currentBranch}...` });
               try {
-                await execAsync(`git push origin ${submissionBranch}`, { cwd: worktreePath });
-              } catch {
-                await execAsync(`git push -u origin ${submissionBranch}`, { cwd: worktreePath });
+                await execAsync(`git push origin ${JSON.stringify(currentBranch)}`, { cwd: repoPath });
+              } catch (pushError) {
+                try {
+                  await execAsync(`git push -u origin ${JSON.stringify(currentBranch)}`, { cwd: repoPath });
+                } catch (secondaryPushError) {
+                  throw pushError instanceof Error ? pushError : secondaryPushError;
+                }
               }
 
-              const { stdout: headStdout } = await execAsync('git rev-parse HEAD', { cwd: worktreePath });
+              const { stdout: headStdout } = await execAsync('git rev-parse HEAD', { cwd: repoPath });
               submissionVersion = headStdout.trim();
-
-              // Cleanup worktree
-              progress.report({ message: 'Cleaning up...' });
-              try {
-                await execAsync(`git worktree remove "${worktreePath}" --force`, { cwd: repoPath });
-              } catch {
-                await fs.promises.rm(worktreePath, { recursive: true, force: true });
-              }
 
               if (!submissionGroup?.id) {
                 throw new Error('Submission group information missing; cannot create submission record.');
@@ -420,7 +397,7 @@ export class StudentCommands {
               progress.report({ message: 'Creating submission...' });
               submissionResponse = await this.apiService.createStudentSubmission({
                 course_submission_group_id: String(submissionGroup.id),
-                version_identifier: submissionVersion ?? undefined
+                version_identifier: submissionVersion || undefined
               });
 
               if (!submissionResponse) {
