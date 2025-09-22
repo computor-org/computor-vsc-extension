@@ -131,6 +131,12 @@ export abstract class HttpClient {
     const url = this.buildUrl(endpoint, params);
     const headers = { ...this.headers, ...this.getAuthHeaders() };
 
+    if (data && this.isFormData(data)) {
+      delete headers['Content-Type'];
+      const formHeaders = typeof (data as any).getHeaders === 'function' ? (data as any).getHeaders() : {};
+      Object.assign(headers, formHeaders);
+    }
+
     let config: HttpRequestConfig = {
       method,
       url,
@@ -153,23 +159,43 @@ export abstract class HttpClient {
     const timeoutId = setTimeout(() => controller.abort(), config.timeout);
 
     try {
+      const requestHeaders: Record<string, string> = { ...(config.headers ?? {}) };
+      let body: any = undefined;
+      if (config.data !== undefined && config.data !== null) {
+        if (this.isFormData(config.data)) {
+          body = config.data;
+        } else if (Buffer.isBuffer(config.data) || config.data instanceof Uint8Array) {
+          body = config.data;
+        } else if (typeof config.data === 'string') {
+          body = config.data;
+          if (!requestHeaders['Content-Type']) {
+            requestHeaders['Content-Type'] = 'text/plain';
+          }
+        } else {
+          if (!requestHeaders['Content-Type']) {
+            requestHeaders['Content-Type'] = 'application/json';
+          }
+          body = JSON.stringify(config.data);
+        }
+      }
+
       const response = await fetch(config.url, {
         method: config.method,
-        headers: config.headers,
-        body: config.data ? JSON.stringify(config.data) : undefined,
+        headers: requestHeaders,
+        body,
         signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
 
       const responseData = await this.parseResponse<T>(response);
-      const headers = this.parseHeaders(response.headers);
+      const responseHeaders = this.parseHeaders(response.headers);
 
       let httpResponse: HttpResponse<T> = {
         data: responseData,
         status: response.status,
         statusText: response.statusText,
-        headers,
+        headers: responseHeaders,
       };
 
       for (const interceptor of this.responseInterceptors) {
@@ -292,6 +318,14 @@ export abstract class HttpClient {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
+  private isFormData(data: any): data is { getHeaders?: () => Record<string, string>; append: Function } {
+    if (!data || typeof data !== 'object') {
+      return false;
+    }
+    const maybeForm = data as { getBoundary?: () => string; append?: Function };
+    return typeof maybeForm.append === 'function' && typeof maybeForm.getBoundary === 'function';
+  }
+
   public addRequestInterceptor(interceptor: RequestInterceptor): void {
     this.requestInterceptors.push(interceptor);
   }
@@ -317,7 +351,9 @@ export abstract class HttpClient {
       method: config.method,
       url: config.url,
       params: config.params ? JSON.stringify(config.params) : undefined,
-      body: config.data ? JSON.stringify(config.data) : undefined,
+      body: config.data && !this.isFormData(config.data) && !Buffer.isBuffer(config.data)
+        ? JSON.stringify(config.data)
+        : undefined,
     };
   }
 

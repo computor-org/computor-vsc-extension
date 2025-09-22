@@ -13,6 +13,7 @@ import { execAsync } from '../utils/exec';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { StudentCourseContentDetailsWebviewProvider, StudentContentDetailsViewState, StudentGradingHistoryEntry, StudentResultHistoryEntry } from '../ui/webviews/StudentCourseContentDetailsWebviewProvider';
 import { getExampleVersionId } from '../utils/deploymentHelpers';
+import JSZip from 'jszip';
 
 // (Deprecated legacy types removed)
 
@@ -322,23 +323,6 @@ export class StudentCommands {
             return;
           }
 
-          // Pre-check: warn if repository has uncommitted changes
-          try {
-            const dirty = await this.gitBranchManager.hasChanges(repoPath);
-            if (dirty) {
-              const choice = await vscode.window.showWarningMessage(
-                'Repository has uncommitted changes. Submission will stage, commit, and push them automatically.',
-                'Continue',
-                'Cancel'
-              );
-              if (choice !== 'Continue') {
-                return;
-              }
-            }
-          } catch {
-            // If status fails, continue without blocking
-          }
-
           // Perform submission by ensuring latest work is committed and pushed
           let submissionOk = false;
           let submissionVersion: string | undefined;
@@ -394,11 +378,14 @@ export class StudentCommands {
                 throw new Error('Submission group information missing; cannot create submission record.');
               }
 
+              progress.report({ message: 'Packaging submission archive...' });
+              const archive = await this.createSubmissionArchive(directory!);
+
               progress.report({ message: 'Creating submission...' });
               submissionResponse = await this.apiService.createStudentSubmission({
                 course_submission_group_id: String(submissionGroup.id),
                 version_identifier: submissionVersion || undefined
-              });
+              }, archive);
 
               if (!submissionResponse) {
                 throw new Error('Submission API did not return a response.');
@@ -440,7 +427,7 @@ export class StudentCommands {
             }
           }
         } catch (error: any) {
-          console.error('Failed to submit assignment:', error);
+          console.error('Failed to submit assignment:', error?.response?.data || error);
           vscode.window.showErrorMessage(`Failed to submit assignment: ${error?.message || error}`);
         }
       })
@@ -689,6 +676,36 @@ export class StudentCommands {
     }
   }
   */
+
+  private async createSubmissionArchive(directory: string): Promise<{ buffer: Buffer; fileName: string }> {
+    const zip = new JSZip();
+    const baseDir = path.dirname(directory);
+    await this.addDirectoryToZip(zip, directory, baseDir);
+
+    const fileName = `${path.basename(directory)}.zip`;
+    const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+    return { buffer, fileName };
+  }
+
+  private async addDirectoryToZip(zip: JSZip, currentPath: string, baseDir: string): Promise<void> {
+    const entries = await fs.promises.readdir(currentPath, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (entry.name === '.git') {
+        continue;
+      }
+
+      const entryPath = path.join(currentPath, entry.name);
+
+      if (entry.isDirectory()) {
+        await this.addDirectoryToZip(zip, entryPath, baseDir);
+      } else if (entry.isFile()) {
+        const relPath = path.relative(baseDir, entryPath).split(path.sep).join('/');
+        const data = await fs.promises.readFile(entryPath);
+        zip.file(relPath, data);
+      }
+    }
+  }
 
   private async showContentDetails(arg: any): Promise<void> {
     try {
