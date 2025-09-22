@@ -10,8 +10,7 @@
 - Secrets persist across sessions; logout does not remove them.
 
 ## Workspace markers
-- `.computor_student` – `{ "courseId": "…" }` for the active course.
-- `.computor_lecturer` / `.computor_tutor` – presence indicates those roles have been activated in the workspace.
+- `.computor` – `{ "courseId": "…" }` for the active course shared across all roles.
 
 ## Global state
 - `pendingLogin` – lets the login flow resume after the user opens a folder.

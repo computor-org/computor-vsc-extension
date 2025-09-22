@@ -4,9 +4,9 @@
 The Computor VS Code extension is the desktop front end for the Computor teaching platform. It connects to the REST backend, manages local Git repositories, and shows course data through role-specific trees and webviews.
 
 ## Startup flow
-1. User runs `Computor: Lecturer Login`, `Computor: Student Login`, or `Computor: Tutor Login`.
+1. User runs `Computor: Login`.
 2. `src/extension.ts` ensures a workspace folder is open, collects the backend URL, and prompts for credentials (basic auth, API key, or pasted JWT).
-3. The matching role controller receives a configured HTTP client, registers its views and commands, and switches VS Code context keys so the proper sidebar appears.
+3. The unified controller queries available views using `/user/courses/{course_id}/views` endpoint and dynamically initializes student, tutor, and/or lecturer views based on user permissions.
 4. Shared services (API, token, repository managers) handle data loading and Git operations in the background.
 
 ## Components
@@ -21,5 +21,5 @@ The Computor VS Code extension is the desktop front end for the Computor teachin
 
 ## Data persistence
 - Configuration lives in `~/.computor/config.json` (backend URL, preferred auth mode, tree expansion state).
-- Role marker files (`.computor_lecturer`, `.computor_student`, `.computor_tutor`) sit in the workspace root to remember context between sessions.
+- Course marker file (`.computor`) sits in the workspace root to remember the active course between sessions. All roles share this course selection.
 - Secrets (login payloads, GitLab tokens) are stored via VS Code SecretStorage.

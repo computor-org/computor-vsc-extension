@@ -7,7 +7,7 @@
 - **Repositories**: `LecturerRepositoryManager` clones or updates assignments repositories under the workspace (or `~/.computor/lecturer-workspace` fallback) using GitLab tokens.
 
 ## Students
-- **Course selection**: `.computor_student` stores the chosen course; `CourseSelectionService` ensures the workspace contains the working directory.
+- **Course selection**: `.computor` stores the chosen course for the workspace; `CourseSelectionService` ensures the workspace contains the working directory.
 - **Tree**: `computor.student.courses` lists course units and assignments. When repositories are cloned, assignment nodes expose actual filesystem children.
 - **Commands**: clone/update repositories, open README previews, prepare assignment branches, run tests, and submit results. `TestResultsPanel` displays execution output.
 - **Repositories**: `StudentRepositoryManager` clones each submission repository into the first workspace folder, syncs against upstream templates when available, and updates course content metadata with absolute paths.
