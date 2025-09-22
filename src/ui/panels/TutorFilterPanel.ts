@@ -23,17 +23,12 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
 
     webviewView.onDidChangeVisibility(() => {
       if (webviewView.visible) {
-        void this.postCourses();
+        this.refreshFilters();
       }
     });
 
     webviewView.webview.onDidReceiveMessage(async (message) => {
       switch (message.command) {
-        case 'course-select':
-          await this.selection.selectCourse(message.id || null, message.label || null);
-          await this.postCourseGroups();
-          await this.postCourseMembers();
-          break;
         case 'course-group-select':
           await this.selection.selectGroup(message.id || null, message.label || null);
           await this.postCourseMembers();
@@ -45,8 +40,8 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
     });
 
     this.updateHtml();
-    // Initial data: load courses, then groups and members based on selection
-    void this.postCourses();
+    // Initial data: load groups and members based on the fixed course selection
+    this.refreshFilters();
   }
 
   private async updateHtml(): Promise<void> {
@@ -65,20 +60,11 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
       </head>
       <body>
         <section class="filter-fields" data-state="loading">
-          <label class="filter-field" for="course">
-            <span class="filter-field__label">Course</span>
-            <div class="filter-field__control">
-              <select id="course" aria-label="Course">
-                <option value="" disabled selected>Loading…</option>
-              </select>
-            </div>
-            <span class="filter-field__hint">Updates groups and members.</span>
-          </label>
           <label class="filter-field" for="group">
             <span class="filter-field__label">Group</span>
             <div class="filter-field__control">
               <select id="group" aria-label="Group" disabled>
-                <option value="" selected>All groups</option>
+                <option value="" disabled selected>Loading…</option>
               </select>
             </div>
             <span class="filter-field__hint">Optional — narrow to a single group.</span>
@@ -95,13 +81,11 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
         </section>
         <script nonce="${nonce}">
           const vscode = acquireVsCodeApi();
-          const courseSel = document.getElementById('course');
           const groupSel = document.getElementById('group');
           const memberSel = document.getElementById('member');
           const fieldsWrapper = document.querySelector('.filter-fields');
 
           const state = {
-            courses: false,
             groups: false,
             members: false
           };
@@ -113,7 +97,6 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
-          const getCourseLabel = (course) => course.title || course.name || course.path || course.id;
           const getGroupLabel = (group) => group.title || group.name || group.id;
           const getMemberLabel = (member) => {
             const user = member?.user;
@@ -122,7 +105,7 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
 
           const updatePanelState = () => {
             if (!fieldsWrapper) return;
-            const loading = !state.courses || !state.members;
+            const loading = !state.members;
             fieldsWrapper.dataset.state = loading ? 'loading' : 'ready';
           };
 
@@ -133,60 +116,52 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
             return '<option value="' + escapeHtml(value) + '"' + selected + '>' + label + '</option>';
           });
 
+          const resetMembers = (placeholder) => {
+            memberSel.disabled = true;
+            memberSel.innerHTML = '<option value="" disabled selected>' + escapeHtml(placeholder) + '</option>';
+            state.members = false;
+            updatePanelState();
+          };
+
           window.addEventListener('message', (event) => {
-            const { command, data = [], selected } = event.data || {};
+            const { command, data = [], selected, disabled } = event.data || {};
             const selectedId = toStringOrEmpty(selected);
-            if (command === 'courses') {
-              state.courses = true;
-              const options = ['<option value=""' + (selectedId ? '' : ' selected') + '>Select a course</option>'];
-              options.push(...buildOptions(data ?? [], selectedId, getCourseLabel));
-              courseSel.innerHTML = options.join('');
-              courseSel.disabled = (data ?? []).length === 0;
-              if (selectedId) {
-                courseSel.value = selectedId;
-              }
-              updatePanelState();
-            } else if (command === 'groups') {
+            if (command === 'groups') {
               state.groups = true;
-              const options = ['<option value=""' + (selectedId ? '' : ' selected') + '>All groups</option>'];
-              options.push(...buildOptions(data ?? [], selectedId, getGroupLabel));
-              groupSel.innerHTML = options.join('');
-              groupSel.disabled = courseSel.disabled || !courseSel.value;
-              if (selectedId) {
-                groupSel.value = selectedId;
+              if (disabled) {
+                groupSel.innerHTML = '<option value="" disabled selected>Course unavailable</option>';
+                groupSel.disabled = true;
+              } else {
+                const options = ['<option value=""' + (selectedId ? '' : ' selected') + '>All groups</option>'];
+                options.push(...buildOptions(data ?? [], selectedId, getGroupLabel));
+                groupSel.innerHTML = options.join('');
+                groupSel.disabled = false;
+                if (selectedId) {
+                  groupSel.value = selectedId;
+                }
               }
             } else if (command === 'members') {
               state.members = true;
-              const items = data ?? [];
-              if (!items.length) {
-                memberSel.innerHTML = '<option value="" disabled selected>No members found</option>';
+              if (disabled) {
+                memberSel.innerHTML = '<option value="" disabled selected>Course unavailable</option>';
                 memberSel.disabled = true;
               } else {
-                memberSel.innerHTML = buildOptions(items, selectedId, getMemberLabel).join('');
-                memberSel.disabled = false;
-                if (selectedId) {
-                  memberSel.value = selectedId;
+                const items = data ?? [];
+                if (!items.length) {
+                  memberSel.innerHTML = '<option value="" disabled selected>No members found</option>';
+                  memberSel.disabled = true;
                 } else {
-                  memberSel.selectedIndex = 0;
+                  memberSel.innerHTML = buildOptions(items, selectedId, getMemberLabel).join('');
+                  memberSel.disabled = false;
+                  if (selectedId) {
+                    memberSel.value = selectedId;
+                  } else {
+                    memberSel.selectedIndex = 0;
+                  }
                 }
               }
               updatePanelState();
             }
-          });
-
-          courseSel.addEventListener('change', () => {
-            if (courseSel.disabled) {
-              return;
-            }
-            const label = courseSel.options[courseSel.selectedIndex]?.text || null;
-            state.groups = false;
-            state.members = false;
-            groupSel.disabled = true;
-            groupSel.innerHTML = '<option value="" disabled selected>Loading…</option>';
-            memberSel.disabled = true;
-            memberSel.innerHTML = '<option value="" disabled selected>Waiting for members…</option>';
-            updatePanelState();
-            vscode.postMessage({ command: 'course-select', id: courseSel.value || null, label });
           });
 
           groupSel.addEventListener('change', () => {
@@ -194,10 +169,7 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
               return;
             }
             const label = groupSel.options[groupSel.selectedIndex]?.text || null;
-            state.members = false;
-            memberSel.disabled = true;
-            memberSel.innerHTML = '<option value="" disabled selected>Loading…</option>';
-            updatePanelState();
+            resetMembers('Loading…');
             vscode.postMessage({ command: 'course-group-select', id: groupSel.value || null, label });
           });
 
@@ -214,19 +186,9 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
     `;
   }
 
-  private async postCourses(): Promise<void> {
-    const courses = await this.api.getTutorCourses();
-    let selected = this.selection.getCurrentCourseId();
-    if ((!selected || selected === '') && courses && courses.length > 0) {
-      const first = courses[0];
-      const label = first.title || first.name || first.path || first.id;
-      await this.selection.selectCourse(first.id, label);
-      selected = first.id;
-    }
-    this._view?.webview.postMessage({ command: 'courses', data: courses || [], selected });
-    // After courses are posted and selection ensured, load dependent filters
-    await this.postCourseGroups();
-    await this.postCourseMembers();
+  public refreshFilters(): void {
+    void this.postCourseGroups();
+    void this.postCourseMembers();
   }
 
   private async postCourseGroups(): Promise<void> {
@@ -242,7 +204,12 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    this._view?.webview.postMessage({ command: 'groups', data: groups, selected: this.selection.getCurrentGroupId() });
+    this._view?.webview.postMessage({
+      command: 'groups',
+      data: groups,
+      selected: this.selection.getCurrentGroupId(),
+      disabled: !courseId
+    });
   }
 
   private async postCourseMembers(): Promise<void> {
@@ -270,6 +237,11 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
       await this.selection.selectMember(first.id, label);
       selected = first.id;
     }
-    this._view?.webview.postMessage({ command: 'members', data: members, selected });
+    this._view?.webview.postMessage({
+      command: 'members',
+      data: members,
+      selected,
+      disabled: !courseId
+    });
   }
 }
