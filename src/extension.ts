@@ -239,77 +239,48 @@ function formatProviderLabel(status: CourseMemberReadinessStatus): string {
   return 'provider';
 }
 
-async function ensureCourseMemberProviderAccount(
+async function ensureCourseProviderAccount(
   api: ComputorApiService,
   courseId: string,
   courseLabel: string,
-  currentUser?: { id?: string; username?: string },
-  seenCourseMemberIds?: Set<string>
+  currentUser?: { username?: string }
 ): Promise<void> {
-  const user = currentUser ?? await api.getCurrentUser();
-  if (!user?.id) {
-    return;
-  }
-
-  const member = await api.getCourseMemberForUser(courseId, user.id);
-  if (!member) {
-    console.warn(`[Readiness] No course member found for user ${user.id} in course ${courseId}`);
-    return;
-  }
-
-  if (seenCourseMemberIds) {
-    if (seenCourseMemberIds.has(member.id)) {
-      return;
-    }
-    seenCourseMemberIds.add(member.id);
-  }
-
-  const readiness = await api.validateCourseMemberReadiness(member.id);
-  if (!readiness) {
-    return;
-  }
+  const readiness = await api.validateCourseReadiness(courseId);
 
   if (!readiness.requires_account) {
     return;
   }
 
-  const providerLabel = formatProviderLabel(readiness);
-  let accountId = readiness.provider_account_id?.trim() ?? '';
-
-  if (!accountId) {
-    const suggestedAccount = user.username ? user.username.trim() : '';
-    accountId = await vscode.window.showInputBox({
-      title: `Link ${providerLabel} account`,
-      prompt: `Enter the ${providerLabel} account ID to use for ${courseLabel}`,
-      value: suggestedAccount,
-      ignoreFocusOut: true,
-      validateInput: (value) => {
-        const trimmed = value.trim();
-        return trimmed.length === 0 ? 'Account ID is required' : undefined;
-      }
-    }) || '';
-
-    accountId = accountId.trim();
-
-    if (!accountId) {
-      vscode.window.showWarningMessage(`A ${providerLabel} account is required for ${courseLabel}. You can register it later from the Computor commands.`);
-      return;
-    }
-  }
-
-  const updated = await api.registerCourseMemberProviderAccount(member.id, {
-    provider_account_id: accountId
-  });
-
-  if (!updated) {
+  if (readiness.is_ready) {
     return;
   }
 
-  if (!readiness.is_ready && updated.is_ready) {
-    vscode.window.showInformationMessage(`${providerLabel} account "${accountId}" linked for ${courseLabel}.`);
-  } else if (!updated.is_ready) {
-    vscode.window.showWarningMessage(`Your ${providerLabel} account for ${courseLabel} still needs attention. Please verify the account ID.`);
+  const providerLabel = formatProviderLabel(readiness);
+  const defaultAccount = readiness.provider_account_id?.trim() || currentUser?.username || '';
+
+  const accountIdInput = await vscode.window.showInputBox({
+    title: `Link ${providerLabel} account`,
+    prompt: `Enter the ${providerLabel} account ID to use for ${courseLabel}`,
+    value: defaultAccount,
+    ignoreFocusOut: true,
+    validateInput: (value) => {
+      const trimmed = value.trim();
+      return trimmed.length === 0 ? 'Account ID is required' : undefined;
+    }
+  });
+
+  if (!accountIdInput) {
+    throw new Error(`${providerLabel} account registration cancelled for ${courseLabel}`);
   }
+
+  const accountId = accountIdInput.trim();
+  const updated = await api.registerCourseProviderAccount(courseId, { provider_account_id: accountId });
+
+  if (!updated.is_ready) {
+    throw new Error(`${providerLabel} account for ${courseLabel} is still incomplete. Please verify the account ID.`);
+  }
+
+  vscode.window.showInformationMessage(`${providerLabel} account "${accountId}" linked for ${courseLabel}.`);
 }
 
 abstract class BaseRoleController {
@@ -376,7 +347,6 @@ class LecturerController extends BaseRoleController {
     }
 
     const lecturerUser = await api.getCurrentUser();
-    const seenLecturerMembers = new Set<string>();
     if (lecturerCourses) {
       for (const course of lecturerCourses) {
         const courseId = course?.id;
@@ -384,7 +354,7 @@ class LecturerController extends BaseRoleController {
           continue;
         }
         const courseLabel = course?.title || course?.path || courseId;
-        await ensureCourseMemberProviderAccount(api, courseId, courseLabel, lecturerUser, seenLecturerMembers);
+        await ensureCourseProviderAccount(api, courseId, courseLabel, lecturerUser);
       }
     }
 
@@ -456,7 +426,6 @@ class TutorController extends BaseRoleController {
     await ensureCourseMarker('Tutor', api, this.context);
 
     const tutorUser = await api.getCurrentUser();
-    const seenTutorMembers = new Set<string>();
     if (tutorCourses) {
       for (const course of tutorCourses) {
         const courseId = course?.id;
@@ -464,7 +433,7 @@ class TutorController extends BaseRoleController {
           continue;
         }
         const courseLabel = course?.title || course?.path || courseId;
-        await ensureCourseMemberProviderAccount(api, courseId, courseLabel, tutorUser, seenTutorMembers);
+        await ensureCourseProviderAccount(api, courseId, courseLabel, tutorUser);
       }
     }
 
@@ -539,7 +508,7 @@ class StudentController extends BaseRoleController {
     // Set selected course into service
     const selectedCourse = await this.courseSelectionService!.selectCourse(courseId);
 
-    await ensureCourseMemberProviderAccount(
+    await ensureCourseProviderAccount(
       api,
       courseId,
       selectedCourse?.title || selectedCourse?.path || courseId,
