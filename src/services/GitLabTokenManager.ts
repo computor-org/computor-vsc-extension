@@ -104,11 +104,12 @@ export class GitLabTokenManager {
   /**
    * Prompt user for GitLab personal access token
    */
-  private async promptForToken(gitlabUrl: string): Promise<string | undefined> {
+  private async promptForToken(gitlabUrl: string, value?: string): Promise<string | undefined> {
     const token = await vscode.window.showInputBox({
       title: `GitLab Authentication for ${gitlabUrl}`,
       prompt: `Enter your GitLab Personal Access Token for ${gitlabUrl}`,
       placeHolder: 'glpat-xxxxxxxxxxxxxxxxxxxx',
+      value,
       password: true,
       ignoreFocusOut: true,
       validateInput: (value) => {
@@ -124,6 +125,14 @@ export class GitLabTokenManager {
       }
     });
 
+    return token;
+  }
+
+  public async requestAndStoreToken(gitlabUrl: string, existing?: string): Promise<string | undefined> {
+    const token = await this.promptForToken(gitlabUrl, existing);
+    if (token) {
+      await this.storeToken(gitlabUrl, token);
+    }
     return token;
   }
 

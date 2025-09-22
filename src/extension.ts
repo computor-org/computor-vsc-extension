@@ -6,6 +6,7 @@ import { IconGenerator } from './utils/IconGenerator';
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
 import { ComputorApiService } from './services/ComputorApiService';
 import { CourseMemberReadinessStatus } from './types/generated';
+import { GitLabTokenManager } from './services/GitLabTokenManager';
 
 import { BasicAuthHttpClient } from './http/BasicAuthHttpClient';
 import { ApiKeyHttpClient } from './http/ApiKeyHttpClient';
@@ -241,46 +242,205 @@ function formatProviderLabel(status: CourseMemberReadinessStatus): string {
 
 async function ensureCourseProviderAccount(
   api: ComputorApiService,
+  context: vscode.ExtensionContext,
   courseId: string,
   courseLabel: string,
+  providerHint?: string | null,
   currentUser?: { username?: string }
 ): Promise<void> {
-  const readiness = await api.validateCourseReadiness(courseId);
+  let readiness: CourseMemberReadinessStatus | undefined;
+  let providerAccessToken: string | undefined;
+  let providerAccountId: string | undefined;
+  let providerOverride = providerHint ?? undefined;
 
-  if (!readiness.requires_account) {
-    return;
-  }
+  const resolveProviderUrl = (): string | undefined => readiness?.provider ?? providerOverride;
+  const tokenManager = GitLabTokenManager.getInstance(context);
 
-  if (readiness.is_ready) {
-    return;
-  }
-
-  const providerLabel = formatProviderLabel(readiness);
-  const defaultAccount = readiness.provider_account_id?.trim() || currentUser?.username || '';
-
-  const accountIdInput = await vscode.window.showInputBox({
-    title: `Link ${providerLabel} account`,
-    prompt: `Enter the ${providerLabel} account ID to use for ${courseLabel}`,
-    value: defaultAccount,
-    ignoreFocusOut: true,
-    validateInput: (value) => {
-      const trimmed = value.trim();
-      return trimmed.length === 0 ? 'Account ID is required' : undefined;
+  const acquireToken = async (options?: { defaultValue?: string; forcePrompt?: boolean }): Promise<string> => {
+    let providerUrlString = resolveProviderUrl();
+    if (!providerUrlString) {
+      const entered = await vscode.window.showInputBox({
+        title: 'Git provider URL',
+        prompt: 'Enter the base URL of your Git provider (e.g., https://gitlab.example.com)',
+        placeHolder: 'https://gitlab.example.com',
+        ignoreFocusOut: true,
+        validateInput: (value) => {
+          try {
+            const url = new URL(value.trim());
+            if (!url.protocol.startsWith('http')) return 'URL must start with http or https';
+            return undefined;
+          } catch {
+            return 'Enter a valid URL';
+          }
+        }
+      });
+      if (!entered) {
+        throw new Error('Provider URL is required to validate your account.');
+      }
+      providerOverride = entered.trim();
+      providerUrlString = providerOverride;
     }
-  });
 
-  if (!accountIdInput) {
-    throw new Error(`${providerLabel} account registration cancelled for ${courseLabel}`);
+    const providerUrl = new URL(providerUrlString);
+    const origin = `${providerUrl.protocol}//${providerUrl.host}`;
+
+    if (options?.forcePrompt) {
+      const prompted = await tokenManager.requestAndStoreToken(origin, options.defaultValue);
+      if (!prompted) {
+        throw new Error(`A personal access token for ${origin} is required to verify your account.`);
+      }
+      return prompted;
+    }
+
+    const existing = await tokenManager.ensureTokenForUrl(origin);
+    if (existing) {
+      return existing;
+    }
+
+    const prompted = await tokenManager.requestAndStoreToken(origin, options?.defaultValue);
+    if (!prompted) {
+      throw new Error(`A personal access token for ${origin} is required to verify your account.`);
+    }
+    return prompted;
+  };
+
+  const validate = async (token?: string): Promise<CourseMemberReadinessStatus> =>
+    api.validateCourseReadiness(courseId, token ? { provider_access_token: token } : undefined);
+
+  const promptRetryOrCancel = async (message: string, retryLabel: string): Promise<boolean> => {
+    const selection = await vscode.window.showWarningMessage(message, retryLabel, 'Cancel');
+    return selection === retryLabel;
+  };
+
+  const promptForAccountId = async (providerLabel: string, defaultValue: string): Promise<string> => {
+    const accountInput = await vscode.window.showInputBox({
+      title: `Link ${providerLabel} account`,
+      prompt: `Enter the ${providerLabel} account ID to use for ${courseLabel}`,
+      value: defaultValue,
+      ignoreFocusOut: true,
+      validateInput: (value) => {
+        const trimmed = value.trim();
+        return trimmed.length === 0 ? 'Account ID is required' : undefined;
+      }
+    });
+
+    if (accountInput === undefined) {
+      throw new Error(`${providerLabel} account registration cancelled for ${courseLabel}`);
+    }
+
+    return accountInput.trim();
+  };
+
+  while (true) {
+    try {
+      readiness = await validate(providerAccessToken);
+    } catch (error: any) {
+      const status = error?.response?.status;
+      const detail = (error?.response?.data?.detail || error?.message || '').toString().toLowerCase();
+      if (status === 401 || detail.includes('token')) {
+        const label = readiness ? formatProviderLabel(readiness) : 'GitLab';
+        const retry = await promptRetryOrCancel(
+          `${label} token is required to validate your course access. Provide a token?`,
+          'Provide Token'
+        );
+        if (!retry) {
+          throw new Error('Provider account verification cancelled.');
+        }
+        providerAccessToken = await acquireToken({ defaultValue: providerAccessToken, forcePrompt: true });
+        continue;
+      }
+      throw error;
+    }
+
+    if (!readiness.requires_account) {
+      return;
+    }
+
+    if (readiness.is_ready) {
+      return;
+    }
+
+    const providerLabel = formatProviderLabel(readiness);
+
+    if (!providerAccessToken) {
+      providerAccessToken = await acquireToken();
+    }
+
+    if (!providerAccountId) {
+      const defaultAccount = readiness.provider_account_id?.trim() || currentUser?.username || '';
+      providerAccountId = await promptForAccountId(providerLabel, defaultAccount);
+    }
+
+    try {
+      const updated = await api.registerCourseProviderAccount(courseId, {
+        provider_account_id: providerAccountId,
+        provider_access_token: providerAccessToken
+      });
+
+      providerAccountId = updated.provider_account_id?.trim() || providerAccountId;
+
+      if (updated.is_ready) {
+        vscode.window.showInformationMessage(
+          `${formatProviderLabel(updated)} account "${providerAccountId}" linked for ${courseLabel}.`
+        );
+        return;
+      }
+
+      const needsAccount = !updated.has_account || !updated.provider_account_id;
+      const needsToken = !updated.provider_access_token;
+      const missingParts: string[] = [];
+      if (needsAccount) missingParts.push('account ID');
+      if (needsToken) missingParts.push('access token');
+
+      const retry = await promptRetryOrCancel(
+        `${formatProviderLabel(updated)} still needs ${missingParts.join(' and ') || 'additional details'} for ${courseLabel}. Update the details now?`,
+        'Update Details'
+      );
+      if (!retry) {
+        throw new Error('Provider account verification cancelled.');
+      }
+
+      if (needsAccount) {
+        providerAccountId = undefined;
+      }
+
+      if (needsToken) {
+        providerAccessToken = undefined;
+      }
+
+      readiness = updated;
+      continue;
+    } catch (error: any) {
+      const detail = (error?.response?.data?.detail || error?.message || '').toString().toLowerCase();
+      const status = error?.response?.status;
+
+      if (status === 401 || detail.includes('token') || detail.includes('access')) {
+        const retry = await promptRetryOrCancel(
+          `${providerLabel} token was rejected. Provide a new token?`,
+          'Provide Token'
+        );
+        if (!retry) {
+          throw new Error('Provider account verification cancelled.');
+        }
+        providerAccessToken = await acquireToken({ defaultValue: providerAccessToken, forcePrompt: true });
+        continue;
+      }
+
+      if (status === 400 || status === 422 || detail.includes('account')) {
+        const retry = await promptRetryOrCancel(
+          `${providerLabel} account ID was not accepted. Enter a different account ID?`,
+          'Update Account ID'
+        );
+        if (!retry) {
+          throw new Error('Provider account verification cancelled.');
+        }
+        providerAccountId = undefined;
+        continue;
+      }
+
+      throw error;
+    }
   }
-
-  const accountId = accountIdInput.trim();
-  const updated = await api.registerCourseProviderAccount(courseId, { provider_account_id: accountId });
-
-  if (!updated.is_ready) {
-    throw new Error(`${providerLabel} account for ${courseLabel} is still incomplete. Please verify the account ID.`);
-  }
-
-  vscode.window.showInformationMessage(`${providerLabel} account "${accountId}" linked for ${courseLabel}.`);
 }
 
 abstract class BaseRoleController {
@@ -354,7 +514,14 @@ class LecturerController extends BaseRoleController {
           continue;
         }
         const courseLabel = course?.title || course?.path || courseId;
-        await ensureCourseProviderAccount(api, courseId, courseLabel, lecturerUser);
+        await ensureCourseProviderAccount(
+          api,
+          this.context,
+          courseId,
+          courseLabel,
+          course?.repository?.provider_url || null,
+          lecturerUser
+        );
       }
     }
 
@@ -433,7 +600,14 @@ class TutorController extends BaseRoleController {
           continue;
         }
         const courseLabel = course?.title || course?.path || courseId;
-        await ensureCourseProviderAccount(api, courseId, courseLabel, tutorUser);
+        await ensureCourseProviderAccount(
+          api,
+          this.context,
+          courseId,
+          courseLabel,
+          course?.repository?.provider_url || null,
+          tutorUser
+        );
       }
     }
 
@@ -507,11 +681,14 @@ class StudentController extends BaseRoleController {
 
     // Set selected course into service
     const selectedCourse = await this.courseSelectionService!.selectCourse(courseId);
+    const detailedCourse = await api.getStudentCourse(courseId);
 
     await ensureCourseProviderAccount(
       api,
+      this.context,
       courseId,
       selectedCourse?.title || selectedCourse?.path || courseId,
+      detailedCourse?.repository?.provider_url || null,
       currentUser
     );
 
