@@ -337,7 +337,15 @@ export class StudentCommands {
             return;
           }
 
-          const repoPath = await this.findRepoRoot(directory);
+          if (!submissionGroup?.id) {
+            vscode.window.showErrorMessage('Submission group information missing; cannot create submission.');
+            return;
+          }
+
+          const submissionDirectory = directory as string;
+          const submissionGroupId = String(submissionGroup.id);
+
+          const repoPath = await this.findRepoRoot(submissionDirectory);
           if (!repoPath) {
             vscode.window.showErrorMessage('Could not determine repository root.');
             return;
@@ -347,6 +355,7 @@ export class StudentCommands {
           let submissionOk = false;
           let submissionVersion: string | undefined;
           let submissionResponse: SubmissionUploadResponseModel | undefined;
+          let reusedExistingSubmission = false;
           await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
             title: `Submitting ${assignmentTitle}...`,
@@ -394,17 +403,35 @@ export class StudentCommands {
               const { stdout: headStdout } = await execAsync('git rev-parse HEAD', { cwd: repoPath });
               submissionVersion = headStdout.trim();
 
-              if (!submissionGroup?.id) {
-                throw new Error('Submission group information missing; cannot create submission record.');
+              let uploadRequired = true;
+              try {
+                const existingSubmissions = await this.apiService.listStudentSubmissions({
+                  course_submission_group_id: submissionGroupId,
+                  version_identifier: submissionVersion,
+                  submit: true
+                });
+                if (existingSubmissions.length > 0) {
+                  uploadRequired = false;
+                }
+              } catch (listError) {
+                console.warn('[StudentCommands] Failed to check existing submissions:', listError);
+              }
+
+              if (!uploadRequired) {
+                reusedExistingSubmission = true;
+                submissionOk = true;
+                progress.report({ message: 'Submission already exists for this version; skipping upload.' });
+                return;
               }
 
               progress.report({ message: 'Packaging submission archive...' });
-              const archive = await this.createSubmissionArchive(directory!);
+              const archive = await this.createSubmissionArchive(submissionDirectory);
 
               progress.report({ message: 'Creating submission...' });
               submissionResponse = await this.apiService.createStudentSubmission({
-                course_submission_group_id: String(submissionGroup.id),
-                version_identifier: submissionVersion || undefined
+                course_submission_group_id: submissionGroupId,
+                version_identifier: submissionVersion || undefined,
+                submit: true
               }, archive);
 
               submissionOk = true;
@@ -412,7 +439,7 @@ export class StudentCommands {
               throw e;
             }
           });
-          if (submissionOk && submissionResponse) {
+          if (submissionOk) {
             try {
               if (courseContentId) {
                 await this.treeDataProvider.refreshContentItem(courseContentId);
@@ -423,26 +450,30 @@ export class StudentCommands {
               console.warn('[StudentCommands] Failed to refresh course content after submission:', refreshError);
             }
 
-            const actions: string[] = [];
-            if (submissionResponse?.result_id) {
-              actions.push('Copy Result ID');
-            }
-
-            const successMessage = submissionResponse?.version_identifier
-              ? `Assignment submitted successfully (version ${submissionResponse.version_identifier}).`
-              : 'Assignment submitted successfully.';
-
-            const action = await vscode.window.showInformationMessage(successMessage, ...actions);
-            if (action === 'Copy Result ID' && submissionResponse?.result_id) {
-              try {
-                await vscode.env.clipboard.writeText(submissionResponse.result_id);
-                vscode.window.showInformationMessage('Submission result ID copied to clipboard.');
-              } catch (clipError) {
-                console.warn('[StudentCommands] Failed to copy result ID:', clipError);
+            if (reusedExistingSubmission) {
+              vscode.window.showInformationMessage('A submission for this version already exists; skipped re-upload.');
+            } else if (submissionResponse) {
+              const actions: string[] = [];
+              if (submissionResponse?.result_id) {
+                actions.push('Copy Result ID');
               }
+
+              const successMessage = submissionResponse?.version_identifier
+                ? `Assignment submitted successfully (version ${submissionResponse.version_identifier}).`
+                : 'Assignment submitted successfully.';
+
+              const action = await vscode.window.showInformationMessage(successMessage, ...actions);
+              if (action === 'Copy Result ID' && submissionResponse?.result_id) {
+                try {
+                  await vscode.env.clipboard.writeText(submissionResponse.result_id);
+                  vscode.window.showInformationMessage('Submission result ID copied to clipboard.');
+                } catch (clipError) {
+                  console.warn('[StudentCommands] Failed to copy result ID:', clipError);
+                }
+              }
+            } else {
+              vscode.window.showWarningMessage('Submission completed without a response from the server.');
             }
-          } else if (submissionOk && !submissionResponse) {
-            vscode.window.showWarningMessage('Submission completed without a response from the server.');
           }
         } catch (error: any) {
           console.error('Failed to submit assignment:', error?.response?.data || error);
@@ -559,15 +590,44 @@ export class StudentCommands {
           return;
         }
 
-        // Get the assignment directory
-        const directory = (item.courseContent as any).directory;
+        // Get the assignment directory and submission metadata
+        let directory = (item.courseContent as any).directory as string | undefined;
+        const assignmentPath = item.courseContent.path;
+        const assignmentTitle = item.courseContent.title || assignmentPath;
+        let submissionGroup = item.submissionGroup as SubmissionGroupStudentList | undefined;
+
+        if ((!directory || !fs.existsSync(directory)) || !submissionGroup?.id) {
+          const courseId = CourseSelectionService.getInstance().getCurrentCourseId();
+          if (courseId) {
+            const contents = await this.apiService.getStudentCourseContents(courseId) || [];
+            if (this.repositoryManager) {
+              this.repositoryManager.updateExistingRepositoryPaths(courseId, contents);
+            }
+            const match = contents.find(c => c.id === item.courseContent.id);
+            if (!directory && match) {
+              directory = (match as any)?.directory as string | undefined;
+            }
+            if (!submissionGroup?.id) {
+              submissionGroup = match?.submission_group as SubmissionGroupStudentList | undefined;
+            }
+          }
+        }
+
         if (!directory || !fs.existsSync(directory)) {
           vscode.window.showErrorMessage('Assignment directory not found. Please clone the repository first.');
           return;
         }
 
-        const assignmentPath = item.courseContent.path;
-        const assignmentTitle = item.courseContent.title || assignmentPath;
+        if (!submissionGroup?.id) {
+          vscode.window.showErrorMessage('Submission group information missing; cannot upload for testing.');
+          return;
+        }
+
+        const submissionDirectory = directory as string;
+        const submissionGroupId = String(submissionGroup.id);
+        const courseContentId = typeof item.courseContent.id === 'string'
+          ? item.courseContent.id
+          : String(item.courseContent.id);
 
         try {
           // Always show a single progress for the entire test flow
@@ -577,38 +637,77 @@ export class StudentCommands {
             cancellable: true
           }, async (progress, token) => {
             // Check if there are any changes to commit
-            const hasChanges = await this.gitBranchManager.hasChanges(directory);
+            const hasChanges = await this.gitBranchManager.hasChanges(submissionDirectory);
             let commitHash: string | null = null;
 
             if (hasChanges) {
               progress.report({ message: 'Checking branch...' });
-              const currentBranch = await this.gitBranchManager.getCurrentBranch(directory);
-              const mainBranch = await this.gitBranchManager.getMainBranch(directory);
+              const currentBranch = await this.gitBranchManager.getCurrentBranch(submissionDirectory);
+              const mainBranch = await this.gitBranchManager.getMainBranch(submissionDirectory);
               if (currentBranch !== mainBranch) {
                 progress.report({ message: `Switching to ${mainBranch} branch...` });
-                await this.gitBranchManager.checkoutBranch(directory, mainBranch);
+                await this.gitBranchManager.checkoutBranch(submissionDirectory, mainBranch);
               }
 
               progress.report({ message: 'Committing changes...' });
-              await this.gitBranchManager.stageAll(directory);
+              await this.gitBranchManager.stageAll(submissionDirectory);
               const now = new Date();
               const timestamp = now.toISOString().replace('T', ' ').split('.')[0];
               const commitMessage = `Update ${assignmentTitle} - ${timestamp}`;
-              await this.gitBranchManager.commitChanges(directory, commitMessage);
+              await this.gitBranchManager.commitChanges(submissionDirectory, commitMessage);
 
               progress.report({ message: 'Pushing to remote...' });
-              await this.pushWithAuthRetry(directory);
+              try {
+                await this.pushWithAuthRetry(submissionDirectory);
+                progress.report({ message: 'Successfully pushed to remote.' });
+              } catch (pushError) {
+                console.error('[TestAssignment] Git push failed:', pushError);
+                throw new Error(`Failed to push changes to remote: ${pushError instanceof Error ? pushError.message : String(pushError)}`);
+              }
+
               progress.report({ message: 'Getting commit hash...' });
-              commitHash = await this.gitBranchManager.getLatestCommitHash(directory);
+              commitHash = await this.gitBranchManager.getLatestCommitHash(submissionDirectory);
             } else {
               // No changes: get current commit hash
-              commitHash = await this.gitBranchManager.getLatestCommitHash(directory);
+              commitHash = await this.gitBranchManager.getLatestCommitHash(submissionDirectory);
             }
 
-            if (commitHash && item.courseContent.id) {
+            if (commitHash && courseContentId) {
+              let uploadRequired = true;
+              try {
+                const existingSubmissions = await this.apiService.listStudentSubmissions({
+                  course_submission_group_id: submissionGroupId,
+                  version_identifier: commitHash,
+                  submit: false
+                });
+                if (existingSubmissions.length > 0) {
+                  uploadRequired = false;
+                }
+              } catch (listError) {
+                console.warn('[TestAssignment] Failed to check existing submissions:', listError);
+              }
+
+              if (uploadRequired) {
+                progress.report({ message: 'Packaging submission archive...' });
+                const archive = await this.createSubmissionArchive(submissionDirectory);
+
+                if (token?.isCancellationRequested) {
+                  return;
+                }
+
+                progress.report({ message: 'Uploading submission package...' });
+                await this.apiService.createStudentSubmission({
+                  course_submission_group_id: submissionGroupId,
+                  version_identifier: commitHash,
+                  submit: false
+                }, archive);
+              } else {
+                progress.report({ message: 'Reusing existing submission archive.' });
+              }
+
               // Submit test and reuse the same progress indicator for polling
               await this.testResultService.submitTestAndAwaitResults(
-                item.courseContent.id,
+                courseContentId,
                 commitHash,
                 assignmentTitle,
                 false,
@@ -620,10 +719,19 @@ export class StudentCommands {
           });
 
           // Refresh just this course content from API after results
-          await this.treeDataProvider.refreshContentItem(item.courseContent.id);
+          await this.treeDataProvider.refreshContentItem(courseContentId);
         } catch (error: any) {
           console.error('Failed to test assignment:', error);
-          vscode.window.showErrorMessage(`Failed to test assignment: ${error.message}`);
+          if (error?.message && error.message.includes('Failed to push changes to remote')) {
+            vscode.window.showErrorMessage(`Assignment test aborted: ${error.message}`);
+          } else {
+            const message = typeof error?.message === 'string'
+              ? error.message
+              : typeof error === 'string'
+                ? error
+                : 'Unknown error';
+            vscode.window.showErrorMessage(`Failed to test assignment: ${message}`);
+          }
         }
       })
     );

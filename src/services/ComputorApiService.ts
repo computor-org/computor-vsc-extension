@@ -53,6 +53,8 @@ import {
   CourseContentStudentGet,
   ResultWithGrading,
   SubmissionCreate,
+  SubmissionListItem,
+  SubmissionQuery,
   SubmissionUploadResponseModel
 } from '../types/generated';
 
@@ -1938,6 +1940,17 @@ export class ComputorApiService {
   }
 
   // Student submission API
+  async listStudentSubmissions(params?: SubmissionQuery | null): Promise<SubmissionListItem[]> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<SubmissionListItem[]>('/submission', params ?? undefined);
+      return Array.isArray(response.data) ? response.data : [];
+    } catch (error: any) {
+      console.error('Failed to list student submissions:', error);
+      return [];
+    }
+  }
+
   async createStudentSubmission(
     payload: SubmissionCreate,
     archive: { buffer: Buffer; fileName: string; contentType?: string }
