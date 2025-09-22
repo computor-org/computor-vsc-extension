@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import { TutorStudentTreeProvider } from '../ui/tree/tutor/TutorStudentTreeProvider';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { TutorSelectionService } from '../services/TutorSelectionService';
-import simpleGit from 'simple-git';
+import { createSimpleGit } from '../git/simpleGitFactory';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
 // Import interfaces from generated types (interfaces removed to avoid duplication)
 import { CourseMemberCommentsWebviewProvider } from '../ui/webviews/CourseMemberCommentsWebviewProvider';
@@ -127,7 +127,7 @@ export class TutorCommands {
             }
             try {
               await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Cloning student repository...', cancellable: false }, async () => {
-                await simpleGit().clone(authUrl, dir);
+                await createSimpleGit().clone(authUrl, dir);
               });
               vscode.window.showInformationMessage(`Student repository cloned to ${dir}`);
             } catch (e: any) {
@@ -148,7 +148,7 @@ export class TutorCommands {
                 if (!newToken) throw e;
                 authUrl = tokenManager.buildAuthenticatedCloneUrl(remoteUrl!, newToken);
                 await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Cloning student repository...', cancellable: false }, async () => {
-                  await simpleGit().clone(authUrl, dir);
+                  await createSimpleGit().clone(authUrl, dir);
                 });
                 vscode.window.showInformationMessage(`Student repository cloned to ${dir}`);
               } else {
@@ -186,7 +186,7 @@ export class TutorCommands {
             vscode.window.showErrorMessage('Student repository not found. Please clone it first.');
             return;
           }
-          const git = simpleGit(repoPath);
+          const git = createSimpleGit({ baseDir: repoPath });
           const content: any = item?.content || item?.courseContent || item;
           const inferredBranch = await this.apiService.getTutorSubmissionBranch(courseId, memberId, content?.id || '');
           const branch = inferredBranch || await vscode.window.showInputBox({ title: 'Submission Branch', prompt: 'Enter submission branch to checkout', value: 'main', ignoreFocusOut: true });

@@ -1,4 +1,4 @@
-import { SimpleGit, simpleGit, SimpleGitOptions } from 'simple-git';
+import { SimpleGit } from 'simple-git';
 import * as path from 'path';
 import * as fs from 'fs';
 import {
@@ -14,6 +14,7 @@ import {
   GitStashEntry
 } from '../types/GitTypes';
 import { GitValidator } from '../utils/GitValidator';
+import { createSimpleGit } from './simpleGitFactory';
 
 export class GitWrapper implements IGitWrapper {
   private gitInstances: Map<string, SimpleGit> = new Map();
@@ -22,14 +23,11 @@ export class GitWrapper implements IGitWrapper {
     const normalizedPath = path.resolve(repositoryPath);
     
     if (!this.gitInstances.has(normalizedPath)) {
-      const options: Partial<SimpleGitOptions> = {
+      const git = createSimpleGit({
         baseDir: normalizedPath,
-        binary: 'git',
         maxConcurrentProcesses: 6,
         trimmed: false
-      };
-      
-      const git = simpleGit(options);
+      });
       this.gitInstances.set(normalizedPath, git);
     }
     
@@ -109,7 +107,7 @@ export class GitWrapper implements IGitWrapper {
       cloneOptions.push('--branch', options.branch);
     }
     
-    const git = simpleGit();
+    const git = createSimpleGit();
     await git.clone(url, localPath, cloneOptions);
   }
 
