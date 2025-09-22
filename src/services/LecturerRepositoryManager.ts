@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import { execAsync } from '../utils/exec';
 import { GitLabTokenManager } from './GitLabTokenManager';
 import { ComputorApiService } from './ComputorApiService';
+import { createRepositoryBackup, isHistoryRewriteError } from '../utils/repositoryBackup';
 
 export class LecturerRepositoryManager {
   private workspaceRoot: string;
@@ -70,7 +71,57 @@ export class LecturerRepositoryManager {
       await execAsync(`git clone "${authUrl}" "${target}"`, { env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
     } else {
       report(`Pulling ${repoDir}...`);
-      await execAsync('git pull --ff-only', { cwd: target, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
+      try {
+        await execAsync('git pull --ff-only', { cwd: target, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
+      } catch (error: any) {
+        if (!isHistoryRewriteError(error)) {
+          console.warn(`[LecturerRepo] Failed to pull ${repoDir}:`, error);
+          throw error;
+        }
+
+        report(`Remote history changed for ${repoDir}. Backing up...`);
+        let backupPath: string | undefined;
+        try {
+          backupPath = await createRepositoryBackup(target, this.workspaceRoot, { repoName: repoDir });
+          if (backupPath) {
+            console.log(`[LecturerRepo] Backup created at ${backupPath}`);
+          }
+        } catch (backupError) {
+          console.error(`[LecturerRepo] Failed to create backup for ${repoDir}:`, backupError);
+        }
+
+        try {
+          await fs.promises.rm(target, { recursive: true, force: true });
+        } catch (removeError) {
+          console.error(`[LecturerRepo] Failed to remove ${repoDir} before re-clone:`, removeError);
+          vscode.window.showErrorMessage(`Computor could not reset lecturer repository "${repoDir}". Please remove it manually and retry.`);
+          throw removeError;
+        }
+
+        report(`Recreating ${repoDir} from origin...`);
+        try {
+          await execAsync(`git clone "${authUrl}" "${target}"`, { env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
+        } catch (cloneError) {
+          console.error(`[LecturerRepo] Re-clone failed for ${repoDir}:`, cloneError);
+          vscode.window.showErrorMessage(`Computor could not recreate lecturer repository "${repoDir}". Your files${backupPath ? ` were backed up at ${backupPath}` : ''}.`);
+          throw cloneError;
+        }
+
+        const actions: string[] = [];
+        if (backupPath) {
+          actions.push('Open Backup Folder');
+        }
+        actions.push('Dismiss');
+
+        const message = backupPath
+          ? `Lecturer repository "${repoDir}" was reset because the remote history changed. A backup without Git metadata is available at ${backupPath}. This event is unusual—if it happens repeatedly, please inform the course coordination team.`
+          : `Lecturer repository "${repoDir}" was reset because the remote history changed. This event is unusual—if it happens repeatedly, please inform the course coordination team.`;
+
+        const choice = await vscode.window.showWarningMessage(message, ...actions);
+        if (choice === 'Open Backup Folder' && backupPath) {
+          await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(backupPath));
+        }
+      }
     }
   }
 

@@ -6,6 +6,7 @@ import { ComputorApiService } from './ComputorApiService';
 import { GitLabTokenManager } from './GitLabTokenManager';
 import { execAsync } from '../utils/exec';
 import { CTGit } from '../git/CTGit';
+import { createRepositoryBackup, isHistoryRewriteError } from '../utils/repositoryBackup';
 
 interface RepositoryInfo {
   cloneUrl: string;
@@ -160,8 +161,8 @@ export class StudentRepositoryManager {
     if (!firstRepo) return;
     
     const gitlabUrl = new URL(firstRepo.cloneUrl).origin;
-    const token = await this.gitLabTokenManager.ensureTokenForUrl(gitlabUrl);
-    
+    let token = await this.gitLabTokenManager.ensureTokenForUrl(gitlabUrl);
+
     if (!token) {
       console.warn('[StudentRepositoryManager] No GitLab token available, skipping clone');
       return;
@@ -203,7 +204,7 @@ export class StudentRepositoryManager {
       const urlParts = cloneUrl.replace(/\.git$/, '').split('/');
       const repoName = urlParts[urlParts.length - 1] || 'repository';
       report(`Setting up ${repoName}...`);
-      await this.setupUniqueRepository(courseId, cloneUrl, repoInfos, token, courseContents, upstreamUrl, onProgress);
+      token = await this.setupUniqueRepository(courseId, cloneUrl, repoInfos, token, courseContents, upstreamUrl, onProgress);
     }
     
     // Also check for any existing repositories that might not have their directory field set
@@ -222,8 +223,9 @@ export class StudentRepositoryManager {
     courseContents: any[],
     upstreamUrl?: string,
     onProgress?: (message: string) => void
-  ): Promise<void> {
+  ): Promise<string> {
     const report = onProgress || (() => {});
+    let effectiveToken = token;
     // Create a unique directory name for this repository based on the URL
     // Extract repository name from clone URL
     const urlParts = cloneUrl.replace(/\.git$/, '').split('/');
@@ -237,55 +239,18 @@ export class StudentRepositoryManager {
     if (!repoExists) {
       console.log(`[StudentRepositoryManager] Cloning repository ${cloneUrl}`);
       report(`Cloning ${repoName}...`);
-      const authenticatedUrl = this.addTokenToUrl(cloneUrl, token);
-      
-      try {
-        // Simple clone
-        await execAsync(`git clone "${authenticatedUrl}" "${repoPath}"`, {
-          env: {
-            ...process.env,
-            GIT_TERMINAL_PROMPT: '0'
-          }
-        });
-        console.log(`[StudentRepositoryManager] Successfully cloned to ${repoPath}`);
-      } catch (error: any) {
-        console.error('[StudentRepositoryManager] Clone failed:', error);
-        
-        // If authentication failed, clear token and prompt for new one
-        if (this.isAuthenticationError(error)) {
-          console.log('[StudentRepositoryManager] Authentication failed, prompting for new token');
-          const gitlabUrl = new URL(cloneUrl).origin;
-          await this.gitLabTokenManager.removeToken(gitlabUrl);
-          
-          // Prompt for new token
-          const newToken = await this.gitLabTokenManager.ensureTokenForUrl(gitlabUrl);
-          if (newToken) {
-            // Retry with new token
-            const newAuthUrl = this.addTokenToUrl(cloneUrl, newToken);
-            await execAsync(`git clone "${newAuthUrl}" "${repoPath}"`, {
-              env: {
-                ...process.env,
-                GIT_TERMINAL_PROMPT: '0'
-              }
-            });
-          } else {
-            throw new Error('GitLab authentication required');
-          }
-        } else {
-          throw error;
-        }
-      }
+      effectiveToken = await this.cloneRepository(repoPath, cloneUrl, effectiveToken);
     } else {
       console.log(`[StudentRepositoryManager] Repository exists at ${repoPath}, updating`);
       report(`Updating ${repoName}...`);
-      await this.updateRepository(repoPath);
+      effectiveToken = await this.updateRepository(repoPath, cloneUrl, effectiveToken, repoName, report);
     }
-    
+
     // Sync fork with upstream if available
     if (upstreamUrl) {
       console.log('[StudentRepositoryManager] Checking if fork needs update from upstream');
       report('Checking for upstream updates...');
-      const updated = await this.syncForkWithUpstream(repoPath, upstreamUrl, token);
+      const updated = await this.syncForkWithUpstream(repoPath, upstreamUrl, effectiveToken);
       
       if (updated) {
         console.log('[StudentRepositoryManager] Fork was updated');
@@ -342,6 +307,7 @@ export class StudentRepositoryManager {
         }
       }
     }
+    return effectiveToken;
   }
 
   /**
@@ -627,10 +593,50 @@ export class StudentRepositoryManager {
     }
   }
   
+  private async cloneRepository(repoPath: string, cloneUrl: string, token: string): Promise<string> {
+    const attemptClone = async (activeToken: string): Promise<void> => {
+      const authenticatedUrl = this.addTokenToUrl(cloneUrl, activeToken);
+      await execAsync(`git clone "${authenticatedUrl}" "${repoPath}"`, {
+        env: {
+          ...process.env,
+          GIT_TERMINAL_PROMPT: '0'
+        }
+      });
+      console.log(`[StudentRepositoryManager] Successfully cloned to ${repoPath}`);
+    };
+
+    try {
+      await attemptClone(token);
+      return token;
+    } catch (error: any) {
+      console.error('[StudentRepositoryManager] Clone failed:', error);
+
+      if (!this.isAuthenticationError(error)) {
+        throw error;
+      }
+
+      const gitlabUrl = new URL(cloneUrl).origin;
+      await this.gitLabTokenManager.removeToken(gitlabUrl);
+      const refreshedToken = await this.gitLabTokenManager.ensureTokenForUrl(gitlabUrl);
+      if (!refreshedToken) {
+        throw new Error('GitLab authentication required');
+      }
+
+      await attemptClone(refreshedToken);
+      return refreshedToken;
+    }
+  }
+
   /**
    * Update an existing repository
    */
-  private async updateRepository(repoPath: string): Promise<void> {
+  private async updateRepository(
+    repoPath: string,
+    cloneUrl: string,
+    token: string,
+    repoName: string,
+    report: (message: string) => void
+  ): Promise<string> {
     try {
       await execAsync('git fetch --all', {
         cwd: repoPath,
@@ -639,12 +645,11 @@ export class StudentRepositoryManager {
           GIT_TERMINAL_PROMPT: '0'
         }
       });
-      
-      // Only pull if we're on a branch (not detached HEAD)
+
       const { stdout: branch } = await execAsync('git symbolic-ref --short HEAD 2>/dev/null || echo "DETACHED"', {
         cwd: repoPath
       });
-      
+
       if (branch.trim() !== 'DETACHED') {
         await execAsync('git pull --ff-only', {
           cwd: repoPath,
@@ -654,9 +659,60 @@ export class StudentRepositoryManager {
           }
         });
       }
-    } catch (error) {
+      return token;
+    } catch (error: any) {
       console.warn(`[StudentRepositoryManager] Failed to update repository at ${repoPath}:`, error);
-      // Don't throw - continue with other repos
+
+      if (!isHistoryRewriteError(error)) {
+        return token;
+      }
+
+      report(`Detected remote replacement for ${repoName}. Creating backup...`);
+
+      let backupPath: string | undefined;
+      try {
+        backupPath = await createRepositoryBackup(repoPath, this.workspaceRoot, { repoName });
+        if (backupPath) {
+          console.log(`[StudentRepositoryManager] Backup created at ${backupPath}`);
+        }
+      } catch (backupError) {
+        console.error(`[StudentRepositoryManager] Failed to create backup for ${repoPath}:`, backupError);
+      }
+
+      try {
+        await fs.promises.rm(repoPath, { recursive: true, force: true });
+      } catch (removeError) {
+        console.error(`[StudentRepositoryManager] Failed to remove repository at ${repoPath}:`, removeError);
+        vscode.window.showErrorMessage(`Computor could not reset the repository "${repoName}". Please remove it manually and try again.`);
+        throw removeError;
+      }
+
+      report(`Recreating ${repoName} from origin...`);
+      let refreshedToken = token;
+      try {
+        refreshedToken = await this.cloneRepository(repoPath, cloneUrl, token);
+      } catch (cloneError) {
+        console.error(`[StudentRepositoryManager] Re-clone failed for ${repoPath}:`, cloneError);
+        vscode.window.showErrorMessage(`Computor could not recreate the repository "${repoName}". Your previous files${backupPath ? ` were backed up at ${backupPath}` : ''}.`);
+        throw cloneError;
+      }
+
+      const actions: string[] = [];
+      if (backupPath) {
+        actions.push('Open Backup Folder');
+      }
+      actions.push('Dismiss');
+
+      const message = backupPath
+        ? `The repository "${repoName}" was reset because the remote history changed. A backup without Git metadata is available at ${backupPath}. This is unusual—if it happens again, please inform your course instructor.`
+        : `The repository "${repoName}" was reset because the remote history changed. This is unusual—if it happens again, please inform your course instructor.`;
+
+      const choice = await vscode.window.showWarningMessage(message, ...actions);
+      if (choice === 'Open Backup Folder' && backupPath) {
+        await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(backupPath));
+      }
+
+      return refreshedToken;
     }
   }
 

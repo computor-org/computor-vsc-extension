@@ -1101,18 +1101,21 @@ export class ComputorApiService {
 
   async validateCourseReadiness(
     courseId: string,
-    params?: CourseMemberValidationRequest
+    providerAccessToken: string
   ): Promise<CourseMemberReadinessStatus> {
     try {
-      const client = await this.getHttpClient();
-      const query = params ? new URLSearchParams() : undefined;
-      if (params?.provider_access_token) {
-        query!.append('provider_access_token', params.provider_access_token);
+      const token = providerAccessToken?.trim();
+      if (!token) {
+        throw new Error('Provider access token is required for readiness validation.');
       }
-      const url = query && query.toString().length > 0
-        ? `/user/courses/${courseId}/validate?${query.toString()}`
-        : `/user/courses/${courseId}/validate`;
-      const response = await client.get<CourseMemberReadinessStatus>(url);
+      const client = await this.getHttpClient();
+      const payload: CourseMemberValidationRequest = {
+        provider_access_token: token
+      };
+      const response = await client.post<CourseMemberReadinessStatus>(
+        `/user/courses/${courseId}/validate`,
+        payload
+      );
       return response.data;
     } catch (error) {
       console.error('Failed to validate course readiness:', error);
