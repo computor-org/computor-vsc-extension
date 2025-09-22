@@ -52,11 +52,6 @@
         "category": "Computor Tutor"
       },
       {
-        "command": "computor.logout",
-        "title": "Computor: Logout",
-        "category": "Computor"
-      },
-      {
         "command": "computor.changeRealmUrl",
         "title": "Computor: Change Backend URL",
         "category": "Computor"
