@@ -38,6 +38,7 @@ import {
   CourseMemberGet,
   CourseMemberProviderAccountUpdate,
   CourseMemberReadinessStatus,
+  CourseMemberValidationRequest,
   TaskResponse,
   TestCreate,
   CourseContentDeploymentGet,
@@ -1098,15 +1099,26 @@ export class ComputorApiService {
     return result;
   }
 
-  async validateCourseReadiness(courseId: string): Promise<CourseMemberReadinessStatus> {
+  async validateCourseReadiness(
+    courseId: string,
+    params?: CourseMemberValidationRequest
+  ): Promise<CourseMemberReadinessStatus> {
     try {
       const client = await this.getHttpClient();
-      const response = await client.get<CourseMemberReadinessStatus>(`/user/courses/${courseId}/validate`);
+      const query = params ? new URLSearchParams() : undefined;
+      if (params?.provider_access_token) {
+        query!.append('provider_access_token', params.provider_access_token);
+      }
+      const url = query && query.toString().length > 0
+        ? `/user/courses/${courseId}/validate?${query.toString()}`
+        : `/user/courses/${courseId}/validate`;
+      const response = await client.get<CourseMemberReadinessStatus>(url);
       return response.data;
     } catch (error) {
       console.error('Failed to validate course readiness:', error);
+      const status = (error as any)?.response?.status;
       const message = (error as any)?.response?.data?.detail || (error as Error)?.message;
-      if (message) {
+      if (message && status !== 401) {
         vscode.window.showWarningMessage(`Course readiness check failed: ${message}`);
       }
       throw error;
@@ -1127,7 +1139,10 @@ export class ComputorApiService {
     } catch (error: any) {
       console.error('Failed to register provider account for course:', error);
       const detail = error?.response?.data?.detail || error?.message || 'Registration failed';
-      vscode.window.showErrorMessage(detail);
+      const status = error?.response?.status;
+      if (status !== 400 && status !== 401 && status !== 422) {
+        vscode.window.showErrorMessage(detail);
+      }
       throw error;
     }
   }

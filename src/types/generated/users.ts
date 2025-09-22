@@ -18,8 +18,13 @@ import type { StudentProfileGet } from './common';
 export interface CourseMemberProviderAccountUpdate {
   /** Account identifier on the external provider (e.g., GitLab username) */
   provider_account_id: string;
+  /** Personal access token or credential to verify provider ownership */
+  provider_access_token?: string | null;
 }
 
+/**
+ * Optional query payload sent when validating course readiness.
+ */
 export interface UserGroupCreate {
   /** User ID */
   user_id: string;
