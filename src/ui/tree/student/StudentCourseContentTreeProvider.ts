@@ -87,18 +87,26 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     async refreshContentItem(contentId: string): Promise<void> {
         try {
             const selectedCourseId = this.courseSelection.getCurrentCourseId();
-            const updated = await this.apiService.getStudentCourseContent(contentId, { force: true });
-            if (!updated) { this._onDidChangeTreeData.fire(undefined); return; }
+            let updated = await this.apiService.getStudentCourseContent(contentId, { force: true });
 
             if (selectedCourseId) {
-                let list = this.courseContentsCache.get(selectedCourseId);
-                if (!list) {
-                    list = await this.apiService.getStudentCourseContents(selectedCourseId, { force: true }) || [];
+                // Always refresh the cached course contents so we preserve
+                // enriched fields (type metadata, colors, etc.) that the
+                // single-content endpoint omits.
+                const refreshedList = await this.apiService.getStudentCourseContents(selectedCourseId, { force: true }) || [];
+                this.courseContentsCache.set(selectedCourseId, refreshedList);
+                if (this.repositoryManager) {
+                    this.repositoryManager.updateExistingRepositoryPaths(selectedCourseId, refreshedList);
                 }
-                const idx = list.findIndex(c => c.id === contentId);
-                if (idx >= 0) list[idx] = updated; else list.push(updated);
-                this.courseContentsCache.set(selectedCourseId, list);
+
+                // Prefer the freshly cached entry so we retain content type data.
+                const refreshed = refreshedList.find(c => c.id === contentId);
+                if (refreshed) {
+                    updated = refreshed;
+                }
             }
+
+            if (!updated) { this._onDidChangeTreeData.fire(undefined); return; }
 
             const ti = this.itemIndex.get(contentId);
             if (ti && ti instanceof CourseContentItem) {
