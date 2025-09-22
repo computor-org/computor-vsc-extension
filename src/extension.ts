@@ -627,6 +627,18 @@ class UnifiedController {
     const treeView = vscode.window.createTreeView('computor.student.courses', { treeDataProvider: tree, showCollapseAll: true });
     this.disposables.push(treeView);
 
+    const studentExpandListener = treeView.onDidExpandElement((event) => {
+      const element = event.element;
+      if (!element) return;
+      void tree.onTreeItemExpanded(element);
+    });
+    const studentCollapseListener = treeView.onDidCollapseElement((event) => {
+      const element = event.element;
+      if (!element) return;
+      void tree.onTreeItemCollapsed(element);
+    });
+    this.disposables.push(studentExpandListener, studentCollapseListener);
+
     // Set selected course into service
     await courseSelectionService.selectCourse(courseId);
 
@@ -719,6 +731,18 @@ class UnifiedController {
     });
     this.disposables.push(treeView);
 
+    const lecturerExpandListener = treeView.onDidExpandElement((event) => {
+      const elementId = event.element?.id;
+      if (!elementId) return;
+      void tree.setNodeExpanded(elementId, true);
+    });
+    const lecturerCollapseListener = treeView.onDidCollapseElement((event) => {
+      const elementId = event.element?.id;
+      if (!elementId) return;
+      void tree.setNodeExpanded(elementId, false);
+    });
+    this.disposables.push(lecturerExpandListener, lecturerCollapseListener);
+
     const exampleTree = new LecturerExampleTreeProvider(this.context, api);
     const exampleTreeView = vscode.window.createTreeView('computor.lecturer.examples', {
       treeDataProvider: exampleTree,
@@ -776,100 +800,100 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
   if (isAuthenticating) { vscode.window.showInformationMessage('Login already in progress.'); return; }
   isAuthenticating = true;
 
-  // Require an open workspace before proceeding
-  const root = getWorkspaceRoot();
-  if (!root) {
-    const action = await vscode.window.showErrorMessage('Login requires an open workspace.', 'Open Folder');
-    if (action === 'Open Folder') {
-      // Let the user select a folder to open as workspace
-      const folderUri = await vscode.window.showOpenDialog({
-        canSelectFolders: true,
-        canSelectFiles: false,
-        canSelectMany: false,
-        openLabel: 'Select Workspace Folder'
-      });
-
-      if (folderUri && folderUri.length > 0) {
-        // Store pending login info before workspace change
-        await context.globalState.update('pendingLogin', {
-          timestamp: Date.now()
+  try {
+    // Require an open workspace before proceeding
+    const root = getWorkspaceRoot();
+    if (!root) {
+      const action = await vscode.window.showErrorMessage('Login requires an open workspace.', 'Open Folder');
+      if (action === 'Open Folder') {
+        // Let the user select a folder to open as workspace
+        const folderUri = await vscode.window.showOpenDialog({
+          canSelectFolders: true,
+          canSelectFiles: false,
+          canSelectMany: false,
+          openLabel: 'Select Workspace Folder'
         });
 
-        // Add the folder to the current workspace
-        // This will restart the extension if no workspace was open
-        const workspaceFolders = vscode.workspace.workspaceFolders || [];
-        vscode.workspace.updateWorkspaceFolders(
-          workspaceFolders.length,
-          0,
-          { uri: folderUri[0]!, name: path.basename(folderUri[0]!.fsPath) }
-        );
+        if (folderUri && folderUri.length > 0) {
+          // Store pending login info before workspace change
+          await context.globalState.update('pendingLogin', {
+            timestamp: Date.now()
+          });
+
+          // Add the folder to the current workspace
+          // This will restart the extension if no workspace was open
+          const workspaceFolders = vscode.workspace.workspaceFolders || [];
+          vscode.workspace.updateWorkspaceFolders(
+            workspaceFolders.length,
+            0,
+            { uri: folderUri[0]!, name: path.basename(folderUri[0]!.fsPath) }
+          );
+        }
       }
+      return;
     }
-    isAuthenticating = false;
-    return;
-  }
 
-  const settings = new ComputorSettingsManager(context);
-  const baseUrl = await ensureBaseUrl(settings);
-  if (!baseUrl) { isAuthenticating = false; return; }
+    const settings = new ComputorSettingsManager(context);
+    const baseUrl = await ensureBaseUrl(settings);
+    if (!baseUrl) { return; }
 
-  // If already logged in, ask if user wants to re-login
-  if (activeSession) {
-    const currentViews = activeSession.getActiveViews();
-    const answer = await vscode.window.showWarningMessage(
-      `Already logged in with views: ${currentViews.join(', ')}. Re-login?`,
-      'Re-login', 'Cancel'
-    );
-    if (answer !== 'Re-login') { isAuthenticating = false; return; }
-    await activeSession.deactivate();
-    activeSession = null;
-  }
+    // If already logged in, ask if user wants to re-login
+    if (activeSession) {
+      const currentViews = activeSession.getActiveViews();
+      const answer = await vscode.window.showWarningMessage(
+        `Already logged in with views: ${currentViews.join(', ')}. Re-login?`,
+        'Re-login', 'Cancel'
+      );
+      if (answer !== 'Re-login') { return; }
+      await activeSession.deactivate();
+      activeSession = null;
+    }
 
-  // Prompt for authentication - use generic auth since we don't know roles yet
-  const secretKey = 'computor.auth';
-  const storedRaw = await context.secrets.get(secretKey);
-  const previous: StoredAuth | undefined = storedRaw ? JSON.parse(storedRaw) as StoredAuth : undefined;
-  const type = await chooseAuthType(settings, previous?.type);
-  if (!type) { isAuthenticating = false; return; }
-  const creds = await promptCredentials('Student', type, settings, previous);
-  if (!creds) { isAuthenticating = false; return; }
-  const auth: StoredAuth = creds;
+    // Prompt for authentication - use generic auth since we don't know roles yet
+    const secretKey = 'computor.auth';
+    const storedRaw = await context.secrets.get(secretKey);
+    const previous: StoredAuth | undefined = storedRaw ? JSON.parse(storedRaw) as StoredAuth : undefined;
+    const type = await chooseAuthType(settings, previous?.type);
+    if (!type) { return; }
+    const creds = await promptCredentials('Student', type, settings, previous);
+    if (!creds) { return; }
+    const auth: StoredAuth = creds;
 
-  backendConnectionService.setBaseUrl(baseUrl);
-  const connectionStatus = await backendConnectionService.checkBackendConnection(baseUrl);
-  if (!connectionStatus.isReachable) {
-    await backendConnectionService.showConnectionError(connectionStatus);
-    isAuthenticating = false;
-    return;
-  }
+    backendConnectionService.setBaseUrl(baseUrl);
+    const connectionStatus = await backendConnectionService.checkBackendConnection(baseUrl);
+    if (!connectionStatus.isReachable) {
+      await backendConnectionService.showConnectionError(connectionStatus);
+      return;
+    }
 
-  const client = buildHttpClient(baseUrl, auth);
-  const controller = new UnifiedController(context);
+    const client = buildHttpClient(baseUrl, auth);
+    const controller = new UnifiedController(context);
 
-  try {
-    await controller.activate(client as any);
-    backendConnectionService.startHealthCheck(baseUrl);
+    try {
+      await controller.activate(client as any);
+      backendConnectionService.startHealthCheck(baseUrl);
 
-    activeSession = {
-      deactivate: () => controller.dispose().then(async () => {
-        await vscode.commands.executeCommand('setContext', 'computor.isLoggedIn', false);
-        await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
-        await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
-        await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
-        backendConnectionService.stopHealthCheck();
-      }),
-      getActiveViews: () => controller.getActiveViews()
-    };
+      activeSession = {
+        deactivate: () => controller.dispose().then(async () => {
+          await vscode.commands.executeCommand('setContext', 'computor.isLoggedIn', false);
+          await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
+          await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
+          await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
+          backendConnectionService.stopHealthCheck();
+        }),
+        getActiveViews: () => controller.getActiveViews()
+      };
 
-    await context.secrets.store(secretKey, JSON.stringify(auth));
-    await vscode.commands.executeCommand('setContext', 'computor.isLoggedIn', true);
+      await context.secrets.store(secretKey, JSON.stringify(auth));
+      await vscode.commands.executeCommand('setContext', 'computor.isLoggedIn', true);
 
-    const activeViews = controller.getActiveViews();
-    vscode.window.showInformationMessage(`Logged in with views: ${activeViews.join(', ')}.`);
-  } catch (error: any) {
-    await controller.dispose();
-    vscode.window.showErrorMessage(`Failed to login: ${error?.message || error}`);
-    backendConnectionService.stopHealthCheck();
+      const activeViews = controller.getActiveViews();
+      vscode.window.showInformationMessage(`Logged in with views: ${activeViews.join(', ')}.`);
+    } catch (error: any) {
+      await controller.dispose();
+      vscode.window.showErrorMessage(`Failed to login: ${error?.message || error}`);
+      backendConnectionService.stopHealthCheck();
+    }
   } finally {
     isAuthenticating = false;
   }
