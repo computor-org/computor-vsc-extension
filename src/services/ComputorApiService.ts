@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import FormData = require('form-data');
 import { BasicAuthHttpClient } from '../http/BasicAuthHttpClient';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { errorRecoveryService } from './ErrorRecoveryService';
@@ -1855,12 +1856,22 @@ export class ComputorApiService {
   }
 
   // Student submission API
-  async createStudentSubmission(payload: SubmissionCreate): Promise<SubmissionUploadResponseModel | undefined> {
+  async createStudentSubmission(
+    payload: SubmissionCreate,
+    archive: { buffer: Buffer; fileName: string; contentType?: string }
+  ): Promise<SubmissionUploadResponseModel | undefined> {
     try {
       const client = await this.getHttpClient();
+      const formData = new FormData();
+      formData.append('submission_create', JSON.stringify(payload));
+      formData.append('file', archive.buffer, {
+        filename: archive.fileName,
+        contentType: archive.contentType || 'application/zip'
+      });
+
       const response = await client.post<SubmissionUploadResponseModel>(
-        '/students/submissions',
-        payload
+        '/submissions',
+        formData
       );
       return response.data;
     } catch (error: any) {
