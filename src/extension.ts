@@ -568,7 +568,7 @@ class UnifiedController {
       await vscode.commands.executeCommand('setContext', 'computor.student.show', true);
     }
     if (views.includes('tutor')) {
-      await this.initializeTutorView(api);
+      await this.initializeTutorView(api, courseId);
       await vscode.commands.executeCommand('setContext', 'computor.tutor.show', true);
     }
     if (views.includes('lecturer')) {
@@ -627,12 +627,25 @@ class UnifiedController {
     this.disposables.push(vscode.commands.registerCommand('computor.results.panel.update', (item: any) => panelProvider.updateTestResults(item)));
   }
 
-  private async initializeTutorView(api: ComputorApiService): Promise<void> {
+  private async initializeTutorView(api: ComputorApiService, courseId: string): Promise<void> {
     // Register filter panel and tree
     const { TutorFilterPanelProvider } = await import('./ui/panels/TutorFilterPanel');
     const { TutorSelectionService } = await import('./services/TutorSelectionService');
     const { TutorStatusBarService } = await import('./ui/TutorStatusBarService');
     const selection = TutorSelectionService.initialize(this.context, api);
+
+    const currentCourseId = selection.getCurrentCourseId();
+    const currentCourseLabel = selection.getCurrentCourseLabel();
+    if (currentCourseId !== courseId || !currentCourseLabel) {
+      let resolvedLabel: string | null = null;
+      try {
+        const tutorCourse = await api.getTutorCourse(courseId);
+        resolvedLabel = tutorCourse?.title || tutorCourse?.path || null;
+      } catch (err) {
+        console.warn('Failed to resolve tutor course label:', err);
+      }
+      await selection.selectCourse(courseId, resolvedLabel ?? currentCourseLabel ?? courseId);
+    }
     const filterProvider = new TutorFilterPanelProvider(this.context.extensionUri, api, selection);
     this.disposables.push(vscode.window.registerWebviewViewProvider(TutorFilterPanelProvider.viewType, filterProvider));
 
@@ -655,9 +668,13 @@ class UnifiedController {
 
     // Reset filters command
     this.disposables.push(vscode.commands.registerCommand('computor.tutor.resetFilters', async () => {
-      await selection.selectCourse(null);
-      await selection.selectGroup(null);
-      await selection.selectMember(null);
+      const id = selection.getCurrentCourseId();
+      if (!id) {
+        return;
+      }
+      const label = selection.getCurrentCourseLabel();
+      await selection.selectCourse(id, label);
+      filterProvider.refreshFilters();
     }));
 
     const commands = new TutorCommands(this.context, tree, api);
