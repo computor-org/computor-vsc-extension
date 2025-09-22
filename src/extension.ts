@@ -472,6 +472,8 @@ class UnifiedController {
 
     await GitEnvironmentService.getInstance().validateGitEnvironment();
 
+    // Refresh GitLab tokens in workspace repositories after login
+    await this.refreshWorkspaceGitLabTokens();
 
     // Focus on the highest priority view: lecturer > tutor > student
     await this.focusHighestPriorityView(availableViews);
@@ -612,6 +614,27 @@ class UnifiedController {
       } catch (err) {
         console.warn(`Failed to focus on ${viewToFocus} view:`, err);
       }
+    }
+  }
+
+  private async refreshWorkspaceGitLabTokens(): Promise<void> {
+    try {
+      const { GitLabTokenManager } = await import('./services/GitLabTokenManager');
+      const tokenManager = GitLabTokenManager.getInstance(this.context);
+
+      // Get all stored GitLab URLs that we have tokens for
+      const gitlabUrls = await tokenManager.getStoredGitLabUrls();
+
+      // Refresh tokens for each GitLab instance
+      for (const gitlabUrl of gitlabUrls) {
+        await tokenManager.refreshWorkspaceGitCredentials(gitlabUrl);
+      }
+
+      if (gitlabUrls.length > 0) {
+        console.log(`[UnifiedController] Refreshed GitLab tokens for ${gitlabUrls.length} GitLab instances`);
+      }
+    } catch (error) {
+      console.warn('[UnifiedController] Failed to refresh workspace GitLab tokens:', error);
     }
   }
 
@@ -914,6 +937,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // Unified login command
   context.subscriptions.push(vscode.commands.registerCommand('computor.login', async () => unifiedLoginFlow(context)));
+
   context.subscriptions.push(vscode.commands.registerCommand('computor.manageGitLabTokens', async () => {
     await manageGitLabTokens(context);
   }));
