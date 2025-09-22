@@ -22,9 +22,6 @@ export interface CourseMemberProviderAccountUpdate {
   provider_access_token?: string | null;
 }
 
-/**
- * Optional query payload sent when validating course readiness.
- */
 export interface UserGroupCreate {
   /** User ID */
   user_id: string;
