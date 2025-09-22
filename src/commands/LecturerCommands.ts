@@ -19,7 +19,7 @@ import { hasExampleAssigned, getExampleVersionId, getDeploymentStatus } from '..
 import type { CourseContentTypeList, CourseList, CourseFamilyList, CourseContentGet } from '../types/generated/courses';
 import type { OrganizationList } from '../types/generated/organizations';
 import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager';
-import simpleGit from 'simple-git';
+import { createSimpleGit } from '../git/simpleGitFactory';
 
 interface ExampleQuickPickItem extends vscode.QuickPickItem {
   example: ExampleGet;
@@ -979,7 +979,7 @@ export class LecturerCommands {
       throw new Error('Assignments repository is not available locally. Run "Sync assignments" first.');
     }
 
-    const git = simpleGit(repoRoot);
+    const git = createSimpleGit({ baseDir: repoRoot });
     const initialStatus = await git.status();
     if (initialStatus.isClean()) {
       const head = (await git.revparse(['HEAD'])).trim();
@@ -1731,7 +1731,8 @@ export class LecturerCommands {
           const repoManager = new LecturerRepositoryManager(this.context, this.apiService);
           const repoRoot = repoManager.getAssignmentsRepoRoot(course);
           if (repoRoot && fs.existsSync(repoRoot)) {
-            repoHead = (await simpleGit(repoRoot).revparse(['HEAD'])).trim();
+            const git = createSimpleGit({ baseDir: repoRoot });
+            repoHead = (await git.revparse(['HEAD'])).trim();
             console.log(`[Release] Assignments HEAD commit: ${repoHead}`);
           }
         }

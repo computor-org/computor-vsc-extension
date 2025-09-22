@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import simpleGit, { SimpleGit, SimpleGitOptions } from 'simple-git';
+import { SimpleGit } from 'simple-git';
+import { createSimpleGit } from './simpleGitFactory';
 
 function openFileInMergeEditor(filePath: string): void {
   void vscode.workspace.openTextDocument(filePath).then((document) => {
@@ -15,14 +16,11 @@ export class CTGit {
   constructor(repoPath: string) {
     this.repoPath = repoPath;
 
-    const options: Partial<SimpleGitOptions> = {
+    this.simpleGit = createSimpleGit({
       baseDir: this.repoPath,
-      binary: 'git',
       maxConcurrentProcesses: 6,
       trimmed: false
-    };
-
-    this.simpleGit = simpleGit(options);
+    });
   }
 
   async hasUnmergedPaths(): Promise<string[]> {
