@@ -5,6 +5,7 @@ import { IconGenerator } from './utils/IconGenerator';
 
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
 import { ComputorApiService } from './services/ComputorApiService';
+import { CourseMemberReadinessStatus } from './types/generated';
 
 import { BasicAuthHttpClient } from './http/BasicAuthHttpClient';
 import { ApiKeyHttpClient } from './http/ApiKeyHttpClient';
@@ -219,6 +220,98 @@ async function ensureCourseMarker(role: Extract<Role, 'Student' | 'Tutor'>, api:
   return pick.course.id as string;
 }
 
+function formatProviderLabel(status: CourseMemberReadinessStatus): string {
+  if (status.provider) {
+    try {
+      const providerUrl = new URL(status.provider);
+      return providerUrl.host;
+    } catch {
+      return status.provider;
+    }
+  }
+  if (status.provider_type) {
+    const label = status.provider_type.trim();
+    if (label.toLowerCase() === 'gitlab') {
+      return 'GitLab';
+    }
+    return label;
+  }
+  return 'provider';
+}
+
+async function ensureCourseMemberProviderAccount(
+  api: ComputorApiService,
+  courseId: string,
+  courseLabel: string,
+  currentUser?: { id?: string; username?: string },
+  seenCourseMemberIds?: Set<string>
+): Promise<void> {
+  const user = currentUser ?? await api.getCurrentUser();
+  if (!user?.id) {
+    return;
+  }
+
+  const member = await api.getCourseMemberForUser(courseId, user.id);
+  if (!member) {
+    console.warn(`[Readiness] No course member found for user ${user.id} in course ${courseId}`);
+    return;
+  }
+
+  if (seenCourseMemberIds) {
+    if (seenCourseMemberIds.has(member.id)) {
+      return;
+    }
+    seenCourseMemberIds.add(member.id);
+  }
+
+  const readiness = await api.validateCourseMemberReadiness(member.id);
+  if (!readiness) {
+    return;
+  }
+
+  if (!readiness.requires_account) {
+    return;
+  }
+
+  const providerLabel = formatProviderLabel(readiness);
+  let accountId = readiness.provider_account_id?.trim() ?? '';
+
+  if (!accountId) {
+    const suggestedAccount = user.username ? user.username.trim() : '';
+    accountId = await vscode.window.showInputBox({
+      title: `Link ${providerLabel} account`,
+      prompt: `Enter the ${providerLabel} account ID to use for ${courseLabel}`,
+      value: suggestedAccount,
+      ignoreFocusOut: true,
+      validateInput: (value) => {
+        const trimmed = value.trim();
+        return trimmed.length === 0 ? 'Account ID is required' : undefined;
+      }
+    }) || '';
+
+    accountId = accountId.trim();
+
+    if (!accountId) {
+      vscode.window.showWarningMessage(`A ${providerLabel} account is required for ${courseLabel}. You can register it later from the Computor commands.`);
+      return;
+    }
+  }
+
+  const updated = await api.registerCourseMemberProviderAccount(member.id, {
+    provider_account_id: accountId
+  });
+
+  if (!updated) {
+    return;
+  }
+
+  if (!readiness.is_ready && updated.is_ready) {
+    vscode.window.showInformationMessage(`${providerLabel} account "${accountId}" linked for ${courseLabel}.`);
+  } else if (!updated.is_ready) {
+    vscode.window.showWarningMessage(`Your ${providerLabel} account for ${courseLabel} still needs attention. Please verify the account ID.`);
+  }
+}
+
 abstract class BaseRoleController {
   protected context: vscode.ExtensionContext;
   protected settings: ComputorSettingsManager;
@@ -257,9 +350,11 @@ class LecturerController extends BaseRoleController {
 
   async activate(client: ReturnType<typeof buildHttpClient>): Promise<void> {
     const api = await this.setupApi(client);
+    let lecturerCourses: any[] | undefined;
     try {
       const resp = await client.get<any[]>('/lecturers/courses');
-      if (!resp.data || resp.data.length === 0) {
+      lecturerCourses = resp.data;
+      if (!lecturerCourses || lecturerCourses.length === 0) {
         vscode.window.showWarningMessage('No lecturer courses found.');
       }
     } catch (e) {
@@ -278,6 +373,19 @@ class LecturerController extends BaseRoleController {
       }
     } catch (err) {
       console.warn('Failed to ensure .computor_lecturer marker:', err);
+    }
+
+    const lecturerUser = await api.getCurrentUser();
+    const seenLecturerMembers = new Set<string>();
+    if (lecturerCourses) {
+      for (const course of lecturerCourses) {
+        const courseId = course?.id;
+        if (!courseId) {
+          continue;
+        }
+        const courseLabel = course?.title || course?.path || courseId;
+        await ensureCourseMemberProviderAccount(api, courseId, courseLabel, lecturerUser, seenLecturerMembers);
+      }
     }
 
     this.tree = new LecturerTreeDataProvider(this.context, api);
@@ -333,9 +441,10 @@ class TutorController extends BaseRoleController {
   async activate(client: ReturnType<typeof buildHttpClient>): Promise<void> {
     const api = await this.setupApi(client);
 
+    let tutorCourses: any[] | undefined;
     try {
-      const courses = await api.getTutorCourses(false);
-      if (!courses || courses.length === 0) {
+      tutorCourses = await api.getTutorCourses(false);
+      if (!tutorCourses || tutorCourses.length === 0) {
         vscode.window.showWarningMessage('No tutor courses found.');
       }
     } catch (e) {
@@ -345,6 +454,19 @@ class TutorController extends BaseRoleController {
 
     // Ensure tutor marker exists (no course binding)
     await ensureCourseMarker('Tutor', api, this.context);
+
+    const tutorUser = await api.getCurrentUser();
+    const seenTutorMembers = new Set<string>();
+    if (tutorCourses) {
+      for (const course of tutorCourses) {
+        const courseId = course?.id;
+        if (!courseId) {
+          continue;
+        }
+        const courseLabel = course?.title || course?.path || courseId;
+        await ensureCourseMemberProviderAccount(api, courseId, courseLabel, tutorUser, seenTutorMembers);
+      }
+    }
 
     // Register filter panel and tree
     const { TutorFilterPanelProvider } = await import('./ui/panels/TutorFilterPanel');
@@ -412,8 +534,17 @@ class StudentController extends BaseRoleController {
     const treeView = vscode.window.createTreeView('computor.student.courses', { treeDataProvider: this.tree, showCollapseAll: true });
     this.disposables.push(treeView);
 
+    const currentUser = await api.getCurrentUser();
+
     // Set selected course into service
-    await this.courseSelectionService!.selectCourse(courseId);
+    const selectedCourse = await this.courseSelectionService!.selectCourse(courseId);
+
+    await ensureCourseMemberProviderAccount(
+      api,
+      courseId,
+      selectedCourse?.title || selectedCourse?.path || courseId,
+      currentUser
+    );
 
     // Auto-setup repositories
     await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Preparing course repositories...', cancellable: false }, async (progress) => {

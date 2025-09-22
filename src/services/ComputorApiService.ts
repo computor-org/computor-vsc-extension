@@ -36,6 +36,8 @@ import {
   CourseGroupUpdate,
   CourseMemberList,
   CourseMemberGet,
+  CourseMemberProviderAccountUpdate,
+  CourseMemberReadinessStatus,
   TaskResponse,
   TestCreate,
   CourseContentDeploymentGet,
@@ -1094,6 +1096,55 @@ export class ComputorApiService {
     multiTierCache.set(cacheKey, result, 'warm');
     
     return result;
+  }
+
+  async getCourseMemberForUser(courseId: string, userId: string): Promise<CourseMemberList | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const params = new URLSearchParams();
+      params.append('course_id', courseId);
+      params.append('user_id', userId);
+      const response = await client.get<CourseMemberList[]>(`/course-members?${params.toString()}`);
+      const [member] = response.data ?? [];
+      return member;
+    } catch (error) {
+      console.warn('Failed to resolve course member for current user:', error);
+      return undefined;
+    }
+  }
+
+  async validateCourseMemberReadiness(courseMemberId: string): Promise<CourseMemberReadinessStatus | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<CourseMemberReadinessStatus>(`/course-members/${courseMemberId}/validate`);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to validate course member readiness:', error);
+      const message = (error as any)?.response?.data?.detail || (error as Error)?.message;
+      if (message) {
+        vscode.window.showWarningMessage(`Course readiness check failed: ${message}`);
+      }
+      return undefined;
+    }
+  }
+
+  async registerCourseMemberProviderAccount(
+    courseMemberId: string,
+    payload: CourseMemberProviderAccountUpdate
+  ): Promise<CourseMemberReadinessStatus | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.post<CourseMemberReadinessStatus>(
+        `/course-members/${courseMemberId}/register`,
+        payload
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error('Failed to register course member provider account:', error);
+      const detail = error?.response?.data?.detail || error?.message || 'Registration failed';
+      vscode.window.showErrorMessage(detail);
+      return undefined;
+    }
   }
 
   /**
