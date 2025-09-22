@@ -1184,7 +1184,7 @@ export class ComputorApiService {
     try {
       const result = await errorRecoveryService.executeWithRecovery(async () => {
         const client = await this.getHttpClient();
-        const response = await client.get<any>('/users');
+        const response = await client.get<any>('/user');
         return response.data;
       }, {
         maxRetries: 2,
