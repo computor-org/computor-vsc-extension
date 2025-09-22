@@ -178,6 +178,7 @@ export interface StudentProfileQuery {
 export interface SubmissionCreate {
   course_submission_group_id: string;
   version_identifier?: string | null;
+  submit?: boolean;
 }
 
 /**
@@ -200,6 +201,47 @@ export interface SubmissionUploadResponseModel {
   total_size: number;
   submitted_at: string;
   version_identifier: string;
+}
+
+/**
+ * List item representation for manual submissions stored as results.
+ */
+export interface SubmissionListItem {
+  /** Creation timestamp */
+  created_at?: string | null;
+  /** Update timestamp */
+  updated_at?: string | null;
+  id: string;
+  submit: boolean;
+  course_member_id: string;
+  course_content_id: string;
+  course_submission_group_id?: string | null;
+  execution_backend_id?: string | null;
+  test_system_id?: string | null;
+  version_identifier: string;
+  reference_version_identifier?: string | null;
+  status: TaskStatus;
+  result: number;
+  result_json?: Record<string, any> | null;
+  properties?: Record<string, any> | null;
+}
+
+/**
+ * Query parameters for listing manual submissions.
+ */
+export interface SubmissionQuery {
+  skip?: number | null;
+  limit?: number | null;
+  id?: string | null;
+  submit?: boolean | null;
+  course_member_id?: string | null;
+  course_submission_group_id?: string | null;
+  course_content_id?: string | null;
+  execution_backend_id?: string | null;
+  test_system_id?: string | null;
+  version_identifier?: string | null;
+  reference_version_identifier?: string | null;
+  status?: TaskStatus | null;
 }
 
 /**
