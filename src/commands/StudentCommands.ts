@@ -7,10 +7,9 @@ import { ComputorApiService } from '../services/ComputorApiService';
 import { GitBranchManager } from '../services/GitBranchManager';
 import { CourseSelectionService } from '../services/CourseSelectionService';
 import { TestResultService } from '../services/TestResultService';
-import { SubmissionGroupStudentList, SubmissionGroupStudentGet, MessageCreate, CourseContentStudentList, CourseContentTypeList, CourseSubmissionGroupGradingList, SubmissionGroupMemberBasic, ResultWithGrading } from '../types/generated';
+import { SubmissionGroupStudentList, SubmissionGroupStudentGet, MessageCreate, CourseContentStudentList, CourseContentTypeList, CourseSubmissionGroupGradingList, SubmissionGroupMemberBasic, ResultWithGrading, SubmissionUploadResponseModel } from '../types/generated';
 import { StudentRepositoryManager } from '../services/StudentRepositoryManager';
 import { execAsync } from '../utils/exec';
-import { GitLabTokenManager } from '../services/GitLabTokenManager';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { StudentCourseContentDetailsWebviewProvider, StudentContentDetailsViewState, StudentGradingHistoryEntry, StudentResultHistoryEntry } from '../ui/webviews/StudentCourseContentDetailsWebviewProvider';
 import { getExampleVersionId } from '../utils/deploymentHelpers';
@@ -27,7 +26,6 @@ export class StudentCommands {
   private repositoryManager?: StudentRepositoryManager;
   private gitBranchManager: GitBranchManager;
   private testResultService: TestResultService;
-  private gitlabTokenManager: GitLabTokenManager;
   private messagesWebviewProvider: MessagesWebviewProvider;
   private contentDetailsWebviewProvider: StudentCourseContentDetailsWebviewProvider;
 
@@ -45,7 +43,6 @@ export class StudentCommands {
     this.repositoryManager = repositoryManager;
     this.gitBranchManager = GitBranchManager.getInstance();
     this.testResultService = TestResultService.getInstance();
-    this.gitlabTokenManager = GitLabTokenManager.getInstance(context);
     // Make sure TestResultService has the API service
     this.testResultService.setApiService(this.apiService);
     this.messagesWebviewProvider = new MessagesWebviewProvider(context, this.apiService);
@@ -342,13 +339,10 @@ export class StudentCommands {
             // If status fails, continue without blocking
           }
 
-          // Auto-generate commit message (no prompt)
-          const nowTs = new Date().toISOString().replace('T', ' ').split('.')[0];
-          const commitMessage = `Submit ${assignmentTitle} - ${nowTs}`;
-
           // Perform submission using git worktree to keep main worktree on main branch
           let submissionOk = false;
-          let mergeRequestUrl: string | undefined;
+          let submissionVersion: string | undefined;
+          let submissionResponse: SubmissionUploadResponseModel | undefined;
           await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
             title: `Submitting ${assignmentTitle}...`,
@@ -408,6 +402,9 @@ export class StudentCommands {
                 await execAsync(`git push -u origin ${submissionBranch}`, { cwd: worktreePath });
               }
 
+              const { stdout: headStdout } = await execAsync('git rev-parse HEAD', { cwd: worktreePath });
+              submissionVersion = headStdout.trim();
+
               // Cleanup worktree
               progress.report({ message: 'Cleaning up...' });
               try {
@@ -416,34 +413,21 @@ export class StudentCommands {
                 await fs.promises.rm(worktreePath, { recursive: true, force: true });
               }
 
-              submissionOk = true;
+              if (!submissionGroup?.id) {
+                throw new Error('Submission group information missing; cannot create submission record.');
+              }
 
-              // Create MR via backend API
-              const { stdout: originUrlStdout } = await execAsync('git remote get-url origin', { cwd: repoPath });
-              const gitlabOrigin = (this as any).extractGitLabOrigin(originUrlStdout.trim());
-              let token: string | undefined;
-              if (gitlabOrigin) {
-                token = await this.gitlabTokenManager.ensureTokenForUrl(gitlabOrigin);
+              progress.report({ message: 'Creating submission...' });
+              submissionResponse = await this.apiService.createStudentSubmission({
+                course_submission_group_id: String(submissionGroup.id),
+                version_identifier: submissionVersion ?? undefined
+              });
+
+              if (!submissionResponse) {
+                throw new Error('Submission API did not return a response.');
               }
-              if (!token) {
-                vscode.window.showWarningMessage('No GitLab token available; cannot create MR automatically');
-              } else if (!courseContentId) {
-                vscode.window.showWarningMessage('Unable to determine course content ID; merge request was not created automatically.');
-              } else {
-                const mr = await this.apiService.submitStudentAssignment(courseContentId, {
-                  branch_name: submissionBranch,
-                  gitlab_token: token,
-                  title: `Submission: ${assignmentTitle}`,
-                  description: commitMessage
-                });
-                if (mr?.web_url) {
-                  mergeRequestUrl = mr.web_url;
-                } else if (!mr) {
-                  vscode.window.showWarningMessage('Submission branch pushed, but merge request could not be created automatically.');
-                } else {
-                  vscode.window.showInformationMessage('Submission branch pushed, but merge request URL was not provided.');
-                }
-              }
+
+              submissionOk = true;
             } catch (e) {
               throw e;
             }
@@ -459,21 +443,23 @@ export class StudentCommands {
               console.warn('[StudentCommands] Failed to refresh course content after submission:', refreshError);
             }
 
-            if (mergeRequestUrl) {
-              const action = await vscode.window.showInformationMessage(
-                'Assignment submitted successfully. Merge request created.',
-                'Copy MR Link'
-              );
-              if (action === 'Copy MR Link') {
-                try {
-                  await vscode.env.clipboard.writeText(mergeRequestUrl);
-                  vscode.window.showInformationMessage('Merge request link copied to clipboard.');
-                } catch (clipError) {
-                  console.warn('[StudentCommands] Failed to copy MR link:', clipError);
-                }
+            const actions: string[] = [];
+            if (submissionResponse?.result_id) {
+              actions.push('Copy Result ID');
+            }
+
+            const successMessage = submissionResponse?.version_identifier
+              ? `Assignment submitted successfully (version ${submissionResponse.version_identifier}).`
+              : 'Assignment submitted successfully.';
+
+            const action = await vscode.window.showInformationMessage(successMessage, ...actions);
+            if (action === 'Copy Result ID' && submissionResponse?.result_id) {
+              try {
+                await vscode.env.clipboard.writeText(submissionResponse.result_id);
+                vscode.window.showInformationMessage('Submission result ID copied to clipboard.');
+              } catch (clipError) {
+                console.warn('[StudentCommands] Failed to copy result ID:', clipError);
               }
-            } else {
-              vscode.window.showInformationMessage('Assignment submitted successfully.');
             }
           }
         } catch (error: any) {

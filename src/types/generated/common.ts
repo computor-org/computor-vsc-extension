@@ -173,6 +173,36 @@ export interface StudentProfileQuery {
 }
 
 /**
+ * Payload describing a manual submission request.
+ */
+export interface SubmissionCreate {
+  course_submission_group_id: string;
+  version_identifier?: string | null;
+}
+
+/**
+ * Metadata about a file extracted from a submission archive.
+ */
+export interface SubmissionUploadedFile {
+  object_key: string;
+  size: number;
+  content_type: string;
+  relative_path: string;
+}
+
+/**
+ * Response returned after processing a manual submission.
+ */
+export interface SubmissionUploadResponseModel {
+  result_id: string;
+  bucket_name: string;
+  files: SubmissionUploadedFile[];
+  total_size: number;
+  submitted_at: string;
+  version_identifier: string;
+}
+
+/**
  * Metadata stored with deployments.
  */
 export interface DeploymentMetadata {
@@ -280,12 +310,10 @@ export interface CourseContentDeploymentQuery {
 export interface DeploymentHistoryCreate {
   deployment_id: string;
   action: any;
-  action_details?: string | null;
   example_version_id?: string | null;
   example_identifier?: string | null;
   version_tag?: string | null;
   previous_example_version_id?: string | null;
-  metadata?: Record<string, any> | null;
   workflow_id?: string | null;
 }
 
@@ -296,12 +324,10 @@ export interface DeploymentHistoryGet {
   id: string;
   deployment_id: string;
   action: string;
-  action_details: string | null;
   example_version_id: string | null;
   previous_example_version_id: string | null;
   example_identifier?: string | null;
   version_tag?: string | null;
-  meta?: Record<string, any> | null;
   workflow_id: string | null;
   created_at: string;
   created_by: string | null;
