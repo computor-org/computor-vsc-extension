@@ -67,8 +67,8 @@
         "category": "Computor"
       },
       {
-        "command": "computor.student.login",
-        "title": "Login as Student",
+        "command": "computor.login",
+        "title": "Computor: Login",
         "category": "Computor"
       },
       {
@@ -100,16 +100,6 @@
         "title": "View Details",
         "icon": "$(info)",
         "category": "Computor Student"
-      },
-      {
-        "command": "computor.tutor.login",
-        "title": "Login as Tutor",
-        "category": "Computor"
-      },
-      {
-        "command": "computor.lecturer.login",
-        "title": "Login as Lecturer",
-        "category": "Computor"
       },
       {
         "command": "computor.showGitStatus",
@@ -473,10 +463,22 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "computor-main",
-          "title": "Computor",
+          "id": "computor-student",
+          "title": "Computor Student",
+          "icon": "$(book)",
+          "when": "computor.student.show"
+        },
+        {
+          "id": "computor-tutor",
+          "title": "Computor Tutor",
+          "icon": "$(person)",
+          "when": "computor.tutor.show"
+        },
+        {
+          "id": "computor-lecturer",
+          "title": "Computor Lecturer",
           "icon": "$(mortar-board)",
-          "when": "computor.isLoggedIn"
+          "when": "computor.lecturer.show"
         }
       ],
       "panel": [
@@ -488,10 +490,36 @@
       ]
     },
     "views": {
-      "computor-main": [
+      "computor-student": [
+        {
+          "id": "computor.student.courses",
+          "name": "Courses",
+          "icon": "$(book)",
+          "contextualTitle": "Student Course Content",
+          "when": "computor.student.show"
+        }
+      ],
+      "computor-tutor": [
+        {
+          "id": "computor.tutor.filters",
+          "type": "webview",
+          "name": "Filters",
+          "icon": "$(filter)",
+          "contextualTitle": "Tutor Filters",
+          "when": "computor.tutor.show"
+        },
+        {
+          "id": "computor.tutor.courses",
+          "name": "Courses",
+          "icon": "$(person)",
+          "contextualTitle": "Tutor Courses",
+          "when": "computor.tutor.show"
+        }
+      ],
+      "computor-lecturer": [
         {
           "id": "computor.lecturer.courses",
-          "name": "Lecturer Courses",
+          "name": "Courses",
           "icon": "$(mortar-board)",
           "contextualTitle": "Lecturer Courses",
           "when": "computor.lecturer.show"
@@ -502,28 +530,6 @@
           "icon": "$(repo)",
           "contextualTitle": "Example Repository",
           "when": "computor.lecturer.show"
-        },
-        {
-          "id": "computor.tutor.filters",
-          "type": "webview",
-          "name": "Tutor Filters",
-          "icon": "$(filter)",
-          "contextualTitle": "Tutor Filters",
-          "when": "computor.tutor.show"
-        },
-        {
-          "id": "computor.tutor.courses",
-          "name": "Tutor Courses",
-          "icon": "$(person)",
-          "contextualTitle": "Tutor Courses",
-          "when": "computor.tutor.show"
-        },
-        {
-          "id": "computor.student.courses",
-          "name": "Student Courses",
-          "icon": "$(book)",
-          "contextualTitle": "Student Course Content",
-          "when": "computor.student.show"
         }
       ],
       "explorer": [

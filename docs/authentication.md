@@ -13,8 +13,7 @@ The selected credentials are saved in `context.secrets` under `computor.<Role>.a
 - After successful activation, the role controller stores the auth payload for reuse and sets `computor.isLoggedIn`.
 
 ## Marker files
-- `.computor_student` keeps the active course ID.
-- `.computor_tutor` and `.computor_lecturer` mark that those roles were activated in the workspace.
+- `.computor` stores the active course ID for the workspace. All roles share the same course selection.
 
 ## Managing secrets
 - Run `Computor: Manage Git Tokens` to add/update/remove GitLab PATs per origin.
