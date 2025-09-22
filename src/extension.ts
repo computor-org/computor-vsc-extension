@@ -136,7 +136,7 @@ async function writeMarker(file: string, data: { courseId: string }): Promise<vo
   await fs.promises.writeFile(file, JSON.stringify(data, null, 2), 'utf8');
 }
 
-async function ensureCourseMarker(role: Extract<Role, 'Student' | 'Tutor'>, api: ComputorApiService, context?: vscode.ExtensionContext): Promise<string | undefined> {
+async function ensureCourseMarker(role: Role, api: ComputorApiService, context?: vscode.ExtensionContext): Promise<string | undefined> {
   const root = getWorkspaceRoot();
   if (!root) {
     const action = await vscode.window.showErrorMessage(`${role} login requires an open workspace.`, 'Open Folder');
@@ -182,17 +182,21 @@ async function ensureCourseMarker(role: Extract<Role, 'Student' | 'Tutor'>, api:
     }
     return undefined;
   }
-  const file = path.join(root, role === 'Student' ? STUDENT_MARKER : TUTOR_MARKER);
+  const markerFile = role === 'Student' ? STUDENT_MARKER :
+                   role === 'Tutor' ? TUTOR_MARKER : LECTURER_MARKER;
+  const file = path.join(root, markerFile);
   const existing = await readMarker(file);
-  if (role === 'Tutor') {
-    // For Tutor: just ensure marker file exists; no course binding here.
-    if (!existing) {
-      await writeMarker(file, { courseId: '' as any });
-    }
-    return undefined;
+
+  // Get courses based on role
+  let courses: any[] | undefined;
+  if (role === 'Student') {
+    courses = await api.getStudentCourses();
+  } else if (role === 'Tutor') {
+    courses = await api.getTutorCourses(false);
+  } else {
+    // Lecturer
+    courses = await api.getLecturerCourses();
   }
-  
-  const courses = await api.getStudentCourses();
   if (!courses || courses.length === 0) {
     vscode.window.showWarningMessage(`No ${role.toLowerCase()} courses found for your account.`);
     return undefined;
@@ -248,41 +252,23 @@ async function ensureCourseProviderAccount(
   providerHint?: string | null,
   currentUser?: { username?: string }
 ): Promise<void> {
+  // Provider URL should always be available from course configuration
+  if (!providerHint) {
+    throw new Error(`No Git provider configured for course "${courseLabel}". Please contact your instructor.`);
+  }
+
   let readiness: CourseMemberReadinessStatus | undefined;
   let providerAccessToken: string | undefined;
   let providerAccountId: string | undefined;
-  let providerOverride = providerHint ?? undefined;
+  const providerUrl = providerHint;
 
-  const resolveProviderUrl = (): string | undefined => readiness?.provider ?? providerOverride;
+  const resolveProviderUrl = (): string => readiness?.provider ?? providerUrl;
   const tokenManager = GitLabTokenManager.getInstance(context);
 
   const acquireToken = async (options?: { defaultValue?: string; forcePrompt?: boolean }): Promise<string> => {
-    let providerUrlString = resolveProviderUrl();
-    if (!providerUrlString) {
-      const entered = await vscode.window.showInputBox({
-        title: 'Git provider URL',
-        prompt: 'Enter the base URL of your Git provider (e.g., https://gitlab.example.com)',
-        placeHolder: 'https://gitlab.example.com',
-        ignoreFocusOut: true,
-        validateInput: (value) => {
-          try {
-            const url = new URL(value.trim());
-            if (!url.protocol.startsWith('http')) return 'URL must start with http or https';
-            return undefined;
-          } catch {
-            return 'Enter a valid URL';
-          }
-        }
-      });
-      if (!entered) {
-        throw new Error('Provider URL is required to validate your account.');
-      }
-      providerOverride = entered.trim();
-      providerUrlString = providerOverride;
-    }
-
-    const providerUrl = new URL(providerUrlString);
-    const origin = `${providerUrl.protocol}//${providerUrl.host}`;
+    const providerUrlString = resolveProviderUrl();
+    const providerUrlObject = new URL(providerUrlString);
+    const origin = `${providerUrlObject.protocol}//${providerUrlObject.host}`;
 
     if (options?.forcePrompt) {
       const prompted = await tokenManager.requestAndStoreToken(origin, options.defaultValue);
@@ -480,49 +466,24 @@ class LecturerController extends BaseRoleController {
 
   async activate(client: ReturnType<typeof buildHttpClient>): Promise<void> {
     const api = await this.setupApi(client);
-    let lecturerCourses: any[] | undefined;
-    try {
-      const resp = await client.get<any[]>('/lecturers/courses');
-      lecturerCourses = resp.data;
-      if (!lecturerCourses || lecturerCourses.length === 0) {
-        vscode.window.showWarningMessage('No lecturer courses found.');
-      }
-    } catch (e) {
-      vscode.window.showErrorMessage('Lecturer role not available.');
-      throw e;
-    }
 
-    // Ensure lecturer workspace marker exists (no course binding)
-    try {
-      const root = getWorkspaceRoot();
-      if (root) {
-        const file = path.join(root, LECTURER_MARKER);
-        if (!fs.existsSync(file)) {
-          await fs.promises.writeFile(file, JSON.stringify({}), 'utf8');
-        }
-      }
-    } catch (err) {
-      console.warn('Failed to ensure .computor_lecturer marker:', err);
-    }
+    // Ensure course marker exists / choose course
+    const courseId = await ensureCourseMarker('Lecturer', api, this.context);
+    if (!courseId) throw new Error('Lecturer course selection cancelled.');
 
     const lecturerUser = await api.getCurrentUser();
-    if (lecturerCourses) {
-      for (const course of lecturerCourses) {
-        const courseId = course?.id;
-        if (!courseId) {
-          continue;
-        }
-        const courseLabel = course?.title || course?.path || courseId;
-        await ensureCourseProviderAccount(
-          api,
-          this.context,
-          courseId,
-          courseLabel,
-          course?.repository?.provider_url || null,
-          lecturerUser
-        );
-      }
-    }
+
+    // Get detailed course information including repository details
+    const detailedCourse = await api.getCourse(courseId);
+
+    await ensureCourseProviderAccount(
+      api,
+      this.context,
+      courseId,
+      detailedCourse?.title || detailedCourse?.path || courseId,
+      detailedCourse?.properties?.gitlab?.url || null,
+      lecturerUser
+    );
 
     this.tree = new LecturerTreeDataProvider(this.context, api);
     this.disposables.push(vscode.window.registerTreeDataProvider('computor.lecturer.courses', this.tree));
@@ -577,38 +538,23 @@ class TutorController extends BaseRoleController {
   async activate(client: ReturnType<typeof buildHttpClient>): Promise<void> {
     const api = await this.setupApi(client);
 
-    let tutorCourses: any[] | undefined;
-    try {
-      tutorCourses = await api.getTutorCourses(false);
-      if (!tutorCourses || tutorCourses.length === 0) {
-        vscode.window.showWarningMessage('No tutor courses found.');
-      }
-    } catch (e) {
-      vscode.window.showErrorMessage('Tutor role not available.');
-      throw e;
-    }
-
-    // Ensure tutor marker exists (no course binding)
-    await ensureCourseMarker('Tutor', api, this.context);
+    // Ensure course marker exists / choose course
+    const courseId = await ensureCourseMarker('Tutor', api, this.context);
+    if (!courseId) throw new Error('Tutor course selection cancelled.');
 
     const tutorUser = await api.getCurrentUser();
-    if (tutorCourses) {
-      for (const course of tutorCourses) {
-        const courseId = course?.id;
-        if (!courseId) {
-          continue;
-        }
-        const courseLabel = course?.title || course?.path || courseId;
-        await ensureCourseProviderAccount(
-          api,
-          this.context,
-          courseId,
-          courseLabel,
-          course?.repository?.provider_url || null,
-          tutorUser
-        );
-      }
-    }
+
+    // Get detailed course information including repository details
+    const detailedCourse = await api.getTutorCourse(courseId);
+
+    await ensureCourseProviderAccount(
+      api,
+      this.context,
+      courseId,
+      detailedCourse?.title || detailedCourse?.path || courseId,
+      detailedCourse?.repository?.provider_url || null,
+      tutorUser
+    );
 
     // Register filter panel and tree
     const { TutorFilterPanelProvider } = await import('./ui/panels/TutorFilterPanel');
