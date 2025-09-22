@@ -47,9 +47,9 @@ export interface TutorCourseMemberList {
 }
 
 /**
- * Response describing whether a course member has a linked provider account.
+ * Readiness state for a course member to start working on provider-backed tasks.
  */
-export interface CourseMemberProviderStatus {
+export interface CourseMemberReadinessStatus {
   course_member_id: string;
   course_id: string;
   organization_id: string;
@@ -58,6 +58,7 @@ export interface CourseMemberProviderStatus {
   provider?: string | null;
   requires_account: boolean;
   has_account: boolean;
+  is_ready: boolean;
   provider_account_id?: string | null;
 }
 
@@ -510,6 +511,7 @@ export interface CourseContentStudentGet {
   submitted?: boolean | null;
   course_content_types: CourseContentTypeGet;
   result_count: number;
+  submission_count: number;
   max_test_runs?: number | null;
   unread_message_count?: number;
   result?: ResultStudentList | null;
@@ -530,6 +532,7 @@ export interface CourseContentStudentList {
   submitted?: boolean | null;
   course_content_type: CourseContentTypeList;
   result_count: number;
+  submission_count: number;
   max_test_runs?: number | null;
   directory?: string | null;
   color: string;
