@@ -473,7 +473,8 @@ class UnifiedController {
     await GitEnvironmentService.getInstance().validateGitEnvironment();
 
 
-    // Activity bar containers will show automatically based on context keys
+    // Focus on the highest priority view: lecturer > tutor > student
+    await this.focusHighestPriorityView(availableViews);
   }
 
   private async setupApi(client: ReturnType<typeof buildHttpClient>): Promise<ComputorApiService> {
@@ -588,6 +589,31 @@ class UnifiedController {
     }
   }
 
+  private async focusHighestPriorityView(views: string[]): Promise<void> {
+    // Priority: lecturer > tutor > student
+    let viewToFocus: string | null = null;
+    let commandToRun: string | null = null;
+
+    if (views.includes('lecturer')) {
+      viewToFocus = 'lecturer';
+      commandToRun = 'workbench.view.extension.computor-lecturer';
+    } else if (views.includes('tutor')) {
+      viewToFocus = 'tutor';
+      commandToRun = 'workbench.view.extension.computor-tutor';
+    } else if (views.includes('student')) {
+      viewToFocus = 'student';
+      commandToRun = 'workbench.view.extension.computor-student';
+    }
+
+    if (commandToRun) {
+      try {
+        await vscode.commands.executeCommand(commandToRun);
+        console.log(`Focused on ${viewToFocus} view after login`);
+      } catch (err) {
+        console.warn(`Failed to focus on ${viewToFocus} view:`, err);
+      }
+    }
+  }
 
   private async initializeStudentView(api: ComputorApiService, courseId: string): Promise<void> {
     // Initialize student-specific components
