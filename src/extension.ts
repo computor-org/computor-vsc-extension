@@ -304,8 +304,8 @@ async function ensureCourseProviderAccount(
     return prompted;
   };
 
-  const validate = async (token?: string): Promise<CourseMemberReadinessStatus> =>
-    api.validateCourseReadiness(courseId, token ? { provider_access_token: token } : undefined);
+  const validate = async (token: string): Promise<CourseMemberReadinessStatus> =>
+    api.validateCourseReadiness(courseId, token);
 
   const promptRetryOrCancel = async (message: string, retryLabel: string): Promise<boolean> => {
     const selection = await vscode.window.showWarningMessage(message, retryLabel, 'Cancel');
@@ -332,6 +332,9 @@ async function ensureCourseProviderAccount(
   };
 
   while (true) {
+    if (!providerAccessToken) {
+      providerAccessToken = await acquireToken();
+    }
     try {
       readiness = await validate(providerAccessToken);
     } catch (error: any) {
@@ -361,10 +364,6 @@ async function ensureCourseProviderAccount(
     }
 
     const providerLabel = formatProviderLabel(readiness);
-
-    if (!providerAccessToken) {
-      providerAccessToken = await acquireToken();
-    }
 
     if (!providerAccountId) {
       const defaultAccount = readiness.provider_account_id?.trim() || currentUser?.username || '';
