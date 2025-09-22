@@ -46,6 +46,21 @@ export interface TutorCourseMemberList {
   user: UserList;
 }
 
+/**
+ * Response describing whether a course member has a linked provider account.
+ */
+export interface CourseMemberProviderStatus {
+  course_member_id: string;
+  course_id: string;
+  organization_id: string;
+  course_role_id: string;
+  provider_type?: string | null;
+  provider?: string | null;
+  requires_account: boolean;
+  has_account: boolean;
+  provider_account_id?: string | null;
+}
+
 export interface CourseProperties {
   gitlab?: GitLabConfig | null;
 }

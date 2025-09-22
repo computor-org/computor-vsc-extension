@@ -47,7 +47,9 @@ import {
   MessageUpdate,
   CourseMemberCommentList,
   CourseContentStudentGet,
-  ResultWithGrading
+  ResultWithGrading,
+  SubmissionCreate,
+  SubmissionUploadResponseModel
 } from '../types/generated';
 
 // Query interface for examples (not generated yet)
@@ -1853,24 +1855,18 @@ export class ComputorApiService {
   }
 
   // Student submission API
-  async submitStudentAssignment(
-    courseContentId: string,
-    data: { branch_name: string; gitlab_token: string; title?: string; description?: string }
-  ): Promise<{ merge_request_id: number; merge_request_iid: number; web_url: string; source_branch: string; target_branch: string; title: string; state: string } | undefined> {
+  async createStudentSubmission(payload: SubmissionCreate): Promise<SubmissionUploadResponseModel | undefined> {
     try {
       const client = await this.getHttpClient();
-      const response = await client.post(
-        `/students/course-contents/${courseContentId}/submit`,
-        data
+      const response = await client.post<SubmissionUploadResponseModel>(
+        '/students/submissions',
+        payload
       );
-      return response.data as any;
-    } catch (error) {
-      console.error('Failed to submit assignment via API:', error);
-      if (error) {
-        vscode.window.showErrorMessage(`${error}`);
-      } else {
-        vscode.window.showErrorMessage('Failed to create Merge Request via backend');
-      }
+      return response.data;
+    } catch (error: any) {
+      console.error('Failed to create student submission:', error);
+      const message = error?.message || 'Failed to create submission via backend';
+      vscode.window.showErrorMessage(message);
       return undefined;
     }
   }
