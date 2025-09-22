@@ -1,0 +1,85 @@
+# Build output - exclude source files and test files
+out/test/**
+out/**/test/**
+src/**
+
+# TypeScript declaration files and source maps (optional - keep if needed for debugging)
+out/**/*.d.ts
+out/**/*.d.ts.map
+out/**/*.js.map
+
+# Development and testing
+test/**
+test-example/**
+.mocharc.json
+.mocharc.unit.json
+jest.integration.config.js
+tsconfig.test.json
+
+# Documentation and project files
+docs/**
+old/**
+.claude/**
+.vscode/**
+.git/**
+.gitignore
+BACKLOG.md
+CLAUDE.md
+README.md
+
+# Node.js
+node_modules/**
+yarn.lock
+yarn-error.log
+package-lock.json
+
+# TypeScript
+tsconfig.json
+.eslintrc.json
+
+# Media and assets (if not needed)
+media/**
+schemas/**
+
+# IDE and editor files
+.vscode/**
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# Temporary folders
+tmp/
+temp/
+
+# WebView UI - keep the built files, exclude development files if any
+webview-ui/src/**
+webview-ui/node_modules/**
+webview-ui/package*.json
+webview-ui/tsconfig*.json
+webview-ui/vite*.config.*
+webview-ui/.gitignore
