@@ -123,6 +123,21 @@
   color: var(--vscode-descriptionForeground);
 }
 
+.chip-strong {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+.chip-success {
+  background: color-mix(in srgb, var(--vscode-testing-passIcon) 25%, transparent);
+  color: var(--vscode-testing-passIcon);
+}
+
+.chip-warning {
+  background: color-mix(in srgb, var(--vscode-testing-queuedIcon) 25%, transparent);
+  color: var(--vscode-testing-queuedIcon);
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;
@@ -207,6 +222,10 @@
   align-items: center;
 }
 
+.history-header-tags {
+  flex: 1;
+}
+
 .history-grade {
   font-size: 14px;
   font-weight: 600;
@@ -231,4 +250,50 @@
   font-size: 13px;
   line-height: 1.5;
   white-space: pre-wrap;
+}
+
+.history-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.history-card {
+  border: 1px solid var(--vscode-editorWidget-border);
+  background: var(--vscode-editor-background);
+  border-radius: 4px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.history-card .label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--vscode-descriptionForeground);
+}
+
+.history-card .value {
+  font-size: 14px;
+}
+
+.history-card--score {
+  background: var(--vscode-editorHoverWidget-background);
+  border-color: var(--vscode-editorHoverWidget-border);
+}
+
+.history-card--score .value {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.history-note {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  border-left: 2px solid var(--vscode-editorWidget-border);
+  padding-left: 8px;
 }
