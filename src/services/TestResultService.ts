@@ -86,26 +86,42 @@ export class TestResultService {
 
         // Check if we have the full result already
         if (testResult.result_json) {
-          console.log(`[TestResultService] Test completed immediately with status: ${testResult.status}`);
-          
+          const statusValue = testResult.status;
+          const statusString = typeof statusValue === 'string' ? statusValue.toLowerCase() : undefined;
+          console.log(`[TestResultService] Test completed immediately with status: ${statusValue}`);
+
           // Display the results
           await this.displayTestResults(testResult, assignmentTitle);
-          
-          // Show completion message based on status
-          if (testResult.status === 0) {
-            // Status 0 = completed successfully
-            const score = testResult.result || 0;
-            const percentage = (score * 100).toFixed(1);
-            vscode.window.showInformationMessage(
-              `✅ Tests completed for ${assignmentTitle}: ${percentage}% passed`
-            );
-          } else {
-            // Status 1 = failed
-            vscode.window.showErrorMessage(
-              `❌ Test execution failed for ${assignmentTitle}`
-            );
+
+          const isSuccess = statusValue === 0 || statusString === 'finished';
+          const isFailure = statusValue === 1 || statusString === 'failed';
+          const isCancelled = statusString === 'cancelled';
+          const isTerminal = isSuccess || isFailure || isCancelled || statusString === 'deferred' || statusValue === 6;
+
+          if (isTerminal) {
+            if (isSuccess) {
+              const score = typeof testResult.result === 'number' ? testResult.result : 0;
+              const percentage = (score * 100).toFixed(1);
+              vscode.window.showInformationMessage(
+                `✅ Tests completed for ${assignmentTitle}: ${percentage}% passed`
+              );
+            } else if (isFailure) {
+              vscode.window.showErrorMessage(`❌ Test execution failed for ${assignmentTitle}`);
+            } else if (isCancelled) {
+              vscode.window.showWarningMessage(`⚠️ Test execution cancelled for ${assignmentTitle}`);
+            } else {
+              vscode.window.showInformationMessage(`ℹ️ Test results available for ${assignmentTitle} (status: ${statusValue})`);
+            }
+            return;
           }
-          return;
+
+          // Non-terminal status with immediate payload likely means we reused an existing run
+          if (testResult.id) {
+            console.log('[TestResultService] Non-terminal status with immediate payload; continuing to poll.');
+          } else {
+            console.log('[TestResultService] Non-terminal status without result ID; treating as in-progress.');
+            return;
+          }
         }
 
         // If we only got an ID, we need to poll (keeping old polling logic as fallback)
@@ -167,7 +183,7 @@ export class TestResultService {
                     await this.displayTestResults(fullResult, assignmentTitle);
                     
                     // Show completion message
-                    if (status === 0) {
+                    if (status === 0 || status === "finished") {
                       vscode.window.showInformationMessage(
                         `✅ Tests completed for ${assignmentTitle}`
                       );

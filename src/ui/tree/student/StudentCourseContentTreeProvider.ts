@@ -960,19 +960,21 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             entries.push(typeof maxSubmits === 'number' ? `[${submitCount}/${maxSubmits}]` : `[${submitCount}]`);
         }
 
+        this.description = entries.length > 0 ? entries.join('') : undefined;
+
         const testResult = (this.courseContent?.result?.result) as number | undefined;
         if (typeof testResult === 'number') {
             const pts = Math.round(testResult * 100);
-            entries.push(`${pts}%`);
+            // entries.push(`${pts}%`);
+            this.description += ` ${pts}%`;
         }
 
         const rawGrade = this.submissionGroup?.grading as number | undefined;
         if (typeof rawGrade === 'number') {
             const pts = Math.round(rawGrade * 100);
-            entries.push(`${pts}%`);
+            // entries.push(`${pts}%`);
+            this.description += ` ${pts}%`;
         }
-
-        this.description = entries.length > 0 ? entries.join('') : undefined;
     }
     
     private setupTooltip(): void {
