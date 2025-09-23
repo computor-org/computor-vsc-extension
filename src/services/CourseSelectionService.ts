@@ -173,7 +173,6 @@ export class CourseSelectionService {
             // Command might not be registered, that's OK
         }
 
-        vscode.window.showInformationMessage(`Switched to course: ${course.title}`);
     }
 
     getCurrentCourseId(): string | undefined {

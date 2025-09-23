@@ -48,7 +48,7 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
     if (!this._view) return;
     const nonce = Math.random().toString(36).slice(2);
     const webview = this._view.webview;
-    const stylesUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'media', 'tutor-filters.css'));
+    const stylesUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'webview-ui', 'tutor-filters.css'));
     this._view.webview.html = `
       <!DOCTYPE html>
       <html lang="en">

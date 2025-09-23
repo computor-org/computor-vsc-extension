@@ -443,9 +443,14 @@ class UnifiedController {
   private api?: ComputorApiService;
   private disposables: vscode.Disposable[] = [];
   private activeViews: string[] = [];
+  private courseInfo?: { id: string; title: string };
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
+  }
+
+  getCourseInfo(): { id: string; title: string } | undefined {
+    return this.courseInfo;
   }
 
   async activate(client: ReturnType<typeof buildHttpClient>): Promise<void> {
@@ -498,6 +503,9 @@ class UnifiedController {
         courseData = await api.getCourse(courseId);
         courseLabel = courseData?.title || courseData?.path || courseId;
 
+        // Store course information
+        this.courseInfo = { id: courseId, title: courseLabel };
+
         // Try multiple paths for lecturer provider URL
         providerUrl = courseData?.properties?.gitlab?.url ||
                      courseData?.repository?.provider_url ||
@@ -519,6 +527,12 @@ class UnifiedController {
       try {
         courseData = await api.getStudentCourse(courseId);
         courseLabel = courseData?.title || courseData?.path || courseLabel;
+
+        // Store course information if not already set
+        if (!this.courseInfo) {
+          this.courseInfo = { id: courseId, title: courseLabel };
+        }
+
         providerUrl = courseData?.repository?.provider_url || null;
         console.log('Student course data structure:', {
           title: courseData?.title,
@@ -534,6 +548,12 @@ class UnifiedController {
       try {
         courseData = await api.getTutorCourse(courseId);
         courseLabel = courseData?.title || courseData?.path || courseLabel;
+
+        // Store course information if not already set
+        if (!this.courseInfo) {
+          this.courseInfo = { id: courseId, title: courseLabel };
+        }
+
         providerUrl = courseData?.repository?.provider_url || null;
         console.log('Tutor course data structure:', {
           title: courseData?.title,
@@ -910,8 +930,9 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
       await context.secrets.store(secretKey, JSON.stringify(auth));
       await vscode.commands.executeCommand('setContext', 'computor.isLoggedIn', true);
 
-      const activeViews = controller.getActiveViews();
-      vscode.window.showInformationMessage(`Logged in with views: ${activeViews.join(', ')}.`);
+      const courseInfo = controller.getCourseInfo();
+      const courseTitle = courseInfo?.title || 'Unknown Course';
+      vscode.window.showInformationMessage(`Logged in: ${courseTitle}`);
     } catch (error: any) {
       await controller.dispose();
       vscode.window.showErrorMessage(`Failed to login: ${error?.message || error}`);

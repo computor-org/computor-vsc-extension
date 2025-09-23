@@ -19,14 +19,14 @@
 
   function formatPercent(value) {
     if (value === undefined || value === null || Number.isNaN(value)) {
-      return '–';
+      return '-';
     }
     return `${Math.round(value)}%`;
   }
 
   function formatCount(current, max) {
     if (current === undefined || current === null) {
-      return '–';
+      return '-';
     }
     if (max === undefined || max === null) {
       return `${current}`;
@@ -47,7 +47,7 @@
 
   function formatStatus(value) {
     if (!value) {
-      return 'Unknown';
+      return '-';
     }
     return String(value)
       .toLowerCase()
@@ -55,6 +55,18 @@
       .filter(Boolean)
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join(' ');
+  }
+
+  function pickValue(source, keys, fallback) {
+    if (!source) {
+      return fallback;
+    }
+    for (const key of keys) {
+      if (Object.prototype.hasOwnProperty.call(source, key) && source[key] !== undefined && source[key] !== null) {
+        return source[key];
+      }
+    }
+    return fallback;
   }
 
   function sendMessage(command, data) {
@@ -105,7 +117,7 @@
     const items = history.map((entry) => {
       const gradeText = formatPercent(entry.gradePercent);
       const statusText = formatStatus(entry.status);
-      const gradedAt = formatDate(entry.gradedAt) || '–';
+      const gradedAt = formatDate(entry.gradedAt) || '-';
       const grader = entry.graderName || 'Unknown';
       const feedback = entry.feedback ? `<div class="history-feedback">${escapeHtml(entry.feedback)}</div>` : '';
 
@@ -141,33 +153,74 @@
     }
 
     const items = results.map((entry) => {
-      const scoreText = formatPercent(entry.resultPercent);
-      const statusText = formatStatus(entry.status);
-      const executedAt = formatDate(entry.createdAt || entry.updatedAt) || '–';
-      const details = [];
+      const resultPercent = pickValue(entry, ['resultPercent', 'result_percent']);
+      const hasScore = typeof resultPercent === 'number' && !Number.isNaN(resultPercent);
+      const testSystemId = pickValue(entry, ['testSystemId', 'test_system_id']);
+      const hasTest = Boolean(testSystemId);
+      const scoreText = hasTest && hasScore ? formatPercent(resultPercent) : '-';
+      const statusRaw = pickValue(entry, ['status']);
+      const statusText = formatStatus(statusRaw);
+      const createdRaw = pickValue(entry, ['createdAt', 'created_at']);
+      const updatedRaw = pickValue(entry, ['updatedAt', 'updated_at']);
+      const createdAtDisplay = formatDate(createdRaw) || '-';
+      const completedRaw = updatedRaw && updatedRaw !== createdRaw ? updatedRaw : undefined;
+      const completedAtDisplay = completedRaw ? formatDate(completedRaw) || '-' : '-';
+      const updatedDisplay = formatDate(updatedRaw || createdRaw) || '-';
+      const isSubmission = pickValue(entry, ['submit']) === true;
+      const attemptLabel = isSubmission ? 'Submission' : 'Test Run';
+      const testLabel = hasTest ? 'Tests Complete' : 'No Test';
+      const scoreLabel = hasTest
+        ? (isSubmission ? 'Submission Score' : 'Test Result')
+        : 'No Evaluation';
 
-      if (typeof entry.submit === 'boolean') {
-        details.push(entry.submit ? 'Submission run' : 'Test run');
-      }
-      if (entry.versionIdentifier) {
-        details.push(`Version ${escapeHtml(entry.versionIdentifier)}`);
-      }
-      if (entry.testSystemId) {
-        details.push(escapeHtml(entry.testSystemId));
+      const chips = [
+        `<span class="chip chip-strong">${escapeHtml(attemptLabel)}</span>`,
+        `<span class="chip ${hasTest ? 'chip-success' : 'chip-warning'}">${escapeHtml(testLabel)}</span>`
+      ];
+      if (statusText && statusText !== '-') {
+        chips.push(`<span class="chip">${escapeHtml(statusText)}</span>`);
       }
 
-      const meta = details.length > 0
-        ? `<div class="history-meta">${details.join(' • ')}</div>`
+      const detailCards = [];
+      detailCards.push({ label: scoreLabel, value: scoreText, modifier: 'history-card--score' });
+      detailCards.push({ label: 'Type', value: attemptLabel });
+      detailCards.push({ label: 'Created At', value: createdAtDisplay });
+      detailCards.push({ label: hasTest ? 'Completed At' : 'Updated At', value: completedAtDisplay !== '-' ? completedAtDisplay : updatedDisplay });
+
+      const detailMarkup = `<div class="history-body">${detailCards.map(card => {
+        const classes = ['history-card'];
+        if (card.modifier) {
+          classes.push(card.modifier);
+        }
+        return `
+          <div class="${classes.join(' ')}">
+            <span class="label">${escapeHtml(card.label)}</span>
+            <span class="value">${escapeHtml(card.value)}</span>
+          </div>
+        `;
+      }).join('')}</div>`;
+
+      let noteText = '';
+      // if (!hasTest) {
+      //   noteText = isSubmission
+      //     ? 'This submission is waiting for automated test results.'
+      //     : 'This run did not execute on a test system.';
+      // } else if (!hasScore) {
+      //   noteText = 'No percentage score was recorded for this attempt.';
+      // }
+
+      const noteMarkup = noteText
+        ? `<div class="history-note">${escapeHtml(noteText)}</div>`
         : '';
 
       return `
         <article class="history-item">
           <div class="history-header">
-            <span class="history-grade">${escapeHtml(scoreText)}</span>
-            <span class="history-status chip">${escapeHtml(statusText)}</span>
-            <span class="history-date">${escapeHtml(executedAt)}</span>
+            <div class="chip-row history-header-tags">${chips.join('')}</div>
+            <span class="history-date">${escapeHtml(updatedDisplay)}</span>
           </div>
-          ${meta}
+          ${detailMarkup}
+          ${noteMarkup}
         </article>
       `;
     }).join('');
@@ -206,8 +259,15 @@
 
     const statusChips = [];
     function addStatusChip(value) {
-      if (!value) return;
-      const formatted = formatStatus(value);
+      if (value === undefined || value === null) {
+        return;
+      }
+      const raw = String(value).trim();
+      const lower = raw.toLowerCase();
+      if (!raw || raw === '-' || lower === 'unknown') {
+        return;
+      }
+      const formatted = formatStatus(raw);
       if (!statusChips.includes(formatted)) {
         statusChips.push(formatted);
       }
@@ -247,6 +307,11 @@
       : '';
 
     const gradedAt = formatDate(metrics.gradedAt);
+    const rawStatus = metrics.gradeStatus ?? submissionGroup.status ?? '';
+    const statusString = String(rawStatus || '').trim();
+    const statusDisplay = statusString && statusString.toLowerCase() !== 'unknown'
+      ? formatStatus(statusString)
+      : '-';
 
     root.innerHTML = `
       <div class="view-header">
@@ -263,7 +328,7 @@
         <div class="info-grid">
           <div class="info-item">
             <span class="info-item-label">Content Path</span>
-            <span class="info-item-value">${escapeHtml(content.path || '–')}</span>
+            <span class="info-item-value">${escapeHtml(content.path || '-')}</span>
           </div>
           <div class="info-item">
             <span class="info-item-label">Type</span>
@@ -303,15 +368,15 @@
         <div class="info-grid">
           <div class="info-item">
             <span class="info-item-label">Status</span>
-            <span class="info-item-value">${escapeHtml(formatStatus(metrics.gradeStatus || submissionGroup.status || '–'))}</span>
+            <span class="info-item-value">${escapeHtml(statusDisplay)}</span>
           </div>
           <div class="info-item">
             <span class="info-item-label">Feedback</span>
-            <span class="info-item-value">${escapeHtml(metrics.feedback || '–')}</span>
+            <span class="info-item-value">${escapeHtml(metrics.feedback || '-')}</span>
           </div>
           <div class="info-item">
             <span class="info-item-label">Graded by</span>
-            <span class="info-item-value">${escapeHtml(metrics.gradedBy || 'Pending')}</span>
+            <span class="info-item-value">${escapeHtml(metrics.gradedBy || '-')}</span>
           </div>
           <div class="info-item">
             <span class="info-item-label">Graded at</span>
