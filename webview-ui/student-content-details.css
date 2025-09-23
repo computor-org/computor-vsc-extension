@@ -11,6 +11,24 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  margin-top: 8px;
+}
+
+.header-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-row h1 {
+  flex: 1;
+}
+
+.header-close {
+  margin-left: auto;
+  padding: 4px 12px;
+  font-size: 12px;
+  line-height: 1.2;
 }
 
 .view-header h1 {
