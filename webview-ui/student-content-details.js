@@ -162,13 +162,13 @@
       const statusText = formatStatus(statusRaw);
       const createdRaw = pickValue(entry, ['createdAt', 'created_at']);
       const updatedRaw = pickValue(entry, ['updatedAt', 'updated_at']);
-      const createdAtDisplay = formatDate(createdRaw) || '-';
-      const completedRaw = updatedRaw && updatedRaw !== createdRaw ? updatedRaw : undefined;
-      const completedAtDisplay = completedRaw ? formatDate(completedRaw) || '-' : '-';
+      const createdDisplay = createdRaw ? formatDate(createdRaw) || '-' : '-';
       const updatedDisplay = formatDate(updatedRaw || createdRaw) || '-';
+      const completedRaw = updatedRaw && createdRaw && updatedRaw !== createdRaw ? updatedRaw : undefined;
+      const completedDisplay = completedRaw ? formatDate(completedRaw) || '-' : '-';
       const isSubmission = pickValue(entry, ['submit']) === true;
       const attemptLabel = isSubmission ? 'Submission' : 'Test Run';
-      const testLabel = hasTest ? 'Tests Complete' : 'No Test';
+      const testLabel = hasTest ? 'Tests Complete' : 'Awaiting Tests';
       const scoreLabel = hasTest
         ? (isSubmission ? 'Submission Score' : 'Test Result')
         : 'No Evaluation';
@@ -183,9 +183,8 @@
 
       const detailCards = [];
       detailCards.push({ label: scoreLabel, value: scoreText, modifier: 'history-card--score' });
-      detailCards.push({ label: 'Type', value: attemptLabel });
-      detailCards.push({ label: 'Created At', value: createdAtDisplay });
-      detailCards.push({ label: hasTest ? 'Completed At' : 'Updated At', value: completedAtDisplay !== '-' ? completedAtDisplay : updatedDisplay });
+      detailCards.push({ label: 'Attempt Type', value: attemptLabel });
+      detailCards.push({ label: 'Tests', value: hasTest ? 'Completed' : '-' });
 
       const detailMarkup = `<div class="history-body">${detailCards.map(card => {
         const classes = ['history-card'];
@@ -201,13 +200,17 @@
       }).join('')}</div>`;
 
       let noteText = '';
-      // if (!hasTest) {
-      //   noteText = isSubmission
-      //     ? 'This submission is waiting for automated test results.'
-      //     : 'This run did not execute on a test system.';
-      // } else if (!hasScore) {
-      //   noteText = 'No percentage score was recorded for this attempt.';
+
+      const timelineParts = [];
+      // if (createdDisplay && createdDisplay !== '-') {
+      //   timelineParts.push(`Started ${escapeHtml(createdDisplay)}`);
       // }
+      // if (completedDisplay && completedDisplay !== '-' && completedDisplay !== createdDisplay) {
+      //   timelineParts.push(`Finished ${escapeHtml(completedDisplay)}`);
+      // }
+      const timelineMarkup = timelineParts.length > 0
+        ? `<div class="history-meta">${timelineParts.join(' • ')}</div>`
+        : '';
 
       const noteMarkup = noteText
         ? `<div class="history-note">${escapeHtml(noteText)}</div>`
@@ -220,6 +223,7 @@
             <span class="history-date">${escapeHtml(updatedDisplay)}</span>
           </div>
           ${detailMarkup}
+          ${timelineMarkup}
           ${noteMarkup}
         </article>
       `;
