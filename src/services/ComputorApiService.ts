@@ -1943,7 +1943,7 @@ export class ComputorApiService {
   async listStudentSubmissions(params?: SubmissionQuery | null): Promise<SubmissionListItem[]> {
     try {
       const client = await this.getHttpClient();
-      const response = await client.get<SubmissionListItem[]>('/submission', params ?? undefined);
+      const response = await client.get<SubmissionListItem[]>('/submissions', params ?? undefined);
       return Array.isArray(response.data) ? response.data : [];
     } catch (error: any) {
       console.error('Failed to list student submissions:', error);

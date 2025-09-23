@@ -1,12 +1,10 @@
-# Build output - exclude source files and test files
-out/test/**
-out/**/test/**
+# Build output - exclude source files and test files, but keep the webpack bundle
+out/**
 src/**
 
-# TypeScript declaration files and source maps (optional - keep if needed for debugging)
-out/**/*.d.ts
-out/**/*.d.ts.map
-out/**/*.js.map
+# Keep the webpack bundle in dist/
+!dist/extension.js
+!dist/extension.js.map
 
 # Development and testing
 test/**
