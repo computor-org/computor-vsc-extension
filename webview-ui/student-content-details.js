@@ -250,7 +250,10 @@
 
     root.innerHTML = `
       <div class="view-header">
-        <h1>${escapeHtml(content.title || content.path || 'Course Content')}</h1>
+        <div class="header-row">
+          <h1>${escapeHtml(content.title || content.path || 'Course Content')}</h1>
+          <button type="button" class="vscode-button vscode-button--secondary header-close" data-close>Close</button>
+        </div>
         ${headerSubtitle}
         ${chips}
       </div>
@@ -335,6 +338,11 @@
 
     const actionsContainer = root.querySelector('[data-actions]');
     renderActions(actionsContainer, data.actions);
+
+    const closeButton = root.querySelector('[data-close]');
+    if (closeButton) {
+      closeButton.addEventListener('click', () => sendMessage('close'));
+    }
   }
 
   window.addEventListener('message', (event) => {

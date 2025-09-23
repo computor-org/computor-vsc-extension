@@ -141,6 +141,9 @@ export class StudentCourseContentDetailsWebviewProvider extends BaseWebviewProvi
           this.panel?.webview.postMessage({ command: 'updateState', data: this.currentData });
         }
         break;
+      case 'close':
+        this.panel?.dispose();
+        break;
       default:
         break;
     }
