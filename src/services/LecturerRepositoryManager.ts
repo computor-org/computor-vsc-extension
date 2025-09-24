@@ -17,7 +17,10 @@ export class LecturerRepositoryManager {
     this.api = api;
     this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
     const ws = vscode.workspace.workspaceFolders;
-    this.workspaceRoot = ws && ws[0] ? ws[0].uri.fsPath : path.join(os.homedir(), '.computor', 'lecturer-workspace');
+    if (!ws || ws.length === 0 || !ws[0]) {
+      throw new Error('LecturerRepositoryManager requires an open workspace folder.');
+    }
+    this.workspaceRoot = ws[0].uri.fsPath;
   }
 
   async syncAllAssignments(onProgress?: (message: string) => void): Promise<void> {

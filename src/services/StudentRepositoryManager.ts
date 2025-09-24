@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import * as os from 'os';
 import * as fs from 'fs';
 import { ComputorApiService } from './ComputorApiService';
 import { GitLabTokenManager } from './GitLabTokenManager';
@@ -34,13 +33,10 @@ export class StudentRepositoryManager {
     this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
     // Use the actual VS Code workspace folder
     const workspaceFolders = vscode.workspace.workspaceFolders;
-    if (workspaceFolders && workspaceFolders.length > 0 && workspaceFolders[0]) {
-      this.workspaceRoot = workspaceFolders[0].uri.fsPath;
-    } else {
-      // Fallback, but this shouldn't happen for students as we require a workspace
-      this.workspaceRoot = path.join(os.homedir(), '.computor', 'workspace');
-      console.warn('[StudentRepositoryManager] No workspace folder found, using fallback path');
+    if (!workspaceFolders || workspaceFolders.length === 0 || !workspaceFolders[0]) {
+      throw new Error('StudentRepositoryManager requires an open workspace folder.');
     }
+    this.workspaceRoot = workspaceFolders[0].uri.fsPath;
     this.studentsRoot = path.join(this.workspaceRoot, '.computor', 'students');
   }
 

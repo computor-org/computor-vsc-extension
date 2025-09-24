@@ -1,7 +1,5 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import * as fs from 'fs/promises';
-import * as os from 'os';
 import { ComputorApiService } from './ComputorApiService';
 import { StatusBarService } from '../ui/StatusBarService';
 
@@ -31,7 +29,10 @@ export class CourseSelectionService {
         this.apiService = apiService;
         this.statusBarService = statusBarService;
         const firstWorkspace = vscode.workspace.workspaceFolders?.[0];
-        this.workspaceRoot = firstWorkspace ? firstWorkspace.uri.fsPath : path.join(path.resolve(os.homedir()), '.computor', 'workspace');
+        if (!firstWorkspace) {
+            throw new Error('CourseSelectionService requires an open workspace folder.');
+        }
+        this.workspaceRoot = firstWorkspace.uri.fsPath;
         
         // Don't auto-load last selected course - let the student extension handle it
         // This prevents loading stale/invalid course IDs from previous sessions
@@ -129,10 +130,7 @@ export class CourseSelectionService {
         this.currentCourseId = course.id;
         this.currentCourseInfo = course;
 
-        // Ensure the workspace root exists when we fall back to the home directory case
-        try {
-            await fs.mkdir(this.workspaceRoot, { recursive: true });
-        } catch {}
+        // Workspace folder already exists; nothing else to do here.
 
         // Save selection to global state
         await this.context.globalState.update('selectedCourseId', course.id);
