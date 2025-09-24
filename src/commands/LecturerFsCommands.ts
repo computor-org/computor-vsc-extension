@@ -35,7 +35,7 @@ export class LecturerFsCommands {
       return;
     }
 
-    if (!(await this.ensureWithinAssignments(course, absPath))) {
+    if (!(await this.ensureWithinAssignments(course, absPath, item?.repositoryRoot))) {
       vscode.window.showErrorMessage('This file is outside the assignments repository.');
       return;
     }
@@ -80,7 +80,7 @@ export class LecturerFsCommands {
       return;
     }
 
-    if (!(await this.ensureWithinAssignments(course, absPath))) {
+    if (!(await this.ensureWithinAssignments(course, absPath, item?.repositoryRoot))) {
       vscode.window.showErrorMessage('This entry is outside the assignments repository.');
       return;
     }
@@ -105,8 +105,8 @@ export class LecturerFsCommands {
     }
   }
 
-  private async ensureWithinAssignments(course: any, entryPath: string): Promise<boolean> {
-    const repoRoot = this.repositoryManager.getAssignmentsRepoRoot(course);
+  private async ensureWithinAssignments(course: any, entryPath: string, explicitRoot?: string): Promise<boolean> {
+    const repoRoot = explicitRoot || this.repositoryManager.getAssignmentsRepoRoot(course);
     if (!repoRoot) {
       vscode.window.showErrorMessage('Assignments repository not found. Run "Sync Assignments" first.');
       return false;

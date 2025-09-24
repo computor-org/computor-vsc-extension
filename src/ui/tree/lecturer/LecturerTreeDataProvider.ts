@@ -905,7 +905,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         return [new InfoItem('Assignment directory not available locally', 'warning')];
       }
 
-      const children = await this.readDirectoryItems(resolution.absolutePath, element.course, element.courseContent);
+      const repoRoot = resolution.repositoryPath || this.repositoryManager.getAssignmentsRepoRoot(element.course);
+      const children = await this.readDirectoryItems(resolution.absolutePath, element.course, element.courseContent, repoRoot || resolution.absolutePath);
       if (children.length === 0) {
         return [new InfoItem('Empty assignment directory', 'info')];
       }
@@ -1897,7 +1898,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     }
   }
 
-  private async readDirectoryItems(dir: string, course: CourseList, courseContent: CourseContentList): Promise<TreeItem[]> {
+  private async readDirectoryItems(dir: string, course: CourseList, courseContent: CourseContentList, repositoryRoot: string): Promise<TreeItem[]> {
     try {
       const entries = await fs.promises.readdir(dir, { withFileTypes: true });
       const items: TreeItem[] = [];
@@ -1906,9 +1907,9 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         const abs = path.join(dir, ent.name);
         const rel = ent.name;
         if (ent.isDirectory()) {
-          items.push(new FSFolderItem(abs, rel, course, courseContent));
+          items.push(new FSFolderItem(abs, rel, course, courseContent, repositoryRoot));
         } else {
-          items.push(new FSFileItem(abs, rel, course, courseContent));
+          items.push(new FSFileItem(abs, rel, course, courseContent, repositoryRoot));
         }
       }
       // Sort folders first, then files alphabetically
@@ -1932,7 +1933,8 @@ class FSFolderItem extends vscode.TreeItem {
     public absPath: string,
     public relPath: string,
     public course: CourseList,
-    public courseContent: CourseContentList
+    public courseContent: CourseContentList,
+    public repositoryRoot: string
   ) {
     super(path.basename(absPath), vscode.TreeItemCollapsibleState.Collapsed);
     this.iconPath = new vscode.ThemeIcon('folder');
@@ -1947,7 +1949,8 @@ class FSFileItem extends vscode.TreeItem {
     public absPath: string,
     public relPath: string,
     public course: CourseList,
-    public courseContent: CourseContentList
+    public courseContent: CourseContentList,
+    public repositoryRoot: string
   ) {
     super(path.basename(absPath), vscode.TreeItemCollapsibleState.None);
     this.iconPath = new vscode.ThemeIcon('file');
