@@ -1665,7 +1665,7 @@ export class ComputorApiService {
 
   async updateUserPassword(payload: UserPassword): Promise<void> {
     const client = await this.getHttpClient();
-    await client.put('/user/password', payload);
+    await client.post('/user/password', payload);
   }
 
   // Tutor: course contents for a specific member in a course
