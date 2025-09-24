@@ -22,6 +22,7 @@ interface RepositoryInfo {
  */
 export class StudentRepositoryManager {
   private workspaceRoot: string;
+  private studentsRoot: string;
   private gitLabTokenManager: GitLabTokenManager;
   private apiService: ComputorApiService;
 
@@ -40,6 +41,7 @@ export class StudentRepositoryManager {
       this.workspaceRoot = path.join(os.homedir(), '.computor', 'workspace');
       console.warn('[StudentRepositoryManager] No workspace folder found, using fallback path');
     }
+    this.studentsRoot = path.join(this.workspaceRoot, 'students');
   }
 
   /**
@@ -53,6 +55,7 @@ export class StudentRepositoryManager {
     try {
       // Ensure workspace directory exists
       await fs.promises.mkdir(this.workspaceRoot, { recursive: true });
+      await fs.promises.mkdir(this.studentsRoot, { recursive: true });
       
       // Get course contents
       const courseContents = await this.apiService.getStudentCourseContents(courseId, { force: true });
@@ -235,7 +238,7 @@ export class StudentRepositoryManager {
     // Use just the last part of the URL as the repo name (e.g., "admin" from "students/admin")
     const repoName = urlParts[urlParts.length - 1] || 'repository';
     // Clone directly into workspace root, not nested in courses/courseId
-    const repoPath = path.join(this.workspaceRoot, repoName);
+    const repoPath = path.join(this.studentsRoot, repoName);
 
     const repoExists = await this.directoryExists(repoPath);
     
@@ -321,10 +324,12 @@ export class StudentRepositoryManager {
     
     // List all directories in the workspace root that are git repositories
     try {
-      const dirs = fs.readdirSync(this.workspaceRoot).filter(file => {
-        const filePath = path.join(this.workspaceRoot, file);
-        return fs.statSync(filePath).isDirectory() && fs.existsSync(path.join(filePath, '.git'));
-      });
+      const dirs = fs.existsSync(this.studentsRoot)
+        ? fs.readdirSync(this.studentsRoot).filter(file => {
+            const filePath = path.join(this.studentsRoot, file);
+            return fs.statSync(filePath).isDirectory() && fs.existsSync(path.join(filePath, '.git'));
+          })
+        : [];
       
       console.log(`[StudentRepositoryManager] Found existing repositories in workspace: ${dirs.join(', ')}`);
       
@@ -342,7 +347,7 @@ export class StudentRepositoryManager {
         if (isAssignment) {
           // Look for a matching repository and the expected subdirectory
           for (const dir of dirs) {
-            const repoPath = path.join(this.workspaceRoot, dir);
+            const repoPath = path.join(this.studentsRoot, dir);
             // Determine expected subdirectory from backend data first
             let subdirectory: string | undefined;
             if (typeof content.directory === 'string' && content.directory.length > 0) {
