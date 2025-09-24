@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
+import * as fs from 'fs';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { TutorSelectionService } from '../../../services/TutorSelectionService';
 import { IconGenerator } from '../../../utils/IconGenerator';
@@ -47,6 +49,14 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
 
     if (element instanceof TutorUnitItem) {
       return this.createTreeItems(element.node, memberId);
+    }
+
+    if (element instanceof TutorContentItem) {
+      return this.getAssignmentDirectoryChildren(element, courseId, memberId);
+    }
+
+    if (element instanceof TutorFsFolderItem) {
+      return this.readDirectoryItems(element.absPath, element.courseId, element.memberId, element.repositoryRoot);
     }
 
     return [];
@@ -128,10 +138,103 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
       if (child.isUnit) {
         items.push(new TutorUnitItem(child));
       } else if (child.courseContent) {
-        items.push(new TutorContentItem(child.courseContent, memberId));
+        items.push(new TutorContentItem(child.courseContent, memberId, this.isAssignmentContent(child.courseContent), this.deriveAssignmentDirectory(child.courseContent)));
       }
     }
     return items;
+  }
+
+  private isAssignmentContent(content: CourseContentStudentList): boolean {
+    const ct: any = (content as any).course_content_type;
+    const kindId = ct?.course_content_kind_id;
+    if (kindId && typeof kindId === 'string') {
+      if (kindId.toLowerCase() === 'assignment') return true;
+    }
+    const slug = ct?.slug?.toLowerCase?.() || '';
+    if (slug.includes('assignment') || slug.includes('exercise') || slug.includes('homework') || slug.includes('task') || slug.includes('lab') || slug.includes('quiz') || slug.includes('exam')) {
+      return true;
+    }
+    const kindTitle = ct?.course_content_kind?.title?.toLowerCase?.() || '';
+    if (kindTitle.includes('assignment') || kindTitle.includes('exercise') || kindTitle.includes('homework') || kindTitle.includes('task') || kindTitle.includes('lab') || kindTitle.includes('quiz') || kindTitle.includes('exam')) {
+      return true;
+    }
+    return false;
+  }
+
+  private deriveAssignmentDirectory(content: CourseContentStudentList): string | undefined {
+    const raw = (content as any)?.directory as string | undefined
+      ?? content.submission_group?.example_identifier
+      ?? (content.path?.split('.').pop());
+    return this.sanitizeAssignmentDirectoryName(raw);
+  }
+
+  private sanitizeAssignmentDirectoryName(raw?: string | null): string | undefined {
+    if (!raw) return undefined;
+    const normalized = path.normalize(raw).replace(/^([\\/]+)/, '');
+    if (!normalized || normalized === '.' || normalized === '..') {
+      return undefined;
+    }
+    const segments = normalized.split(/[\\/]+/).filter(seg => seg && seg !== '..');
+    return segments.join(path.sep);
+  }
+
+  private async getAssignmentDirectoryChildren(element: TutorContentItem, courseId: string, memberId: string): Promise<vscode.TreeItem[]> {
+    if (!element.isAssignment) {
+      return [];
+    }
+
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceFolder) {
+      return [new MessageItem('Open a workspace folder to view assignment files.', 'warning')];
+    }
+
+    const repoRoot = path.join(workspaceFolder, 'students', courseId, memberId);
+    const gitDir = path.join(repoRoot, '.git');
+    if (!fs.existsSync(gitDir)) {
+      return [new MessageItem('Student repository not found locally. Use “Clone Student Repository” first.', 'warning')];
+    }
+
+    const directoryName = element.assignmentDirectory || this.deriveAssignmentDirectory(element.content);
+    if (!directoryName) {
+      return [new MessageItem('Assignment directory is not specified for this content.', 'info')];
+    }
+
+    const assignmentPath = path.join(repoRoot, directoryName);
+    if (!fs.existsSync(assignmentPath)) {
+      return [new MessageItem('Assignment directory missing locally. Pull the latest student repository.', 'warning')];
+    }
+
+    const items = await this.readDirectoryItems(assignmentPath, courseId, memberId, repoRoot);
+    return items.length > 0 ? items : [new MessageItem('Assignment directory is empty.', 'info')];
+  }
+
+  private async readDirectoryItems(dir: string, courseId: string, memberId: string, repositoryRoot: string): Promise<vscode.TreeItem[]> {
+    try {
+      const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+      const items: vscode.TreeItem[] = [];
+      for (const entry of entries) {
+        if (entry.name === '.git') continue;
+        const absPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          items.push(new TutorFsFolderItem(absPath, courseId, memberId, repositoryRoot));
+        } else if (entry.isFile()) {
+          items.push(new TutorFsFileItem(absPath, courseId, memberId, repositoryRoot));
+        }
+      }
+
+      items.sort((a, b) => {
+        const aIsFolder = a instanceof TutorFsFolderItem;
+        const bIsFolder = b instanceof TutorFsFolderItem;
+        if (aIsFolder && !bIsFolder) return -1;
+        if (!aIsFolder && bIsFolder) return 1;
+        return String(a.label).localeCompare(String(b.label));
+      });
+
+      return items;
+    } catch (error) {
+      console.warn('Failed to read tutor assignment directory:', error);
+      return [new MessageItem('Error reading assignment directory.', 'error')];
+    }
   }
 }
 
@@ -196,8 +299,17 @@ class TutorUnitItem extends vscode.TreeItem {
 }
 
 class TutorContentItem extends vscode.TreeItem {
-  constructor(public content: CourseContentStudentList, memberId: string) {
-    super(content.title || content.path, vscode.TreeItemCollapsibleState.None);
+  public readonly memberId: string;
+  public readonly isAssignment: boolean;
+  public readonly assignmentDirectory?: string;
+
+  constructor(
+    public content: CourseContentStudentList,
+    memberId: string,
+    isAssignment: boolean,
+    assignmentDirectory?: string
+  ) {
+    super(content.title || content.path, isAssignment ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
     const ct: any = (content as any).course_content_type;
     const color = ct?.color || 'grey';
     const kindId = ct?.course_content_kind_id;
@@ -221,7 +333,10 @@ class TutorContentItem extends vscode.TreeItem {
     this.iconPath = (badge === 'none' && corner === 'none')
       ? IconGenerator.getColoredIcon(color, shape)
       : IconGenerator.getColoredIconWithBadge(color, shape, badge, corner);
-    this.contextValue = kindId === 'assignment' ? 'tutorStudentContent.assignment' : 'tutorStudentContent.reading';
+    this.memberId = memberId;
+    this.isAssignment = isAssignment;
+    this.assignmentDirectory = assignmentDirectory;
+    this.contextValue = this.isAssignment ? 'tutorStudentContent.assignment' : 'tutorStudentContent.reading';
     this.description = unread > 0 ? `🔔 ${unread}` : undefined;
     // Tooltip with friendly status label
     const friendlyStatus = (() => {
@@ -241,5 +356,34 @@ class TutorContentItem extends vscode.TreeItem {
     ].filter(Boolean).join('\n');
     this.id = content.id;
     // No IDs in description per request
+  }
+}
+
+class TutorFsFolderItem extends vscode.TreeItem {
+  constructor(
+    public absPath: string,
+    public courseId: string,
+    public memberId: string,
+    public repositoryRoot: string
+  ) {
+    super(path.basename(absPath), vscode.TreeItemCollapsibleState.Collapsed);
+    this.contextValue = 'tutorFsFolder';
+    this.tooltip = absPath;
+    this.id = `tutorFsFolder:${courseId}:${memberId}:${absPath}`;
+  }
+}
+
+class TutorFsFileItem extends vscode.TreeItem {
+  constructor(
+    public absPath: string,
+    public courseId: string,
+    public memberId: string,
+    public repositoryRoot: string
+  ) {
+    super(path.basename(absPath), vscode.TreeItemCollapsibleState.None);
+    this.contextValue = 'tutorFsFile';
+    this.tooltip = absPath;
+    this.command = { command: 'vscode.open', title: 'Open File', arguments: [vscode.Uri.file(absPath)] };
+    this.id = `tutorFsFile:${courseId}:${memberId}:${absPath}`;
   }
 }
