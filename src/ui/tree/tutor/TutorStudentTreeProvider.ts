@@ -5,6 +5,7 @@ import { ComputorApiService } from '../../../services/ComputorApiService';
 import { TutorSelectionService } from '../../../services/TutorSelectionService';
 import { IconGenerator } from '../../../utils/IconGenerator';
 import { CourseContentStudentList, CourseContentKindList, SubmissionGroupStudentList } from '../../../types/generated';
+import { deriveTutorRepoDirectoryName, buildTutorStudentRepoRoot } from '../../../utils/repositoryNaming';
 
 export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   private _onDidChangeTreeData = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
@@ -188,7 +189,7 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
       return [new MessageItem('Open a workspace folder to view assignment files.', 'warning')];
     }
 
-    const repoRoot = path.join(workspaceFolder, 'students', courseId, memberId);
+    const repoRoot = this.getTutorRepoRoot(workspaceFolder, courseId, memberId, element.content);
     const gitDir = path.join(repoRoot, '.git');
     if (!fs.existsSync(gitDir)) {
       return [new MessageItem('Student repository not found locally. Use “Clone Student Repository” first.', 'warning')];
@@ -206,6 +207,28 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
 
     const items = await this.readDirectoryItems(assignmentPath, courseId, memberId, repoRoot);
     return items.length > 0 ? items : [new MessageItem('Assignment directory is empty.', 'info')];
+  }
+
+  private getTutorRepoRoot(workspaceRoot: string, courseId: string, memberId: string, content: CourseContentStudentList): string {
+    const submissionRepo = content.submission_group?.repository as any;
+    let remoteUrl: string | undefined = submissionRepo?.clone_url || submissionRepo?.url || submissionRepo?.web_url;
+    if (!remoteUrl && submissionRepo) {
+      const base = submissionRepo?.provider_url || submissionRepo?.provider || submissionRepo?.url || '';
+      const full = submissionRepo?.full_path || '';
+      if (base && full) {
+        remoteUrl = `${String(base).replace(/\/$/, '')}/${String(full).replace(/^\//, '')}`;
+        if (!remoteUrl.endsWith('.git')) remoteUrl += '.git';
+      }
+    }
+
+    const repoName = deriveTutorRepoDirectoryName({
+      submissionRepo,
+      remoteUrl,
+      courseId,
+      memberId
+    });
+
+    return buildTutorStudentRepoRoot(workspaceRoot, repoName);
   }
 
   private async readDirectoryItems(dir: string, courseId: string, memberId: string, repositoryRoot: string): Promise<vscode.TreeItem[]> {

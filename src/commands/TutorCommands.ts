@@ -6,6 +6,7 @@ import { ComputorApiService } from '../services/ComputorApiService';
 import { TutorSelectionService } from '../services/TutorSelectionService';
 import { createSimpleGit } from '../git/simpleGitFactory';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
+import { deriveTutorRepoDirectoryName, buildTutorStudentRepoRoot } from '../utils/repositoryNaming';
 // Import interfaces from generated types (interfaces removed to avoid duplication)
 import { CourseMemberCommentsWebviewProvider } from '../ui/webviews/CourseMemberCommentsWebviewProvider';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
@@ -103,7 +104,7 @@ export class TutorCommands {
             return;
           }
 
-          const repoName = this.deriveRepoDirectoryName({
+          const repoName = deriveTutorRepoDirectoryName({
             submissionRepo,
             remoteUrl,
             courseId,
@@ -116,8 +117,7 @@ export class TutorCommands {
             vscode.window.showErrorMessage('No workspace folder is open. Open a folder before cloning.');
             return;
           }
-          const studentsRoot = path.join(wsRoot, 'students');
-          const dir = path.join(studentsRoot, repoName);
+          const dir = buildTutorStudentRepoRoot(wsRoot, repoName);
           await fs.promises.mkdir(dir, { recursive: true });
           // Git clone into the destination if empty
           const exists = await fs.promises.readdir(dir).then(list => list.length > 0).catch(() => false);
@@ -138,6 +138,7 @@ export class TutorCommands {
                 await createSimpleGit().clone(authUrl, dir);
               });
               vscode.window.showInformationMessage(`Student repository cloned to ${dir}`);
+              this.treeDataProvider.refresh();
             } catch (e: any) {
               const msg = String(e?.message || e || '');
               if (origin && (msg.includes('Authentication failed') || msg.includes('could not read Username') || msg.includes('403') || msg.includes('401'))) {
@@ -159,6 +160,7 @@ export class TutorCommands {
                   await createSimpleGit().clone(authUrl, dir);
                 });
                 vscode.window.showInformationMessage(`Student repository cloned to ${dir}`);
+                this.treeDataProvider.refresh();
               } else {
                 throw e;
               }
@@ -201,14 +203,14 @@ export class TutorCommands {
             remoteUrl = repoMeta?.remote_url;
           }
 
-          const repoName = this.deriveRepoDirectoryName({
+          const repoName = deriveTutorRepoDirectoryName({
             submissionRepo,
             remoteUrl,
             courseId,
             memberId
           });
 
-          const repoPath = path.join(wsRoot, 'students', repoName);
+          const repoPath = buildTutorStudentRepoRoot(wsRoot, repoName);
           // Ensure repository exists
           const gitDir = path.join(repoPath, '.git');
           try {
@@ -465,81 +467,4 @@ export class TutorCommands {
     }
   }
 
-  private deriveRepoDirectoryName(params: { submissionRepo?: any; remoteUrl?: string; courseId?: string; memberId?: string }): string {
-    const { submissionRepo, remoteUrl, courseId, memberId } = params;
-    const candidates = [
-      this.repoNameFromSubmissionRepository(submissionRepo),
-      this.repoNameFromUrl(remoteUrl)
-    ];
-
-    for (const candidate of candidates) {
-      const slug = this.slugify(candidate);
-      if (slug) {
-        return slug;
-      }
-    }
-
-    const courseSlug = this.slugify(courseId) || 'course';
-    const memberSlug = this.slugify(memberId) || 'member';
-    return `${courseSlug}-${memberSlug}`;
-  }
-
-  private repoNameFromSubmissionRepository(repo?: any): string | undefined {
-    if (!repo) {
-      return undefined;
-    }
-    if (typeof repo.full_path === 'string' && repo.full_path.length > 0) {
-      const parts = repo.full_path.split('/').filter(Boolean);
-      const last = parts.pop();
-      const slug = this.slugify(last);
-      if (slug) {
-        return slug;
-      }
-    }
-    if (typeof repo.path === 'string' && repo.path.length > 0) {
-      const slug = this.slugify(repo.path);
-      if (slug) {
-        return slug;
-      }
-    }
-    return undefined;
-  }
-
-  private repoNameFromUrl(remoteUrl?: string): string | undefined {
-    if (!remoteUrl) {
-      return undefined;
-    }
-    try {
-      const url = new URL(remoteUrl);
-      const pathname = url.pathname;
-      const segments = pathname.split('/').filter(Boolean);
-      const last = segments.pop();
-      const slug = this.slugify(last ? last.replace(/\.git$/, '') : undefined);
-      if (slug) {
-        return slug;
-      }
-    } catch {
-      const parts = remoteUrl.split('/');
-      const last = parts.pop();
-      const slug = this.slugify(last ? last.replace(/\.git$/, '') : undefined);
-      if (slug) {
-        return slug;
-      }
-    }
-    return undefined;
-  }
-
-  private slugify(value?: string | null): string | undefined {
-    if (!value) {
-      return undefined;
-    }
-    const slug = value
-      .toString()
-      .trim()
-      .replace(/\.git$/, '')
-      .replace(/[^a-zA-Z0-9-_]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .toLowerCase();
-    return slug || undefined;
-  }
 }
