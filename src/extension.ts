@@ -13,6 +13,7 @@ import { ApiKeyHttpClient } from './http/ApiKeyHttpClient';
 import { JwtHttpClient } from './http/JwtHttpClient';
 import { BackendConnectionService } from './services/BackendConnectionService';
 import { GitEnvironmentService } from './services/GitEnvironmentService';
+import { ExtensionUpdateService } from './services/ExtensionUpdateService';
 
 import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataProvider';
 import { LecturerExampleTreeProvider } from './ui/tree/lecturer/LecturerExampleTreeProvider';
@@ -949,6 +950,9 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   console.log('Computor extension activated');
   IconGenerator.initialize(context);
+
+  const updateService = new ExtensionUpdateService(context, new ComputorSettingsManager(context));
+  void updateService.checkForUpdates();
 
   // Initialize all view contexts to false to hide views until login
   await vscode.commands.executeCommand('setContext', 'computor.isLoggedIn', false);

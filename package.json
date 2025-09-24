@@ -2,7 +2,7 @@
   "name": "computor",
   "displayName": "Computor VS Code Extension",
   "description": "VS Code extension for computor teaching software",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "publisher": "itpcp-tugraz",
   "engines": {
     "vscode": "^1.74.0"
@@ -917,6 +917,7 @@
     "@types/mocha": "^10.0.1",
     "@types/node": "^16.18.126",
     "@types/node-fetch": "^2.6.0",
+    "@types/semver": "^7.3.12",
     "@types/uuid": "^10.0.0",
     "@types/vscode": "^1.74.0",
     "@typescript-eslint/eslint-plugin": "^5.45.0",
@@ -938,6 +939,7 @@
     "jszip": "^3.10.1",
     "lodash": "^4.17.21",
     "node-fetch": "^2.6.0",
+    "semver": "^7.7.2",
     "simple-git": "^3.28.0",
     "uuid": "^11.1.0"
   }

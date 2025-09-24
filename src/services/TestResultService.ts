@@ -56,7 +56,7 @@ export class TestResultService {
     courseContentId: string,
     versionIdentifier: string,
     assignmentTitle: string,
-    submit: boolean = false,
+    submit?: boolean,
     options?: { progress?: vscode.Progress<{ message?: string; increment?: number }>; token?: vscode.CancellationToken; showProgress?: boolean }
   ): Promise<void> {
     if (!this.apiService) {
