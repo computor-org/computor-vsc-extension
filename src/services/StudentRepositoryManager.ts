@@ -37,7 +37,7 @@ export class StudentRepositoryManager {
       throw new Error('StudentRepositoryManager requires an open workspace folder.');
     }
     this.workspaceRoot = workspaceFolders[0].uri.fsPath;
-    this.studentsRoot = path.join(this.workspaceRoot, '.computor', 'students');
+    this.studentsRoot = path.join(this.workspaceRoot, 'students');
   }
 
   /**
@@ -51,7 +51,7 @@ export class StudentRepositoryManager {
     try {
       // Ensure workspace directory exists
       await fs.promises.mkdir(this.workspaceRoot, { recursive: true });
-      await fs.promises.mkdir(path.join(this.workspaceRoot, '.computor'), { recursive: true });
+      // await fs.promises.mkdir(path.join(this.workspaceRoot, '.computor'), { recursive: true });
       await fs.promises.mkdir(this.studentsRoot, { recursive: true });
       
       // Get course contents
