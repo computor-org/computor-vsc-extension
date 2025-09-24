@@ -109,7 +109,8 @@ export class TutorCommands {
             vscode.window.showErrorMessage('No workspace folder is open. Open a folder before cloning.');
             return;
           }
-          const dir = path.join(wsRoot, courseId, memberId);
+          const studentsRoot = path.join(wsRoot, 'students');
+          const dir = path.join(studentsRoot, courseId, memberId);
           await fs.promises.mkdir(dir, { recursive: true });
           // Git clone into the destination if empty
           const exists = await fs.promises.readdir(dir).then(list => list.length > 0).catch(() => false);
@@ -177,7 +178,7 @@ export class TutorCommands {
             vscode.window.showErrorMessage('No workspace folder is open. Open a folder before checkout.');
             return;
           }
-          const repoPath = path.join(wsRoot, courseId, memberId);
+          const repoPath = path.join(wsRoot, 'students', courseId, memberId);
           // Ensure repository exists
           const gitDir = path.join(repoPath, '.git');
           try {
