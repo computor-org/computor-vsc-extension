@@ -683,8 +683,7 @@ export class StudentCommands {
                 progress.report({ message: 'Uploading submission package...' });
                 await this.apiService.createStudentSubmission({
                   course_submission_group_id: submissionGroupId,
-                  version_identifier: commitHash,
-                  submit: false
+                  version_identifier: commitHash
                 }, archive);
               } else {
                 progress.report({ message: 'Reusing existing submission archive.' });
