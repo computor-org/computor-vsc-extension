@@ -876,9 +876,14 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       return [];
     }
 
-    const directoryName = element.assignmentDirectory || await this.resolveAssignmentDirectoryName(element.courseContent);
-    if (!directoryName) {
+    const rawDirectoryName = element.assignmentDirectory || await this.resolveAssignmentDirectoryName(element.courseContent);
+    if (!rawDirectoryName) {
       return [new InfoItem('Assignment not initialized in assignments repo', 'info')];
+    }
+
+    const directoryName = this.sanitizeAssignmentDirectoryName(rawDirectoryName);
+    if (!directoryName) {
+      return [new InfoItem('Assignment directory name is invalid', 'warning')];
     }
 
     element.assignmentDirectory = directoryName;
@@ -920,11 +925,12 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       return cached || undefined;
     }
 
-    const deployment = content.deployment as (CourseContentDeploymentList & { deployment_path?: string | null; version_identifier?: string | null }) | null | undefined;
+   const deployment = content.deployment as (CourseContentDeploymentList & { deployment_path?: string | null; version_identifier?: string | null }) | null | undefined;
     const deploymentIdentifier = ((deployment as any)?.deployment_path as string | undefined) || deployment?.example_identifier || undefined;
-    if (deploymentIdentifier) {
-      this.assignmentIdentifierCache.set(content.id, deploymentIdentifier);
-      return deploymentIdentifier;
+    const sanitizedDeployment = this.sanitizeAssignmentDirectoryName(deploymentIdentifier);
+    if (sanitizedDeployment) {
+      this.assignmentIdentifierCache.set(content.id, sanitizedDeployment);
+      return sanitizedDeployment;
     }
 
     try {
@@ -932,17 +938,19 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       const fullDeployment = full?.deployment as (CourseContentDeploymentList & { deployment_path?: string | null; example_identifier?: string | null; version_identifier?: string | null }) | null | undefined;
       const identifier = ((fullDeployment as any)?.deployment_path as string | undefined)
         || fullDeployment?.example_identifier;
-      this.assignmentIdentifierCache.set(content.id, identifier ?? null);
-      if (identifier) {
-        return identifier;
+      const sanitizedFull = this.sanitizeAssignmentDirectoryName(identifier);
+      this.assignmentIdentifierCache.set(content.id, sanitizedFull ?? null);
+      if (sanitizedFull) {
+        return sanitizedFull;
       }
     } catch (error) {
       console.warn('Failed to resolve assignment directory name:', error);
     }
 
     const fallback = this.extractSlugFromPath(content.path);
-    this.assignmentIdentifierCache.set(content.id, fallback ?? null);
-    return fallback;
+    const sanitizedFallback = this.sanitizeAssignmentDirectoryName(fallback);
+    this.assignmentIdentifierCache.set(content.id, sanitizedFallback ?? null);
+    return sanitizedFallback;
   }
 
   private extractSlugFromPath(pathValue: string): string | undefined {
@@ -954,6 +962,18 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       return undefined;
     }
     return segments[segments.length - 1];
+  }
+
+  private sanitizeAssignmentDirectoryName(raw: string | undefined): string | undefined {
+    if (!raw) {
+      return undefined;
+    }
+    const normalized = path.normalize(raw).replace(/^([/\\]+)/, '');
+    if (!normalized || normalized === '.' || normalized === '..') {
+      return undefined;
+    }
+    const safeSegments = normalized.split(/[\\/]+/).filter(segment => segment && segment !== '..');
+    return safeSegments.join(path.sep);
   }
 
   private async resolveAssignmentDirectory(
@@ -973,13 +993,23 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       };
     }
 
-    let folder = this.repositoryManager.getAssignmentFolderPath(fullCourse, directoryName);
+    const sanitizedDirectoryName = this.sanitizeAssignmentDirectoryName(directoryName);
+    if (!sanitizedDirectoryName) {
+      return {
+        absolutePath: null,
+        repositoryPath: repoRoot,
+        exists: false,
+        statusMessage: { message: 'Assignment directory name is invalid', severity: 'warning' }
+      };
+    }
+
+    let folder = this.repositoryManager.getAssignmentFolderPath(fullCourse, sanitizedDirectoryName);
     let folderExists = folder ? fs.existsSync(folder) : false;
     let statusMessage: AssignmentDirectoryStatus | undefined;
 
     if (!folder && attemptSync) {
       await this.syncAssignmentsRepository(course.id, fullCourse);
-      folder = this.repositoryManager.getAssignmentFolderPath(fullCourse, directoryName);
+      folder = this.repositoryManager.getAssignmentFolderPath(fullCourse, sanitizedDirectoryName);
       folderExists = folder ? fs.existsSync(folder) : false;
     }
 
@@ -1396,14 +1426,21 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   }
   
   private isContentSubmittable(contentType?: CourseContentTypeList): boolean {
-    if (!contentType) return false;
-    
-    // Check if the content type slug indicates it's submittable
-    // Common submittable types: assignment, exercise, homework, task, lab, quiz
-    const submittableTypes = ['assignment', 'exercise', 'homework', 'task', 'lab', 'quiz', 'exam'];
+    if (!contentType) {
+      return false;
+    }
+
+    // Prefer backend flag when available
+    if (contentType.course_content_kind?.submittable) {
+      return true;
+    }
+
+    // Fallback to heuristics based on slug/title for older payloads
     const slug = contentType.slug?.toLowerCase() || '';
-    
-    return submittableTypes.some(type => slug.includes(type));
+    const title = contentType.course_content_kind?.title?.toLowerCase() || '';
+    const submittableTypes = ['assignment', 'exercise', 'homework', 'task', 'lab', 'quiz', 'exam'];
+
+    return submittableTypes.some(type => slug.includes(type) || title.includes(type));
   }
 
   /**
