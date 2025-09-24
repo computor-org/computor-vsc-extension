@@ -3,12 +3,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { ComputorApiService } from '../../../services/ComputorApiService';
-import { LecturerExampleWorkspaceResolver } from '../../../services/LecturerExampleWorkspaceResolver';
 import { DragDropManager } from '../../../services/DragDropManager';
 import { 
   ExampleRepositoryList,
   ExampleList
 } from '../../../types/generated';
+import { LecturerRepositoryManager } from '../../../services/LecturerRepositoryManager';
 
 // Export tree items for use in commands
 export { ExampleRepositoryTreeItem, ExampleTreeItem, FileSystemTreeItem };
@@ -162,14 +162,15 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
   
   // Track downloaded examples with version information
   private downloadedExamples: Map<string, { path: string; version?: string }> = new Map(); // exampleId -> {path, version}
-  private exampleWorkspaceResolver: LecturerExampleWorkspaceResolver;
+  private context: vscode.ExtensionContext;
+  private assignmentsRootCache: { courseId: string; path: string } | null = null;
 
   constructor(
     context: vscode.ExtensionContext,
     providedApiService?: ComputorApiService
   ) {
+    this.context = context;
     this.apiService = providedApiService || new ComputorApiService(context);
-    this.exampleWorkspaceResolver = new LecturerExampleWorkspaceResolver(context, this.apiService);
   }
 
   refresh(): void {
@@ -310,8 +311,7 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
     }
 
     const examples = this.examplesCache.get(cacheKey) || [];
-    const target = await this.exampleWorkspaceResolver.ensureDefaultTarget(repository);
-    const repoRoot = target?.repoRoot;
+    const assignmentsRoot = await this.getAssignmentsRoot();
     
     // Apply filters if any
     let filteredExamples = examples;
@@ -346,8 +346,8 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
       let actualPath: string | undefined;
       let version: string | undefined;
       
-      if (repoRoot) {
-        const expectedPath = path.join(repoRoot, example.directory);
+      if (assignmentsRoot) {
+        const expectedPath = path.join(assignmentsRoot, example.directory);
         if (fs.existsSync(expectedPath)) {
           isDownloaded = true;
           actualPath = expectedPath;
@@ -371,6 +371,51 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
       
       return new ExampleTreeItem(example, repository, isDownloaded, actualPath, version);
     });
+  }
+
+  private async getAssignmentsRoot(): Promise<string | undefined> {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (!workspaceFolder) {
+      return undefined;
+    }
+
+    const markerPath = path.join(workspaceFolder.uri.fsPath, '.computor');
+    let courseId: string | undefined;
+
+    try {
+      const raw = await fs.promises.readFile(markerPath, 'utf8');
+      const marker = JSON.parse(raw);
+      if (marker && typeof marker.courseId === 'string') {
+        courseId = marker.courseId;
+      }
+    } catch {
+      return undefined;
+    }
+
+    if (!courseId) {
+      return undefined;
+    }
+
+    if (this.assignmentsRootCache && this.assignmentsRootCache.courseId === courseId) {
+      if (fs.existsSync(this.assignmentsRootCache.path)) {
+        return this.assignmentsRootCache.path;
+      }
+      this.assignmentsRootCache = null;
+    }
+
+    const course = await this.apiService.getCourse(courseId);
+    if (!course) {
+      return undefined;
+    }
+
+    const repoManager = new LecturerRepositoryManager(this.context, this.apiService);
+    const assignmentsRoot = repoManager.getAssignmentsRepoRoot(course);
+    if (!assignmentsRoot || !fs.existsSync(assignmentsRoot)) {
+      return undefined;
+    }
+
+    this.assignmentsRootCache = { courseId, path: assignmentsRoot };
+    return assignmentsRoot;
   }
 
   private getFileSystemItems(dirPath: string): vscode.TreeItem[] {

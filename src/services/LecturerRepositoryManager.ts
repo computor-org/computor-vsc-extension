@@ -59,19 +59,9 @@ export class LecturerRepositoryManager {
     const info = this.getAssignmentsRepoInfo(course);
     if (!info) { report(`No GitLab info for ${course.title || course.path}`); return; }
 
-    const { repoUrl, currentDir, legacyDir } = info;
+    const { repoUrl, currentDir } = info;
     await fs.promises.mkdir(this.workspaceRoot, { recursive: true });
     const target = path.join(this.workspaceRoot, currentDir);
-    const legacyTarget = legacyDir ? path.join(this.workspaceRoot, legacyDir) : undefined;
-
-    if (!(await this.directoryExists(target)) && legacyTarget && await this.directoryExists(legacyTarget)) {
-      try {
-        await fs.promises.rename(legacyTarget, target);
-        console.log(`[LecturerRepo] Migrated legacy assignments repository ${legacyTarget} -> ${target}`);
-      } catch (renameError) {
-        console.warn(`[LecturerRepo] Failed to migrate legacy assignments repository:`, renameError);
-      }
-    }
 
     const exists = await this.directoryExists(target);
 
@@ -137,7 +127,7 @@ export class LecturerRepositoryManager {
     }
   }
 
-  private getAssignmentsRepoInfo(course: any): { repoUrl: string; currentDir: string; legacyDir?: string } | null {
+  private getAssignmentsRepoInfo(course: any): { repoUrl: string; currentDir: string } | null {
     const props = (course.properties || {}) as any;
     const gitlab = props.gitlab || {};
     let repoUrl: string | undefined = gitlab.assignments_url as string | undefined;
@@ -147,9 +137,7 @@ export class LecturerRepositoryManager {
       if (orgUrl && fullPath) repoUrl = `${orgUrl}/${fullPath}/assignments.git`;
     }
     if (!repoUrl) return null;
-    const lastSeg = (gitlab.full_path && String(gitlab.full_path).split('/').pop()) || (course.path) || 'course';
-    const legacyDir = `${lastSeg}-assignments`;
-    return { repoUrl, currentDir: this.assignmentsDirName, legacyDir };
+    return { repoUrl, currentDir: this.assignmentsDirName };
   }
 
   public getAssignmentFolderPath(course: any, deploymentPath: string): string | null {
@@ -164,12 +152,6 @@ export class LecturerRepositoryManager {
     const current = path.join(this.workspaceRoot, info.currentDir);
     if (fs.existsSync(current)) {
       return current;
-    }
-    if (info.legacyDir) {
-      const legacy = path.join(this.workspaceRoot, info.legacyDir);
-      if (fs.existsSync(legacy)) {
-        return legacy;
-      }
     }
     return current;
   }

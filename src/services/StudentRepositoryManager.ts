@@ -24,7 +24,6 @@ export class StudentRepositoryManager {
   private workspaceRoot: string;
   private gitLabTokenManager: GitLabTokenManager;
   private apiService: ComputorApiService;
-  private readonly studentRepoPrefix = 'student:';
 
   constructor(
     context: vscode.ExtensionContext,
@@ -234,25 +233,9 @@ export class StudentRepositoryManager {
     // Extract repository name from clone URL
     const urlParts = cloneUrl.replace(/\.git$/, '').split('/');
     // Use just the last part of the URL as the repo name (e.g., "admin" from "students/admin")
-    const baseRepoName = urlParts[urlParts.length - 1] || 'repository';
-    const repoName = this.getStudentRepositoryName(baseRepoName);
+    const repoName = urlParts[urlParts.length - 1] || 'repository';
     // Clone directly into workspace root, not nested in courses/courseId
     const repoPath = path.join(this.workspaceRoot, repoName);
-    const legacyPaths = this.getLegacyStudentRepositoryPaths(baseRepoName);
-
-    if (!(await this.directoryExists(repoPath))) {
-      for (const legacyPath of legacyPaths) {
-        if (await this.directoryExists(legacyPath)) {
-          try {
-            await fs.promises.rename(legacyPath, repoPath);
-            console.log(`[StudentRepositoryManager] Migrated legacy repository ${legacyPath} -> ${repoPath}`);
-            break;
-          } catch (error) {
-            console.warn(`[StudentRepositoryManager] Failed to migrate legacy repository ${legacyPath}:`, error);
-          }
-        }
-      }
-    }
 
     const repoExists = await this.directoryExists(repoPath);
     
@@ -803,19 +786,6 @@ export class StudentRepositoryManager {
            message.includes('HTTP Basic') ||
            message.includes('401') ||
            message.includes('403');
-  }
-
-  private getStudentRepositoryName(baseName: string): string {
-    const safeBase = baseName || 'repository';
-    if (process.platform === 'win32') {
-      return `${this.studentRepoPrefix.replace(':', '-')}${safeBase}`;
-    }
-    return `${this.studentRepoPrefix}${safeBase}`;
-  }
-
-  private getLegacyStudentRepositoryPaths(baseName: string): string[] {
-    const normalized = baseName || 'repository';
-    return [path.join(this.workspaceRoot, normalized)];
   }
 
 }
