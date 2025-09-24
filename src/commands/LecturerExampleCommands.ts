@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import JSZip from 'jszip';
 import { ComputorApiService } from '../services/ComputorApiService';
+import { LecturerExampleWorkspaceResolver } from '../services/LecturerExampleWorkspaceResolver';
 import { ExampleTreeItem, ExampleRepositoryTreeItem, LecturerExampleTreeProvider } from '../ui/tree/lecturer/LecturerExampleTreeProvider';
 import { ExampleUploadRequest, CourseContentCreate, CourseContentList, CourseList } from '../types/generated';
 
@@ -17,7 +18,10 @@ export class LecturerExampleCommands {
     private treeProvider: LecturerExampleTreeProvider
   ) {
     this.registerCommands();
+    this.exampleWorkspaceResolver = new LecturerExampleWorkspaceResolver(context, apiService);
   }
+
+  private exampleWorkspaceResolver: LecturerExampleWorkspaceResolver;
 
   private registerCommands(): void {
     // Search examples - already registered in extension.ts but we'll override with better implementation
@@ -201,15 +205,14 @@ export class LecturerExampleCommands {
       return;
     }
 
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    if (!workspaceFolder) {
-      vscode.window.showErrorMessage('No workspace folder open');
+    const target = await this.exampleWorkspaceResolver.resolveTarget(item.repository);
+    if (!target) {
       return;
     }
 
     try {
-      // Use the example directory name directly in the workspace
-      const examplePath = path.join(workspaceFolder.uri.fsPath, item.example.directory);
+      const repoRoot = target.repoRoot;
+      const examplePath = path.join(repoRoot, item.example.directory);
       
       // Check if directory already exists
       if (fs.existsSync(examplePath)) {
@@ -283,7 +286,9 @@ export class LecturerExampleCommands {
       // Mark example as downloaded and refresh tree with version information
       this.treeProvider.markExampleAsDownloaded(item.example.id, examplePath, exampleData.version_tag);
 
-      vscode.window.showInformationMessage(`Example '${item.example.title}' checked out to workspace root: ${item.example.directory}`);
+      const repoLabel = target.courseTitle ? `${target.courseTitle} assignments` : 'assignments repository';
+      const relativePath = path.relative(repoRoot, examplePath) || '.';
+      vscode.window.showInformationMessage(`Example '${item.example.title}' checked out to ${repoLabel}: ${relativePath}`);
     } catch (error) {
       console.error('Failed to checkout example:', error);
       vscode.window.showErrorMessage(`Failed to checkout example: ${error}`);
@@ -299,9 +304,8 @@ export class LecturerExampleCommands {
       return;
     }
 
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    if (!workspaceFolder) {
-      vscode.window.showErrorMessage('No workspace folder open');
+    const target = await this.exampleWorkspaceResolver.resolveTarget(item.repository);
+    if (!target) {
       return;
     }
 
@@ -345,6 +349,7 @@ export class LecturerExampleCommands {
       }, async (progress) => {
         let successCount = 0;
         const errors: string[] = [];
+        const repoRoot = target.repoRoot;
 
         for (let i = 0; i < filteredExamples.length; i++) {
           const exampleItem = filteredExamples[i];
@@ -356,7 +361,7 @@ export class LecturerExampleCommands {
           });
 
           try {
-            const examplePath = path.join(workspaceFolder.uri.fsPath, exampleItem.example.directory);
+            const examplePath = path.join(repoRoot, exampleItem.example.directory);
             
             // Skip if directory already exists
             if (fs.existsSync(examplePath)) {

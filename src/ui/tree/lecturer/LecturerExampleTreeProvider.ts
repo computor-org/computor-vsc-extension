@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { ComputorApiService } from '../../../services/ComputorApiService';
+import { LecturerExampleWorkspaceResolver } from '../../../services/LecturerExampleWorkspaceResolver';
 import { DragDropManager } from '../../../services/DragDropManager';
 import { 
   ExampleRepositoryList,
@@ -161,12 +162,14 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
   
   // Track downloaded examples with version information
   private downloadedExamples: Map<string, { path: string; version?: string }> = new Map(); // exampleId -> {path, version}
+  private exampleWorkspaceResolver: LecturerExampleWorkspaceResolver;
 
   constructor(
     context: vscode.ExtensionContext,
     providedApiService?: ComputorApiService
   ) {
     this.apiService = providedApiService || new ComputorApiService(context);
+    this.exampleWorkspaceResolver = new LecturerExampleWorkspaceResolver(context, this.apiService);
   }
 
   refresh(): void {
@@ -307,6 +310,8 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
     }
 
     const examples = this.examplesCache.get(cacheKey) || [];
+    const target = await this.exampleWorkspaceResolver.ensureDefaultTarget(repository);
+    const repoRoot = target?.repoRoot;
     
     // Apply filters if any
     let filteredExamples = examples;
@@ -335,19 +340,17 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
 
     return filteredExamples.map(example => {
       const downloadInfo = this.downloadedExamples.get(example.id);
-      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-      
+
       // Check if the example is downloaded by checking if directory exists
       let isDownloaded = false;
       let actualPath: string | undefined;
       let version: string | undefined;
       
-      if (workspaceFolder) {
-        const expectedPath = path.join(workspaceFolder.uri.fsPath, example.directory);
+      if (repoRoot) {
+        const expectedPath = path.join(repoRoot, example.directory);
         if (fs.existsSync(expectedPath)) {
           isDownloaded = true;
           actualPath = expectedPath;
-          // Update the downloaded map if not already tracked
           if (!downloadInfo) {
             this.downloadedExamples.set(example.id, { path: expectedPath });
           } else {
@@ -355,8 +358,18 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
           }
         }
       }
+
+      if (!isDownloaded && downloadInfo) {
+        if (fs.existsSync(downloadInfo.path)) {
+          isDownloaded = true;
+          actualPath = downloadInfo.path;
+          version = downloadInfo.version;
+        } else {
+          this.downloadedExamples.delete(example.id);
+        }
+      }
       
-      return new ExampleTreeItem(example, repository, isDownloaded, actualPath || downloadInfo?.path, version);
+      return new ExampleTreeItem(example, repository, isDownloaded, actualPath, version);
     });
   }
 
