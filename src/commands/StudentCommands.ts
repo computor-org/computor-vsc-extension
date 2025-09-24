@@ -453,24 +453,9 @@ export class StudentCommands {
             if (reusedExistingSubmission) {
               vscode.window.showInformationMessage('A submission for this version already exists; skipped re-upload.');
             } else if (submissionResponse) {
-              const actions: string[] = [];
-              if (submissionResponse?.result_id) {
-                actions.push('Copy Result ID');
-              }
+              const successMessage = 'Assignment submitted successfully.';
 
-              const successMessage = submissionResponse?.version_identifier
-                ? `Assignment submitted successfully (version ${submissionResponse.version_identifier}).`
-                : 'Assignment submitted successfully.';
-
-              const action = await vscode.window.showInformationMessage(successMessage, ...actions);
-              if (action === 'Copy Result ID' && submissionResponse?.result_id) {
-                try {
-                  await vscode.env.clipboard.writeText(submissionResponse.result_id);
-                  vscode.window.showInformationMessage('Submission result ID copied to clipboard.');
-                } catch (clipError) {
-                  console.warn('[StudentCommands] Failed to copy result ID:', clipError);
-                }
-              }
+              vscode.window.showInformationMessage(successMessage);
             } else {
               vscode.window.showWarningMessage('Submission completed without a response from the server.');
             }
@@ -710,7 +695,7 @@ export class StudentCommands {
                 courseContentId,
                 commitHash,
                 assignmentTitle,
-                false,
+                undefined,
                 { progress, token, showProgress: false }
               );
             } else {
