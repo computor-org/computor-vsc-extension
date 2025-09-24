@@ -58,7 +58,23 @@ export class LecturerFsCommands {
       return;
     }
 
+    if (newName === path.basename(absPath)) {
+      return;
+    }
+
     const target = path.join(path.dirname(absPath), newName);
+
+    const pathAllowed = await this.ensureWithinAssignments(course, target, item?.repositoryRoot);
+    if (!pathAllowed) {
+      vscode.window.showErrorMessage('Target path would move the file outside the assignments repository.');
+      return;
+    }
+
+    try {
+      await fs.access(target);
+      vscode.window.showErrorMessage('A file or folder with that name already exists.');
+      return;
+    } catch {}
 
     try {
       await fs.rename(absPath, target);

@@ -860,7 +860,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
 
       // Filesystem folder expansion for lecturer assignment folders
       if (element instanceof FSFolderItem) {
-        const items = await this.readDirectoryItems(element.absPath, element.course, element.courseContent);
+        const items = await this.readDirectoryItems(element.absPath, element.course, element.courseContent, element.repositoryRoot);
         return items;
       }
 
