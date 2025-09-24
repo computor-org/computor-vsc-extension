@@ -841,6 +841,7 @@ interface UnifiedSession {
 
 let activeSession: UnifiedSession | null = null;
 let isAuthenticating = false;
+let extensionUpdateService: ExtensionUpdateService | undefined;
 
 const backendConnectionService = BackendConnectionService.getInstance();
 
@@ -933,6 +934,11 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
       };
 
       await context.secrets.store(secretKey, JSON.stringify(auth));
+      if (extensionUpdateService) {
+        extensionUpdateService.checkForUpdates().catch(err => {
+          console.warn('Extension update check failed:', err);
+        });
+      }
       await vscode.commands.executeCommand('setContext', 'computor.isLoggedIn', true);
 
       const courseInfo = controller.getCourseInfo();
@@ -955,8 +961,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   console.log('Computor extension activated');
   IconGenerator.initialize(context);
 
-  const updateService = new ExtensionUpdateService(context, new ComputorSettingsManager(context));
-  void updateService.checkForUpdates();
+  extensionUpdateService = new ExtensionUpdateService(context, new ComputorSettingsManager(context));
 
   // Initialize all view contexts to false to hide views until login
   await vscode.commands.executeCommand('setContext', 'computor.isLoggedIn', false);
