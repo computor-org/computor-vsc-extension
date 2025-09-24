@@ -19,6 +19,7 @@ import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataPro
 import { LecturerExampleTreeProvider } from './ui/tree/lecturer/LecturerExampleTreeProvider';
 import { LecturerCommands } from './commands/LecturerCommands';
 import { LecturerExampleCommands } from './commands/LecturerExampleCommands';
+import { LecturerFsCommands } from './commands/LecturerFsCommands';
 
 import { StudentCourseContentTreeProvider } from './ui/tree/student/StudentCourseContentTreeProvider';
 import { StudentRepositoryManager } from './services/StudentRepositoryManager';
@@ -801,6 +802,7 @@ class UnifiedController {
 
     // Register example-related commands (search, upload from ZIP, etc.)
     new LecturerExampleCommands(this.context, api, exampleTree);
+    new LecturerFsCommands(this.context, api).register();
 
     // Initialize lecturer assignments repository manager and trigger a background sync
     try {
