@@ -6,7 +6,7 @@ import { ComputorApiService } from '../services/ComputorApiService';
 import { TutorSelectionService } from '../services/TutorSelectionService';
 import { createSimpleGit } from '../git/simpleGitFactory';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
-import { deriveTutorRepoDirectoryName, buildTutorStudentRepoRoot } from '../utils/repositoryNaming';
+import { deriveRepositoryDirectoryName, buildStudentRepoRoot } from '../utils/repositoryNaming';
 // Import interfaces from generated types (interfaces removed to avoid duplication)
 import { CourseMemberCommentsWebviewProvider } from '../ui/webviews/CourseMemberCommentsWebviewProvider';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
@@ -104,7 +104,7 @@ export class TutorCommands {
             return;
           }
 
-          const repoName = deriveTutorRepoDirectoryName({
+          const repoName = deriveRepositoryDirectoryName({
             submissionRepo,
             remoteUrl,
             courseId,
@@ -117,7 +117,7 @@ export class TutorCommands {
             vscode.window.showErrorMessage('No workspace folder is open. Open a folder before cloning.');
             return;
           }
-          const dir = buildTutorStudentRepoRoot(wsRoot, repoName);
+          const dir = buildStudentRepoRoot(wsRoot, repoName);
           await fs.promises.mkdir(dir, { recursive: true });
           // Git clone into the destination if empty
           const exists = await fs.promises.readdir(dir).then(list => list.length > 0).catch(() => false);
@@ -203,14 +203,14 @@ export class TutorCommands {
             remoteUrl = repoMeta?.remote_url;
           }
 
-          const repoName = deriveTutorRepoDirectoryName({
+          const repoName = deriveRepositoryDirectoryName({
             submissionRepo,
             remoteUrl,
             courseId,
             memberId
           });
 
-          const repoPath = buildTutorStudentRepoRoot(wsRoot, repoName);
+          const repoPath = buildStudentRepoRoot(wsRoot, repoName);
           // Ensure repository exists
           const gitDir = path.join(repoPath, '.git');
           try {

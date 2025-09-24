@@ -9,6 +9,7 @@ import { ComputorSettingsManager } from '../../../settings/ComputorSettingsManag
 import { SubmissionGroupStudentList, CourseContentStudentList, CourseContentTypeList, CourseContentKindList } from '../../../types/generated';
 import { IconGenerator } from '../../../utils/IconGenerator';
 import { hasExampleAssigned, getExampleVersionId } from '../../../utils/deploymentHelpers';
+import { deriveRepositoryDirectoryName, buildStudentRepoRoot } from '../../../utils/repositoryNaming';
 
 interface ContentNode {
     name?: string;
@@ -182,44 +183,21 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                 // First, check if we need to setup the repository
                 // Resolve directory to absolute path if necessary
                 const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-                // Derive local repo root from repository fields when directory is relative
-                const repoNameFromRepository = (repo: any): string | undefined => {
-                    if (!repo) return undefined;
-                    // Prefer full_path last segment
-                    if (typeof repo.full_path === 'string' && repo.full_path.length > 0) {
-                        const parts = repo.full_path.split('/');
-                        return parts[parts.length - 1] || undefined;
-                    }
-                    // Then from clone_url
-                    if (typeof repo.clone_url === 'string' && repo.clone_url.length > 0) {
-                        const clean = repo.clone_url.replace(/\.git$/, '');
-                        const parts = clean.split('/');
-                        return parts[parts.length - 1] || undefined;
-                    }
-                    // Then from web_url
-                    if (typeof repo.web_url === 'string' && repo.web_url.length > 0) {
-                        const parts = repo.web_url.split('/');
-                        return parts[parts.length - 1] || undefined;
-                    }
-                    return undefined;
-                };
-                const repoName = repoNameFromRepository(element.submissionGroup?.repository);
-                const repoRoot = wsRoot && repoName ? path.join(wsRoot, '.computor', 'students', repoName) : undefined;
-                const resolvePath = (p?: string) => {
+                const courseId = await this.findCourseIdForContent(element.courseContent);
+                let repoRoot = wsRoot && courseId ? this.getStudentRepoRoot(wsRoot, courseId, element.submissionGroup) : undefined;
+                const resolvePath = (base: string | undefined, p?: string) => {
                     if (!p) return undefined;
                     if (path.isAbsolute(p)) return p;
-                    // If relative, resolve only when we can determine the repo root
-                    return repoRoot ? path.join(repoRoot, p) : undefined;
+                    return base ? path.join(base, p) : undefined;
                 };
-                if (!repoName || !repoRoot) {
+                if (!repoRoot) {
                     console.log('[StudentTree] Repository name missing, cannot resolve local path.');
                     return [new MessageItem('Repository metadata incomplete. Please clone the assignment manually.', 'warning')];
                 }
 
-                const absDir = resolvePath(directory);
+                const absDir = resolvePath(repoRoot, directory);
                 if (!absDir || !fs.existsSync(absDir)) {
                     // Repository not set up yet - find the course ID and set it up
-                    const courseId = await this.findCourseIdForContent(element.courseContent);
                     if (courseId && this.repositoryManager) {
                         console.log('[StudentTree] Setting up repository for assignment:', element.courseContent.title);
                         
@@ -248,7 +226,9 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                         
                         // Now that directory is updated, continue to show files
                         // Re-check the directory after setup
-                        const updatedDirectory = resolvePath((element.courseContent as any).directory);
+                        const updatedRepoRoot = wsRoot && courseId ? this.getStudentRepoRoot(wsRoot, courseId, element.submissionGroup) : undefined;
+                        repoRoot = updatedRepoRoot;
+                        const updatedDirectory = resolvePath(updatedRepoRoot, (element.courseContent as any).directory);
 
                         if (updatedDirectory) {
                             assignmentPath = updatedDirectory;
@@ -309,8 +289,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                             console.log('[StudentTree] Assignment directory appears empty, triggering fork update...');
                             
                             // Get course ID and trigger repository update
-                            const courseId = await this.findCourseIdForContent(element.courseContent);
-                            if (courseId && this.repositoryManager) {
+                                if (courseId && this.repositoryManager) {
                                 try {
                                     await vscode.window.withProgress({
                                         location: vscode.ProgressLocation.Notification,
@@ -322,7 +301,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                                     });
                                     
                                     // Re-read the directory after update
-                                    const updatedFiles = await readdir(assignmentPath);
+                                        const updatedFiles = await readdir(assignmentPath);
                                     for (const file of updatedFiles) {
                                         // Filter out README files and mediaFiles directory
                                         if (file === 'mediaFiles' || 
@@ -693,7 +672,40 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         
         return items;
     }
-    
+
+    private getStudentRepoRoot(
+        workspaceRoot: string,
+        courseId: string,
+        submissionGroup?: SubmissionGroupStudentList
+    ): string | undefined {
+        if (!submissionGroup) {
+            return undefined;
+        }
+
+        const repo: any = submissionGroup.repository;
+        let remoteUrl: string | undefined = repo?.clone_url || repo?.url || repo?.web_url;
+        if (!remoteUrl && repo) {
+            const base = repo?.provider_url || repo?.provider || repo?.url || '';
+            const full = repo?.full_path || '';
+            if (base && full) {
+                remoteUrl = `${String(base).replace(/\/$/, '')}/${String(full).replace(/^\//, '')}`;
+                if (!remoteUrl.endsWith('.git')) {
+                    remoteUrl += '.git';
+                }
+            }
+        }
+
+        const repoName = deriveRepositoryDirectoryName({
+            submissionRepo: repo,
+            remoteUrl,
+            courseId,
+            memberId: submissionGroup.id,
+            submissionGroupId: submissionGroup.id
+        });
+
+        return buildStudentRepoRoot(workspaceRoot, repoName);
+    }
+
     private getExpandedState(nodeId: string): boolean {
         // Check if we have a saved state for this node
         if (nodeId in this.expandedStates) {

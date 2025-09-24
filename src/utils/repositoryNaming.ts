@@ -1,6 +1,6 @@
 import * as path from 'path';
 
-export interface TutorRepoContext {
+export interface RepositoryContext {
   submissionRepo?: {
     full_path?: string;
     path?: string;
@@ -12,10 +12,11 @@ export interface TutorRepoContext {
   remoteUrl?: string;
   courseId?: string;
   memberId?: string;
+  submissionGroupId?: string;
 }
 
-export function deriveTutorRepoDirectoryName(context: TutorRepoContext): string {
-  const { submissionRepo, remoteUrl, courseId, memberId } = context;
+export function deriveRepositoryDirectoryName(context: RepositoryContext): string {
+  const { submissionRepo, remoteUrl, courseId, memberId, submissionGroupId } = context;
   const candidates: Array<string | undefined> = [
     repoNameFromSubmissionRepository(submissionRepo),
     repoNameFromUrl(remoteUrl)
@@ -29,49 +30,18 @@ export function deriveTutorRepoDirectoryName(context: TutorRepoContext): string 
   }
 
   const courseSlug = slugify(courseId) || 'course';
-  const memberSlug = slugify(memberId) || 'member';
+  const memberSlug = slugify(memberId) || slugify(submissionGroupId) || 'member';
   return `${courseSlug}-${memberSlug}`;
 }
 
-function repoNameFromSubmissionRepository(repo?: TutorRepoContext['submissionRepo']): string | undefined {
-  if (!repo) return undefined;
-
-  if (repo.full_path) {
-    const parts = repo.full_path.split('/').filter(Boolean);
-    const last = parts.pop();
-    const slug = slugify(last);
-    if (slug) return slug;
-  }
-
-  if (repo.path) {
-    const slug = slugify(repo.path);
-    if (slug) return slug;
-  }
-
-  return undefined;
-}
-
-function repoNameFromUrl(remoteUrl?: string): string | undefined {
-  if (!remoteUrl) return undefined;
-
-  try {
-    const url = new URL(remoteUrl);
-    const segments = url.pathname.split('/').filter(Boolean);
-    const last = segments.pop();
-    const slug = slugify(last ? last.replace(/\.git$/, '') : undefined);
-    if (slug) return slug;
-  } catch {
-    const parts = remoteUrl.split('/');
-    const last = parts.pop();
-    const slug = slugify(last ? last.replace(/\.git$/, '') : undefined);
-    if (slug) return slug;
-  }
-
-  return undefined;
+export function buildStudentRepoRoot(workspaceRoot: string, repoName: string): string {
+  return path.join(workspaceRoot, 'students', repoName);
 }
 
 export function slugify(value?: string | null): string | undefined {
-  if (!value) return undefined;
+  if (!value) {
+    return undefined;
+  }
   const slug = value
     .toString()
     .trim()
@@ -79,9 +49,56 @@ export function slugify(value?: string | null): string | undefined {
     .replace(/[^a-zA-Z0-9-_]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .toLowerCase();
+
   return slug || undefined;
 }
 
-export function buildTutorStudentRepoRoot(workspaceRoot: string, repoName: string): string {
-  return path.join(workspaceRoot, 'students', repoName);
+function repoNameFromSubmissionRepository(repo?: RepositoryContext['submissionRepo']): string | undefined {
+  if (!repo) {
+    return undefined;
+  }
+
+  if (typeof repo.full_path === 'string' && repo.full_path.length > 0) {
+    const parts = repo.full_path.split('/').filter(Boolean);
+    const last = parts.pop();
+    const slug = slugify(last);
+    if (slug) {
+      return slug;
+    }
+  }
+
+  if (typeof repo.path === 'string' && repo.path.length > 0) {
+    const slug = slugify(repo.path);
+    if (slug) {
+      return slug;
+    }
+  }
+
+  return undefined;
+}
+
+function repoNameFromUrl(remoteUrl?: string): string | undefined {
+  if (!remoteUrl) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(remoteUrl);
+    const pathname = url.pathname;
+    const segments = pathname.split('/').filter(Boolean);
+    const last = segments.pop();
+    const slug = slugify(last ? last.replace(/\.git$/, '') : undefined);
+    if (slug) {
+      return slug;
+    }
+  } catch {
+    const parts = remoteUrl.split('/');
+    const last = parts.pop();
+    const slug = slugify(last ? last.replace(/\.git$/, '') : undefined);
+    if (slug) {
+      return slug;
+    }
+  }
+
+  return undefined;
 }
