@@ -51,7 +51,6 @@ export class StudentRepositoryManager {
     try {
       // Ensure workspace directory exists
       await fs.promises.mkdir(this.workspaceRoot, { recursive: true });
-      // await fs.promises.mkdir(path.join(this.workspaceRoot, '.computor'), { recursive: true });
       await fs.promises.mkdir(this.studentsRoot, { recursive: true });
       
       // Get course contents
