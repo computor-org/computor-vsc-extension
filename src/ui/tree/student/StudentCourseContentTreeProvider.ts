@@ -204,7 +204,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                     return undefined;
                 };
                 const repoName = repoNameFromRepository(element.submissionGroup?.repository);
-                const repoRoot = wsRoot && repoName ? path.join(wsRoot, 'students', repoName) : undefined;
+                const repoRoot = wsRoot && repoName ? path.join(wsRoot, '.computor', 'students', repoName) : undefined;
                 const resolvePath = (p?: string) => {
                     if (!p) return undefined;
                     if (path.isAbsolute(p)) return p;
@@ -250,12 +250,12 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                         // Re-check the directory after setup
                         const updatedDirectory = resolvePath((element.courseContent as any).directory);
 
-                            if (updatedDirectory) {
-                                assignmentPath = updatedDirectory;
-                                console.log('[StudentTree] Repository setup complete, directory path:', assignmentPath);
-                                
-                                // If the directory still doesn't exist, it's not available yet
-                                if (assignmentPath && !fs.existsSync(assignmentPath)) {
+                        if (updatedDirectory) {
+                            assignmentPath = updatedDirectory;
+                            console.log('[StudentTree] Repository setup complete, directory path:', assignmentPath);
+                            
+                            // If the directory still doesn't exist, it's not available yet
+                            if (assignmentPath && !fs.existsSync(assignmentPath)) {
                                 console.log('[StudentTree] Assignment subdirectory does not exist:', assignmentPath);
                                 // Don't fall back to repository root - the assignment isn't available
                                 assignmentPath = undefined;

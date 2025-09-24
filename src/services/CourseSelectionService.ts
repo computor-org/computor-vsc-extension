@@ -30,7 +30,8 @@ export class CourseSelectionService {
         this.context = context;
         this.apiService = apiService;
         this.statusBarService = statusBarService;
-        this.workspaceRoot = path.join(os.homedir(), '.computor', 'workspace');
+        const firstWorkspace = vscode.workspace.workspaceFolders?.[0];
+        this.workspaceRoot = firstWorkspace ? firstWorkspace.uri.fsPath : path.join(path.resolve(os.homedir()), '.computor', 'workspace');
         
         // Don't auto-load last selected course - let the student extension handle it
         // This prevents loading stale/invalid course IDs from previous sessions
@@ -128,33 +129,10 @@ export class CourseSelectionService {
         this.currentCourseId = course.id;
         this.currentCourseInfo = course;
 
-        // Update workspace folder - use the same workspace root as assignments
-        const courseWorkspace = this.workspaceRoot;
-        
-        // Ensure directory exists
+        // Ensure the workspace root exists when we fall back to the home directory case
         try {
-            await fs.mkdir(courseWorkspace, { recursive: true });
-        } catch (error) {
-            // Directory might already exist, that's fine
-        }
-
-        // Update VSCode workspace folders
-        const workspaceFolders = vscode.workspace.workspaceFolders || [];
-        const existingIndex = workspaceFolders.findIndex(
-            folder => folder.uri.fsPath === courseWorkspace
-        );
-
-        if (existingIndex === -1) {
-            // Add new workspace folder
-            vscode.workspace.updateWorkspaceFolders(
-                workspaceFolders.length,
-                0,
-                { 
-                    uri: vscode.Uri.file(courseWorkspace), 
-                    name: `📚 ${course.title}` 
-                }
-            );
-        }
+            await fs.mkdir(this.workspaceRoot, { recursive: true });
+        } catch {}
 
         // Save selection to global state
         await this.context.globalState.update('selectedCourseId', course.id);

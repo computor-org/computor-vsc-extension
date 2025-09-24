@@ -41,7 +41,7 @@ export class StudentRepositoryManager {
       this.workspaceRoot = path.join(os.homedir(), '.computor', 'workspace');
       console.warn('[StudentRepositoryManager] No workspace folder found, using fallback path');
     }
-    this.studentsRoot = path.join(this.workspaceRoot, 'students');
+    this.studentsRoot = path.join(this.workspaceRoot, '.computor', 'students');
   }
 
   /**
@@ -55,6 +55,7 @@ export class StudentRepositoryManager {
     try {
       // Ensure workspace directory exists
       await fs.promises.mkdir(this.workspaceRoot, { recursive: true });
+      await fs.promises.mkdir(path.join(this.workspaceRoot, '.computor'), { recursive: true });
       await fs.promises.mkdir(this.studentsRoot, { recursive: true });
       
       // Get course contents
@@ -679,7 +680,9 @@ export class StudentRepositoryManager {
 
       let backupPath: string | undefined;
       try {
-        backupPath = await createRepositoryBackup(repoPath, this.workspaceRoot, { repoName });
+        const backupRoot = path.join(this.workspaceRoot, '.computor');
+        await fs.promises.mkdir(backupRoot, { recursive: true });
+        backupPath = await createRepositoryBackup(repoPath, backupRoot, { repoName });
         if (backupPath) {
           console.log(`[StudentRepositoryManager] Backup created at ${backupPath}`);
         }
