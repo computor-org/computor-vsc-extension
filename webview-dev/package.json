@@ -5,14 +5,17 @@
   "description": "Local development playground for Computor webview UI with mocked data.",
   "scripts": {
     "start": "node server.js",
-    "view:comments": "node server.js --view comments --open",
-    "view:messages": "node server.js --view messages --open",
-    "view:settings": "node server.js --view settings --open",
-    "view:showcase": "node server.js --view showcase --open",
-    "view:student-content-details": "node server.js --view student-content-details --open",
-    "view:user-profile": "node server.js --view user-profile --open"
+    "view:comments": "nodemon server.js --view comments --open",
+    "view:messages": "nodemon server.js --view messages --open",
+    "view:settings": "nodemon server.js --view settings --open",
+    "view:showcase": "nodemon server.js --view showcase --open",
+    "view:student-content-details": "nodemon server.js --view student-content-details --open",
+    "view:user-profile": "nodemon server.js --view user-profile --open"
   },
   "dependencies": {
     "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
   }
 }
