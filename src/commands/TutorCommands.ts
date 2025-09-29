@@ -220,16 +220,11 @@ export class TutorCommands {
             return;
           }
           const git = createSimpleGit({ baseDir: repoPath });
-          const inferredBranch = await this.apiService.getTutorSubmissionBranch(courseId, memberId, content?.id || '');
-          const branch = inferredBranch || await vscode.window.showInputBox({ title: 'Submission Branch', prompt: 'Enter submission branch to checkout', value: 'main', ignoreFocusOut: true });
-          if (!branch) return;
-          await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Syncing branch ${branch}...`, cancellable: false }, async (progress) => {
+          await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Syncing repository...`, cancellable: false }, async (progress) => {
             progress.report({ message: 'Fetching...' });
             await git.fetch();
-            progress.report({ message: `Checking out ${branch}...` });
-            await git.checkout(branch);
             progress.report({ message: 'Pulling latest...' });
-            try { await git.pull('origin', branch); } catch (e) { /* ignore non-ff errors */ }
+            try { await git.pull(); } catch (e) { /* ignore non-ff errors */ }
           });
           const relDir: string | undefined = content?.directory || undefined;
           const src = relDir ? (path.isAbsolute(relDir) ? relDir : path.join(repoPath, relDir)) : await vscode.window.showInputBox({ title: 'Assignment Path', prompt: 'Relative path in repo to copy', ignoreFocusOut: true });

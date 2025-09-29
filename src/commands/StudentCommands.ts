@@ -519,21 +519,12 @@ export class StudentCommands {
             title: `Committing and pushing ${assignmentTitle}...`,
             cancellable: false
           }, async (progress) => {
-            progress.report({ increment: 0, message: 'Checking branch...' });
+            progress.report({ increment: 0, message: 'Preparing to commit...' });
 
             // Find repository root
             const repoPath = await this.findRepoRoot(directory);
             if (!repoPath) {
               throw new Error('Could not determine repository root');
-            }
-
-            // Ensure we're on the main branch
-            const currentBranch = await this.gitBranchManager.getCurrentBranch(repoPath);
-            const mainBranch = await this.gitBranchManager.getMainBranch(repoPath);
-            
-            if (currentBranch !== mainBranch) {
-              progress.report({ increment: 20, message: `Switching to ${mainBranch} branch...` });
-              await this.gitBranchManager.checkoutBranch(repoPath, mainBranch);
             }
 
             progress.report({ increment: 40, message: 'Committing changes...' });
@@ -626,14 +617,6 @@ export class StudentCommands {
             let commitHash: string | null = null;
 
             if (hasChanges) {
-              progress.report({ message: 'Checking branch...' });
-              const currentBranch = await this.gitBranchManager.getCurrentBranch(submissionDirectory);
-              const mainBranch = await this.gitBranchManager.getMainBranch(submissionDirectory);
-              if (currentBranch !== mainBranch) {
-                progress.report({ message: `Switching to ${mainBranch} branch...` });
-                await this.gitBranchManager.checkoutBranch(submissionDirectory, mainBranch);
-              }
-
               progress.report({ message: 'Committing changes...' });
               await this.gitBranchManager.stageAll(submissionDirectory);
               const now = new Date();
