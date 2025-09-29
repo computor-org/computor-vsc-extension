@@ -192,15 +192,10 @@ class UnifiedController {
   private api?: ComputorApiService;
   private disposables: vscode.Disposable[] = [];
   private activeViews: string[] = [];
-  private courseInfo?: { id: string; title: string };
   private profileWebviewProvider?: UserProfileWebviewProvider;
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
-  }
-
-  getCourseInfo(): { id: string; title: string } | undefined {
-    return this.courseInfo;
   }
 
   async activate(client: ReturnType<typeof buildHttpClient>): Promise<void> {
@@ -623,9 +618,7 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
       }
       await vscode.commands.executeCommand('setContext', 'computor.isLoggedIn', true);
 
-      const courseInfo = controller.getCourseInfo();
-      const courseTitle = courseInfo?.title || 'Unknown Course';
-      vscode.window.showInformationMessage(`Logged in: ${courseTitle}`);
+      vscode.window.showInformationMessage(`Logged in: ${baseUrl}`);
     } catch (error: any) {
       await controller.dispose();
       vscode.window.showErrorMessage(`Failed to login: ${error?.message || error}`);
