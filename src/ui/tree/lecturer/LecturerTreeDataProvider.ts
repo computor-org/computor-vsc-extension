@@ -456,7 +456,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
           // Use virtual scrolling for large lists (> 100 items)
           if (rootContents.length > 100) {
             const virtualKey = `contents-${element.course.id}`;
-            
+
             // Get or create virtual scrolling service
             let virtualService = this.virtualScrollServices.get(virtualKey);
             if (!virtualService) {
@@ -464,13 +464,13 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
                 async (page: number, pageSize: number) => {
                   const start = page * pageSize;
                   const items = rootContents.slice(start, start + pageSize);
-                  
+
                   // Transform to tree items
                   const treeItems = await Promise.all(items.map(async content => {
                     const hasChildren = this.hasChildContents(content, allContents);
                     let exampleInfo = null;
                     let exampleVersionInfo = null;
-                    
+
                     // Check if example is assigned using helper
                     if (hasExampleAssigned(content)) {
                       const versionId = getExampleVersionId(content);
@@ -479,7 +479,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
                         try {
                           exampleVersionInfo = await this.apiService.getExampleVersion(versionId);
                           console.log(`[Virtual scroll] Version info fetched:`, exampleVersionInfo ? `${exampleVersionInfo.version_tag || 'unknown'}` : 'null');
-                          
+
                           // Get example info from the version
                           if (exampleVersionInfo && exampleVersionInfo.example_id) {
                             exampleInfo = await this.getExampleInfo(exampleVersionInfo.example_id);
@@ -553,7 +553,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
               const hasChildren = this.hasChildContents(content, allContents);
               let exampleInfo = null;
               let exampleVersionInfo = null;
-              
+
               // Check if example is assigned using helper
               if (hasExampleAssigned(content)) {
                 const versionId = getExampleVersionId(content);
@@ -562,7 +562,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
                   try {
                     exampleVersionInfo = await this.apiService.getExampleVersion(versionId);
                     console.log(`Version info fetched:`, exampleVersionInfo ? `${exampleVersionInfo.version_tag || 'unknown'}` : 'null');
-                    
+
                     // Get example info from the version
                     if (exampleVersionInfo && exampleVersionInfo.example_id) {
                       exampleInfo = await this.getExampleInfo(exampleVersionInfo.example_id);

@@ -321,10 +321,12 @@ export class TutorCommands {
               const shape = kindId === 'assignment' ? 'square' : 'circle';
               let corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none';
               const submission: any = (updated as any).submission_group || (updated as any).submission;
-              const status = submission?.status?.toLowerCase?.() || submission?.latest_grading?.status?.toLowerCase?.();
-              if (status === 'corrected') corner = 'corrected';
-              else if (status === 'correction_necessary') corner = 'correction_necessary';
-              else if (status === 'correction_possible' || status === 'improvement_possible') corner = 'correction_possible';
+              const statusValue = submission?.status ?? submission?.latest_grading?.status;
+
+              // Handle both string (legacy) and numeric (new enum) status values
+              if (statusValue === 'corrected' || statusValue === 1) corner = 'corrected';
+              else if (statusValue === 'correction_necessary' || statusValue === 2) corner = 'correction_necessary';
+              else if (statusValue === 'correction_possible' || statusValue === 'improvement_possible' || statusValue === 3) corner = 'correction_possible';
               const gradingVal: number | undefined = (typeof submission?.latest_grading?.grading === 'number')
                 ? submission.latest_grading.grading
                 : (typeof submission?.grading === 'number' ? submission.grading : undefined);
@@ -334,13 +336,19 @@ export class TutorCommands {
                 : (await import('../utils/IconGenerator').then(m => m.IconGenerator.getColoredIconWithBadge(color, shape, badge, corner)));
               // Update tooltip with friendly status
               const friendlyStatus = (() => {
-                if (!status) return undefined;
-                if (status === 'corrected') return 'Corrected';
-                if (status === 'correction_necessary') return 'Correction Necessary';
-                if (status === 'improvement_possible') return 'Improvement Possible';
-                if (status === 'correction_possible') return 'Correction Possible';
-                const t = status.replace(/_/g, ' ');
-                return t.charAt(0).toUpperCase() + t.slice(1);
+                if (statusValue === undefined || statusValue === null) return undefined;
+                // Handle numeric enum values
+                if (statusValue === 1 || statusValue === 'corrected') return 'Corrected';
+                if (statusValue === 2 || statusValue === 'correction_necessary') return 'Correction Necessary';
+                if (statusValue === 3 || statusValue === 'improvement_possible') return 'Improvement Possible';
+                if (statusValue === 0 || statusValue === 'not_reviewed') return 'Not Reviewed';
+                if (statusValue === 'correction_possible') return 'Correction Possible';
+                // Fallback for unknown string values
+                if (typeof statusValue === 'string') {
+                  const t = statusValue.replace(/_/g, ' ');
+                  return t.charAt(0).toUpperCase() + t.slice(1);
+                }
+                return `Status: ${statusValue}`;
               })();
               const gradingText = (typeof gradingVal === 'number') ? `Grading: ${(gradingVal * 100).toFixed(2)}%` : undefined;
               item.tooltip = [`Path: ${updated.path}`, friendlyStatus ? `Status: ${friendlyStatus}` : undefined, gradingText].filter(Boolean).join('\n');
