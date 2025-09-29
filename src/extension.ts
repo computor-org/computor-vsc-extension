@@ -503,24 +503,19 @@ class UnifiedController {
   async activate(client: ReturnType<typeof buildHttpClient>): Promise<void> {
     const api = await this.setupApi(client);
 
-    // Ensure course marker exists / choose course
-    const courseId = await ensureCourseMarker(api, this.context);
-    if (!courseId) throw new Error('Course selection cancelled.');
-
     const currentUser = await api.getCurrentUser();
 
-    // Get available views for this user/course combination
-    const availableViews = await api.getUserCourseViews(courseId);
+    // Get available views for this user across all courses
+    // This is a lightweight check to determine which role views to show
+    const availableViews = await this.getAvailableViews(api);
 
     if (availableViews.length === 0) {
-      throw new Error('No views available for this course.');
+      throw new Error('No views available for your account.');
     }
 
-    // Handle Git provider account setup for any role that needs it
-    await this.setupProviderAccount(api, courseId, currentUser, availableViews);
-
-    // Initialize views based on what's available (now with selection)
-    await this.initializeViews(api, courseId, availableViews);
+    // Initialize views based on what's available
+    // Each view will fetch its own courses
+    await this.initializeViews(api, null, availableViews);
 
     await GitEnvironmentService.getInstance().validateGitEnvironment();
 
@@ -536,6 +531,34 @@ class UnifiedController {
     (api as any).httpClient = client;
     this.api = api;
     return api;
+  }
+
+  private async getAvailableViews(api: ComputorApiService): Promise<string[]> {
+    const views = new Set<string>();
+
+    // Try a lightweight check for each role
+    try {
+      const studentCourses = await api.getStudentCourses();
+      if (studentCourses && studentCourses.length > 0) {
+        views.add('student');
+      }
+    } catch {}
+
+    try {
+      const tutorCourses = await api.getTutorCourses(false);
+      if (tutorCourses && tutorCourses.length > 0) {
+        views.add('tutor');
+      }
+    } catch {}
+
+    try {
+      const lecturerCourses = await api.getLecturerCourses();
+      if (lecturerCourses && lecturerCourses.length > 0) {
+        views.add('lecturer');
+      }
+    } catch {}
+
+    return Array.from(views);
   }
 
   private async setupProviderAccount(api: ComputorApiService, courseId: string, currentUser: any, views: string[]): Promise<void> {
@@ -628,21 +651,23 @@ class UnifiedController {
     );
   }
 
-  private async initializeViews(api: ComputorApiService, courseId: string, views: string[]): Promise<void> {
+  private async initializeViews(api: ComputorApiService, courseId: string | null, views: string[]): Promise<void> {
+    void courseId; // No longer used - views show all courses
     // Store the active views
     this.activeViews = views;
 
     // Initialize ALL available views - each will get its own activity bar container
+    // Each view will fetch and display all available courses
     if (views.includes('student')) {
-      await this.initializeStudentView(api, courseId);
+      await this.initializeStudentView(api);
       await vscode.commands.executeCommand('setContext', 'computor.student.show', true);
     }
     if (views.includes('tutor')) {
-      await this.initializeTutorView(api, courseId);
+      await this.initializeTutorView(api);
       await vscode.commands.executeCommand('setContext', 'computor.tutor.show', true);
     }
     if (views.includes('lecturer')) {
-      await this.initializeLecturerView(api, courseId);
+      await this.initializeLecturerView(api);
       await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', true);
     }
 
@@ -705,7 +730,7 @@ class UnifiedController {
     }
   }
 
-  private async initializeStudentView(api: ComputorApiService, courseId: string): Promise<void> {
+  private async initializeStudentView(api: ComputorApiService): Promise<void> {
     // Initialize student-specific components
     const repositoryManager = new StudentRepositoryManager(this.context, api);
     const statusBar = (await import('./ui/StatusBarService')).StatusBarService.initialize(this.context);
@@ -729,13 +754,13 @@ class UnifiedController {
     });
     this.disposables.push(studentExpandListener, studentCollapseListener);
 
-    // Set selected course into service
-    await courseSelectionService.selectCourse(courseId);
+    // No course pre-selection - tree will show all courses
 
     // Auto-setup repositories
+    // Auto-setup repositories for all courses
     await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Preparing course repositories...', cancellable: false }, async (progress) => {
       progress.report({ message: 'Starting...' });
-      try { await repositoryManager.autoSetupRepositories(courseId, (msg) => progress.report({ message: msg })); } catch (e) { console.error(e); }
+      try { await repositoryManager.autoSetupRepositories(undefined, (msg) => progress.report({ message: msg })); } catch (e) { console.error(e); }
       tree.refresh();
     });
 
@@ -755,25 +780,14 @@ class UnifiedController {
     this.disposables.push(vscode.commands.registerCommand('computor.results.panel.update', (item: any) => panelProvider.updateTestResults(item)));
   }
 
-  private async initializeTutorView(api: ComputorApiService, courseId: string): Promise<void> {
+  private async initializeTutorView(api: ComputorApiService): Promise<void> {
     // Register filter panel and tree
     const { TutorFilterPanelProvider } = await import('./ui/panels/TutorFilterPanel');
     const { TutorSelectionService } = await import('./services/TutorSelectionService');
     const { TutorStatusBarService } = await import('./ui/TutorStatusBarService');
     const selection = TutorSelectionService.initialize(this.context, api);
 
-    const currentCourseId = selection.getCurrentCourseId();
-    const currentCourseLabel = selection.getCurrentCourseLabel();
-    if (currentCourseId !== courseId || !currentCourseLabel) {
-      let resolvedLabel: string | null = null;
-      try {
-        const tutorCourse = await api.getTutorCourse(courseId);
-        resolvedLabel = tutorCourse?.title || tutorCourse?.path || null;
-      } catch (err) {
-        console.warn('Failed to resolve tutor course label:', err);
-      }
-      await selection.selectCourse(courseId, resolvedLabel ?? currentCourseLabel ?? courseId);
-    }
+    // Don't pre-select any course - tutor will show all courses in dropdown
     const filterProvider = new TutorFilterPanelProvider(this.context.extensionUri, api, selection);
     this.disposables.push(vscode.window.registerWebviewViewProvider(TutorFilterPanelProvider.viewType, filterProvider));
 
@@ -809,7 +823,7 @@ class UnifiedController {
     commands.registerCommands();
   }
 
-  private async initializeLecturerView(api: ComputorApiService, courseId: string): Promise<void> {
+  private async initializeLecturerView(api: ComputorApiService): Promise<void> {
     const tree = new LecturerTreeDataProvider(this.context, api);
     this.disposables.push(vscode.window.registerTreeDataProvider('computor.lecturer.courses', tree));
 

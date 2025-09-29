@@ -29,6 +29,11 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.onDidReceiveMessage(async (message) => {
       switch (message.command) {
+        case 'course-select':
+          await this.selection.selectCourse(message.id || null, message.label || null);
+          await this.postCourseGroups();
+          await this.postCourseMembers();
+          break;
         case 'course-group-select':
           await this.selection.selectGroup(message.id || null, message.label || null);
           await this.postCourseMembers();
@@ -126,7 +131,29 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
           window.addEventListener('message', (event) => {
             const { command, data = [], selected, disabled } = event.data || {};
             const selectedId = toStringOrEmpty(selected);
-            if (command === 'groups') {
+            if (command === 'courses') {
+              state.courses = true;
+              courseSel.innerHTML = '';
+              if (!data || data.length === 0) {
+                courseSel.innerHTML = '<option value="" disabled selected>No courses available</option>';
+                courseSel.disabled = true;
+                resetGroups('No course selected');
+                resetMembers('No course selected');
+              } else {
+                courseSel.innerHTML = '<option value="">All courses</option>';
+                for (const course of data) {
+                  const opt = document.createElement('option');
+                  opt.value = course.id || '';
+                  opt.textContent = course.title || course.path || course.name || course.id || 'Untitled';
+                  if (selectedId && selectedId === course.id) {
+                    opt.selected = true;
+                  }
+                  courseSel.appendChild(opt);
+                }
+                courseSel.disabled = false;
+              }
+              updatePanelState();
+            } else if (command === 'groups') {
               state.groups = true;
               if (disabled) {
                 groupSel.innerHTML = '<option value="" disabled selected>Course unavailable</option>';
@@ -164,6 +191,16 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
             }
           });
 
+          courseSel.addEventListener('change', () => {
+            if (courseSel.disabled) {
+              return;
+            }
+            const label = courseSel.options[courseSel.selectedIndex]?.text || null;
+            resetGroups('Loading…');
+            resetMembers('Waiting for groups…');
+            vscode.postMessage({ command: 'course-select', id: courseSel.value || null, label });
+          });
+
           groupSel.addEventListener('change', () => {
             if (groupSel.disabled) {
               return;
@@ -187,8 +224,18 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
   }
 
   public refreshFilters(): void {
+    void this.postCourses();
     void this.postCourseGroups();
     void this.postCourseMembers();
+  }
+
+  private async postCourses(): Promise<void> {
+    const courses = await this.api.getTutorCourses(false) || [];
+    this._view?.webview.postMessage({
+      command: 'courses',
+      data: courses,
+      selected: this.selection.getCurrentCourseId()
+    });
   }
 
   private async postCourseGroups(): Promise<void> {

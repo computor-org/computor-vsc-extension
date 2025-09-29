@@ -400,41 +400,47 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         }
         
         if (!element) {
-            // Root level - show a single node representing the current course
-            const selectedCourseId = this.courseSelection.getCurrentCourseId();
-            if (!selectedCourseId) {
-                console.log('[StudentTree] No course selected - tree will be empty');
-                return [new MessageItem('No course selected. Please restart the extension.', 'warning')];
-            }
-
+            // Root level - show all available courses
             try {
-                // Fetch course info for title
-                const course = await this.apiService.getStudentCourse(selectedCourseId);
-                const title = (course?.title || course?.name || `Course ${selectedCourseId}`) as string;
+                const courses = await this.apiService.getStudentCourses();
+                if (!courses || courses.length === 0) {
+                    console.log('[StudentTree] No courses available');
+                    return [new MessageItem('No courses available.', 'warning')];
+                }
 
                 // Ensure content kinds cached
                 if (this.contentKinds.length === 0) {
                     this.contentKinds = await this.apiService.getCourseContentKinds() || [];
                 }
 
-                // Ensure contents cached (for counts)
-                const shouldForce = this.forceRefresh;
-                let courseContents = this.courseContentsCache.get(selectedCourseId);
-                if (!courseContents || shouldForce) {
-                    courseContents = await this.apiService.getStudentCourseContents(selectedCourseId, { force: shouldForce }) || [];
-                    this.courseContentsCache.set(selectedCourseId, courseContents);
-                    if (this.repositoryManager) this.repositoryManager.updateExistingRepositoryPaths(selectedCourseId, courseContents);
+                // Create a tree item for each course
+                const courseItems: TreeItem[] = [];
+                for (const course of courses) {
+                    const courseId = course.id;
+                    const title = (course.title || course.name || course.path || `Course ${courseId}`) as string;
+
+                    // Pre-fetch contents for count if not cached
+                    const shouldForce = this.forceRefresh;
+                    let courseContents = this.courseContentsCache.get(courseId);
+                    if (!courseContents || shouldForce) {
+                        courseContents = await this.apiService.getStudentCourseContents(courseId, { force: shouldForce }) || [];
+                        this.courseContentsCache.set(courseId, courseContents);
+                        if (this.repositoryManager) this.repositoryManager.updateExistingRepositoryPaths(courseId, courseContents);
+                    }
+
+                    const itemCount = courseContents.length;
+                    const courseItem = new CourseRootItem(title, courseId, itemCount, true);
+                    const rootId = `course-${courseId}`;
+                    courseItem.id = rootId;
+                    this.itemIndex.set(rootId, courseItem);
+                    courseItems.push(courseItem);
                 }
-                if (shouldForce) {
+
+                if (this.forceRefresh) {
                     this.forceRefresh = false;
                 }
 
-                const itemCount = courseContents.length;
-                const courseItem = new CourseRootItem(title, selectedCourseId, itemCount, true);
-                const rootId = `course-${selectedCourseId}`;
-                courseItem.id = rootId;
-                this.itemIndex.set(rootId, courseItem);
-                return [courseItem];
+                return courseItems;
             } catch (error: any) {
                 console.error('Failed to load course root:', error);
                 const message = error?.response?.data?.message || error?.message || 'Unknown error';
