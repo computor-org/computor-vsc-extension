@@ -65,6 +65,15 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
       </head>
       <body>
         <section class="filter-fields" data-state="loading">
+          <label class="filter-field" for="course">
+            <span class="filter-field__label">Course</span>
+            <div class="filter-field__control">
+              <select id="course" aria-label="Course" disabled>
+                <option value="" disabled selected>Loading courses…</option>
+              </select>
+            </div>
+            <span class="filter-field__hint">Select the course to tutor.</span>
+          </label>
           <label class="filter-field" for="group">
             <span class="filter-field__label">Group</span>
             <div class="filter-field__control">
@@ -86,11 +95,13 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
         </section>
         <script nonce="${nonce}">
           const vscode = acquireVsCodeApi();
+          const courseSel = document.getElementById('course');
           const groupSel = document.getElementById('group');
           const memberSel = document.getElementById('member');
           const fieldsWrapper = document.querySelector('.filter-fields');
 
           const state = {
+            courses: false,
             groups: false,
             members: false
           };
@@ -120,6 +131,12 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
             const selected = selectedId === value ? ' selected' : '';
             return '<option value="' + escapeHtml(value) + '"' + selected + '>' + label + '</option>';
           });
+
+          const resetGroups = (placeholder) => {
+            groupSel.disabled = true;
+            groupSel.innerHTML = '<option value="" disabled selected>' + escapeHtml(placeholder) + '</option>';
+            state.groups = false;
+          };
 
           const resetMembers = (placeholder) => {
             memberSel.disabled = true;
