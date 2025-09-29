@@ -605,6 +605,8 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
           await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
           await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
           await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
+          // Clear persisted tutor selection to prevent stale auth errors on next login
+          await context.globalState.update('computor.tutor.selection', undefined);
           backendConnectionService.stopHealthCheck();
         }),
         getActiveViews: () => controller.getActiveViews()
@@ -743,9 +745,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }));
 }
 
-export function deactivate(): void {
+export async function deactivate(): Promise<void> {
   if (activeSession) {
-    void activeSession.deactivate();
+    await activeSession.deactivate();
     activeSession = null;
   }
   IconGenerator.cleanup();
