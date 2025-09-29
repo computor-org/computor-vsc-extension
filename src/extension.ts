@@ -119,7 +119,7 @@ function buildHttpClient(baseUrl: string, auth: StoredAuth): BasicAuthHttpClient
   }
 }
 
-async function readMarker(file: string): Promise<{ courseId?: string } | undefined> {
+async function readMarker(file: string): Promise<{ backendUrl?: string; courseId?: string } | undefined> {
   try {
     if (!fs.existsSync(file)) return undefined;
     const raw = await fs.promises.readFile(file, 'utf8');
@@ -129,11 +129,11 @@ async function readMarker(file: string): Promise<{ courseId?: string } | undefin
   }
 }
 
-async function writeMarker(file: string, data: { courseId: string }): Promise<void> {
+async function writeMarker(file: string, data: { backendUrl: string }): Promise<void> {
   await fs.promises.writeFile(file, JSON.stringify(data, null, 2), 'utf8');
 }
 
-async function ensureCourseMarker(api: ComputorApiService, context?: vscode.ExtensionContext): Promise<string | undefined> {
+async function ensureWorkspaceMarker(baseUrl: string): Promise<void> {
   const root = getWorkspaceRoot();
   if (!root) {
     const action = await vscode.window.showErrorMessage('Login requires an open workspace.', 'Open Folder');
@@ -180,6 +180,50 @@ async function ensureCourseMarker(api: ComputorApiService, context?: vscode.Exte
   }
   const file = path.join(root, computorMarker);
   const existing = await readMarker(file);
+
+  // Update marker with backend URL if different or missing
+  if (!existing || existing.backendUrl !== baseUrl) {
+    await writeMarker(file, { backendUrl: baseUrl });
+  }
+}
+
+// Legacy function for course selection (kept for compatibility)
+async function ensureCourseMarker(api: ComputorApiService, context?: vscode.ExtensionContext): Promise<string | undefined> {
+  const root = getWorkspaceRoot();
+  if (!root) {
+    const action = await vscode.window.showErrorMessage('Login requires an open workspace.', 'Open Folder');
+    if (action === 'Open Folder') {
+      const folderUri = await vscode.window.showOpenDialog({
+        canSelectFolders: true,
+        canSelectFiles: false,
+        canSelectMany: false,
+        openLabel: 'Select Workspace Folder'
+      });
+
+      if (folderUri && folderUri.length > 0) {
+        if (context) {
+          await context.globalState.update('pendingLogin', {
+            timestamp: Date.now()
+          });
+        }
+
+        const workspaceFolders = vscode.workspace.workspaceFolders || [];
+        vscode.workspace.updateWorkspaceFolders(
+          workspaceFolders.length,
+          0,
+          { uri: folderUri[0]!, name: path.basename(folderUri[0]!.fsPath) }
+        );
+
+        if (workspaceFolders.length > 0) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          return ensureCourseMarker(api, context);
+        }
+
+        return undefined;
+      }
+    }
+    return undefined;
+  }
 
   // Get all courses the user has access to by trying all endpoints
   let allCourses: any[] = [];
@@ -234,7 +278,7 @@ async function ensureCourseMarker(api: ComputorApiService, context?: vscode.Exte
     { title: 'Select Course', placeHolder: 'Pick your course' }
   );
   if (!pick) return undefined;
-  await writeMarker(file, { courseId: pick.course.id });
+  // Don't write courseId to marker anymore - only backend URL is stored
   return pick.course.id as string;
 }
 
@@ -914,6 +958,9 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
       await backendConnectionService.showConnectionError(connectionStatus);
       return;
     }
+
+    // Update workspace marker with backend URL
+    await ensureWorkspaceMarker(baseUrl);
 
     const client = buildHttpClient(baseUrl, auth);
     const controller = new UnifiedController(context);

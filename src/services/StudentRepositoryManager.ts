@@ -7,12 +7,14 @@ import { execAsync } from '../utils/exec';
 import { CTGit } from '../git/CTGit';
 import { createRepositoryBackup, isHistoryRewriteError } from '../utils/repositoryBackup';
 import { addTokenToGitUrl, extractOriginFromGitUrl, stripCredentialsFromGitUrl } from '../utils/gitUrlHelpers';
+import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 
 interface RepositoryInfo {
   cloneUrl: string;
   assignmentPath: string;  // Path in course structure (e.g., "assignment1")
   assignmentTitle: string;
   directory?: string;       // Directory path inside the git repository for sparse-checkout
+  submissionGroupId?: string; // UUID of the submission group
 }
 
 /**
@@ -20,8 +22,7 @@ interface RepositoryInfo {
  * Handles automatic cloning when student view is activated
  */
 export class StudentRepositoryManager {
-  private workspaceRoot: string;
-  private studentsRoot: string;
+  private workspaceStructure: WorkspaceStructureManager;
   private gitLabTokenManager: GitLabTokenManager;
   private apiService: ComputorApiService;
 
@@ -31,13 +32,7 @@ export class StudentRepositoryManager {
   ) {
     this.apiService = apiService;
     this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
-    // Use the actual VS Code workspace folder
-    const workspaceFolders = vscode.workspace.workspaceFolders;
-    if (!workspaceFolders || workspaceFolders.length === 0 || !workspaceFolders[0]) {
-      throw new Error('StudentRepositoryManager requires an open workspace folder.');
-    }
-    this.workspaceRoot = workspaceFolders[0].uri.fsPath;
-    this.studentsRoot = path.join(this.workspaceRoot, 'students');
+    this.workspaceStructure = WorkspaceStructureManager.getInstance();
   }
 
   /**
@@ -49,9 +44,8 @@ export class StudentRepositoryManager {
     report('Discovering course contents...');
     
     try {
-      // Ensure workspace directory exists
-      await fs.promises.mkdir(this.workspaceRoot, { recursive: true });
-      await fs.promises.mkdir(this.studentsRoot, { recursive: true });
+      // Ensure workspace directories exist
+      await this.workspaceStructure.ensureDirectories();
       
       // Get course contents
       const courseContents = await this.apiService.getStudentCourseContents(courseId, { force: true });
@@ -115,8 +109,9 @@ export class StudentRepositoryManager {
                           content.example_id;
       const repo = content.submission_group?.repository;
       
-      if (isAssignment && repo?.clone_url) {
-        const key = `${repo.clone_url}-${content.path}`;
+      if (isAssignment && repo?.clone_url && content.submission_group?.id) {
+        // Use submission group ID as the unique key
+        const key = content.submission_group.id;
         if (!repoMap.has(key)) {
           console.log(`[StudentRepositoryManager] Repository info for ${content.title}:`, {
             cloneUrl: repo.clone_url,
@@ -135,8 +130,9 @@ export class StudentRepositoryManager {
             cloneUrl: repo.clone_url,
             assignmentPath: content.path,
             assignmentTitle: content.title || content.path,
-            directory: subdirectory  // This should be just the subdirectory, not a full path
-          });
+            directory: subdirectory,  // This should be just the subdirectory, not a full path
+            submissionGroupId: content.submission_group.id
+          } as RepositoryInfo & { submissionGroupId: string });
         }
       }
     }
@@ -189,24 +185,30 @@ export class StudentRepositoryManager {
       console.warn('[StudentRepositoryManager] Could not get course information for upstream:', error);
     }
     
-    // Group repositories by unique clone URL
+      // Group repositories by submission group ID (each submission group gets its own repo directory)
     const uniqueRepos = new Map<string, RepositoryInfo[]>();
     for (const repo of repositories) {
-      if (!uniqueRepos.has(repo.cloneUrl)) {
-        uniqueRepos.set(repo.cloneUrl, []);
+      const submissionGroupId = (repo as any).submissionGroupId;
+      if (submissionGroupId) {
+        if (!uniqueRepos.has(submissionGroupId)) {
+          uniqueRepos.set(submissionGroupId, []);
+        }
+        uniqueRepos.get(submissionGroupId)!.push(repo);
       }
-      uniqueRepos.get(repo.cloneUrl)!.push(repo);
     }
     
     console.log(`[StudentRepositoryManager] Found ${uniqueRepos.size} unique repositories for course ${courseId}`);
     report(`Found ${uniqueRepos.size} unique repositories`);
     
     // Clone/update each unique repository only once
-    for (const [cloneUrl, repoInfos] of uniqueRepos) {
-      const urlParts = cloneUrl.replace(/\.git$/, '').split('/');
-      const repoName = urlParts[urlParts.length - 1] || 'repository';
-      report(`Setting up ${repoName}...`);
-      token = await this.setupUniqueRepository(courseId, cloneUrl, repoInfos, token, courseContents, upstreamUrl, onProgress);
+    for (const [submissionGroupId, repoInfos] of uniqueRepos) {
+      const firstRepo = repoInfos[0];
+      if (firstRepo) {
+        const cloneUrl = firstRepo.cloneUrl;
+        const repoName = firstRepo.assignmentTitle || submissionGroupId;
+        report(`Setting up ${repoName}...`);
+        token = await this.setupUniqueRepository(courseId, submissionGroupId, cloneUrl, repoInfos, token, courseContents, upstreamUrl, onProgress);
+      }
     }
     
     // Also check for any existing repositories that might not have their directory field set
@@ -219,6 +221,7 @@ export class StudentRepositoryManager {
    */
   private async setupUniqueRepository(
     courseId: string, // Used for logging and upstream URL
+    submissionGroupId: string, // Submission group UUID
     cloneUrl: string,
     repoInfos: RepositoryInfo[],
     token: string,
@@ -226,15 +229,12 @@ export class StudentRepositoryManager {
     upstreamUrl?: string,
     onProgress?: (message: string) => void
   ): Promise<string> {
+    void courseId; // Only used for logging
     const report = onProgress || (() => {});
     let effectiveToken = token;
-    // Create a unique directory name for this repository based on the URL
-    // Extract repository name from clone URL
-    const urlParts = cloneUrl.replace(/\.git$/, '').split('/');
-    // Use just the last part of the URL as the repo name (e.g., "admin" from "students/admin")
-    const repoName = urlParts[urlParts.length - 1] || 'repository';
-    // Clone directly into workspace root, not nested in courses/courseId
-    const repoPath = path.join(this.studentsRoot, repoName);
+    // Use submission group UUID as the directory name
+    const repoPath = this.workspaceStructure.getStudentRepositoryPath(submissionGroupId);
+    const repoName = repoInfos[0]?.assignmentTitle || submissionGroupId;
 
     const repoExists = await this.directoryExists(repoPath);
     
@@ -316,17 +316,18 @@ export class StudentRepositoryManager {
    * Update directory paths for existing repositories
    */
   public updateExistingRepositoryPaths(courseId: string, courseContents: any[]): void {
-    void courseId; // Not used in new flat structure
-    
-    // List all directories in the workspace root that are git repositories
+    void courseId; // Not used in new structure
+
+    // List all directories in the student directory that are git repositories
     try {
-      const dirs = fs.existsSync(this.studentsRoot)
-        ? fs.readdirSync(this.studentsRoot).filter(file => {
-            const filePath = path.join(this.studentsRoot, file);
+      const studentDir = this.workspaceStructure.getDirectories().student;
+      const dirs = fs.existsSync(studentDir)
+        ? fs.readdirSync(studentDir).filter(file => {
+            const filePath = path.join(studentDir, file);
             return fs.statSync(filePath).isDirectory() && fs.existsSync(path.join(filePath, '.git'));
           })
         : [];
-      
+
       console.log(`[StudentRepositoryManager] Found existing repositories in workspace: ${dirs.join(', ')}`);
       
         // For each content item, check if its directory exists
@@ -343,7 +344,8 @@ export class StudentRepositoryManager {
         if (isAssignment) {
           // Look for a matching repository and the expected subdirectory
           for (const dir of dirs) {
-            const repoPath = path.join(this.studentsRoot, dir);
+            const studentDir = this.workspaceStructure.getDirectories().student;
+            const repoPath = path.join(studentDir, dir);
             // Determine expected subdirectory from backend data first
             let subdirectory: string | undefined;
             if (typeof content.directory === 'string' && content.directory.length > 0) {
@@ -675,7 +677,7 @@ export class StudentRepositoryManager {
 
       let backupPath: string | undefined;
       try {
-        const backupRoot = path.join(this.workspaceRoot, '.computor');
+        const backupRoot = path.join(this.workspaceStructure.getDirectories().root, '.computor');
         await fs.promises.mkdir(backupRoot, { recursive: true });
         backupPath = await createRepositoryBackup(repoPath, backupRoot, { repoName });
         if (backupPath) {

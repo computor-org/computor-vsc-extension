@@ -6,7 +6,8 @@ import { ComputorApiService } from '../services/ComputorApiService';
 import { TutorSelectionService } from '../services/TutorSelectionService';
 import { createSimpleGit } from '../git/simpleGitFactory';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
-import { deriveRepositoryDirectoryName, buildStudentRepoRoot } from '../utils/repositoryNaming';
+import { deriveRepositoryDirectoryName, buildReviewRepoRoot } from '../utils/repositoryNaming';
+import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 // Import interfaces from generated types (interfaces removed to avoid duplication)
 import { CourseMemberCommentsWebviewProvider } from '../ui/webviews/CourseMemberCommentsWebviewProvider';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
@@ -18,6 +19,7 @@ export class TutorCommands {
   private apiService: ComputorApiService;
   private commentsWebviewProvider: CourseMemberCommentsWebviewProvider;
   private messagesWebviewProvider: MessagesWebviewProvider;
+  private workspaceStructure: WorkspaceStructureManager;
 
   constructor(
     context: vscode.ExtensionContext, 
@@ -30,6 +32,7 @@ export class TutorCommands {
     this.apiService = apiService || new ComputorApiService(context);
     this.commentsWebviewProvider = new CourseMemberCommentsWebviewProvider(context, this.apiService);
     this.messagesWebviewProvider = new MessagesWebviewProvider(context, this.apiService);
+    this.workspaceStructure = WorkspaceStructureManager.getInstance();
     // No workspace manager needed for current tutor actions
   }
 
@@ -104,20 +107,21 @@ export class TutorCommands {
             return;
           }
 
+          // Extract submission group ID if available
+          const submissionGroupId = submission?.id || content?.submission_group?.id;
           const repoName = deriveRepositoryDirectoryName({
             submissionRepo,
             remoteUrl,
+            submissionGroupId,
             courseId,
             memberId
           });
 
-          // Determine destination in current workspace: <workspaceRoot>/<courseId>/<memberId>
-          const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-          if (!wsRoot) {
-            vscode.window.showErrorMessage('No workspace folder is open. Open a folder before cloning.');
-            return;
-          }
-          const dir = buildStudentRepoRoot(wsRoot, repoName);
+          // Ensure workspace directories exist
+          await this.workspaceStructure.ensureDirectories();
+
+          // Use review directory for tutor repositories
+          const dir = this.workspaceStructure.getReviewRepositoryPath(submissionGroupId || repoName);
           await fs.promises.mkdir(dir, { recursive: true });
           // Git clone into the destination if empty
           const exists = await fs.promises.readdir(dir).then(list => list.length > 0).catch(() => false);
@@ -203,14 +207,17 @@ export class TutorCommands {
             remoteUrl = repoMeta?.remote_url;
           }
 
+          // Extract submission group ID if available
+          const submissionGroupId = content?.submission_group?.id;
           const repoName = deriveRepositoryDirectoryName({
             submissionRepo,
             remoteUrl,
+            submissionGroupId,
             courseId,
             memberId
           });
 
-          const repoPath = buildStudentRepoRoot(wsRoot, repoName);
+          const repoPath = this.workspaceStructure.getReviewRepositoryPath(submissionGroupId || repoName);
           // Ensure repository exists
           const gitDir = path.join(repoPath, '.git');
           try {

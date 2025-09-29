@@ -16,7 +16,25 @@ export interface RepositoryContext {
 }
 
 export function deriveRepositoryDirectoryName(context: RepositoryContext): string {
-  const { submissionRepo, remoteUrl, courseId, memberId, submissionGroupId } = context;
+  const { submissionGroupId, courseId, memberId } = context;
+
+  // Prefer submission group ID (UUID) as the directory name
+  if (submissionGroupId) {
+    return submissionGroupId;
+  }
+
+  // Fallback to member ID for tutor repositories
+  if (memberId) {
+    return memberId;
+  }
+
+  // Fallback to course ID for lecturer repositories
+  if (courseId) {
+    return courseId;
+  }
+
+  // Last resort: derive from repository info
+  const { submissionRepo, remoteUrl } = context;
   const candidates: Array<string | undefined> = [
     repoNameFromSubmissionRepository(submissionRepo),
     repoNameFromUrl(remoteUrl)
@@ -29,13 +47,19 @@ export function deriveRepositoryDirectoryName(context: RepositoryContext): strin
     }
   }
 
-  const courseSlug = slugify(courseId) || 'course';
-  const memberSlug = slugify(memberId) || slugify(submissionGroupId) || 'member';
-  return `${courseSlug}-${memberSlug}`;
+  return 'repository';
 }
 
 export function buildStudentRepoRoot(workspaceRoot: string, repoName: string): string {
-  return path.join(workspaceRoot, 'students', repoName);
+  return path.join(workspaceRoot, 'student', repoName);
+}
+
+export function buildReviewRepoRoot(workspaceRoot: string, repoName: string): string {
+  return path.join(workspaceRoot, 'review', repoName);
+}
+
+export function buildReferenceRepoRoot(workspaceRoot: string, repoName: string): string {
+  return path.join(workspaceRoot, 'reference', repoName);
 }
 
 export function slugify(value?: string | null): string | undefined {
