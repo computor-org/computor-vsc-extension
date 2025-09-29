@@ -21,6 +21,7 @@ import { LecturerCommands } from './commands/LecturerCommands';
 import { LecturerExampleCommands } from './commands/LecturerExampleCommands';
 import { LecturerFsCommands } from './commands/LecturerFsCommands';
 import { UserPasswordCommands } from './commands/UserPasswordCommands';
+import { UserProfileWebviewProvider } from './ui/webviews/UserProfileWebviewProvider';
 
 import { StudentCourseContentTreeProvider } from './ui/tree/student/StudentCourseContentTreeProvider';
 import { StudentRepositoryManager } from './services/StudentRepositoryManager';
@@ -488,6 +489,7 @@ class UnifiedController {
   private disposables: vscode.Disposable[] = [];
   private activeViews: string[] = [];
   private courseInfo?: { id: string; title: string };
+  private profileWebviewProvider?: UserProfileWebviewProvider;
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
@@ -499,6 +501,17 @@ class UnifiedController {
 
   async activate(client: ReturnType<typeof buildHttpClient>): Promise<void> {
     const api = await this.setupApi(client);
+
+    this.profileWebviewProvider = new UserProfileWebviewProvider(this.context, api);
+    const profileCommand = vscode.commands.registerCommand('computor.user.profile', async () => {
+      if (!this.profileWebviewProvider) {
+        this.profileWebviewProvider = new UserProfileWebviewProvider(this.context, api);
+      } else {
+        this.profileWebviewProvider.setApiService(api);
+      }
+      await this.profileWebviewProvider.open();
+    });
+    this.disposables.push(profileCommand);
 
     // Get available views for this user across all courses
     // This is a lightweight check to determine which role views to show
@@ -884,6 +897,7 @@ class UnifiedController {
     this.disposables = [];
     if (this.api) this.api.clearHttpClient();
     this.api = undefined;
+    this.profileWebviewProvider = undefined;
   }
 
   getActiveViews(): string[] {

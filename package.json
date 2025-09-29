@@ -62,6 +62,12 @@
         "category": "Computor"
       },
       {
+        "command": "computor.user.profile",
+        "title": "Computor: Edit Profile",
+        "category": "Computor",
+        "icon": "$(account)"
+      },
+      {
         "command": "computor.login",
         "title": "Computor: Login",
         "category": "Computor"
@@ -577,14 +583,29 @@
           "group": "navigation@1"
         },
         {
+          "command": "computor.user.profile",
+          "when": "view == computor.lecturer.courses",
+          "group": "navigation@0"
+        },
+        {
           "command": "computor.lecturer.refresh",
           "when": "view == computor.lecturer.courses",
           "group": "navigation@1"
         },
         {
+          "command": "computor.user.profile",
+          "when": "view == computor.student.courses",
+          "group": "navigation@0"
+        },
+        {
           "command": "computor.student.refresh",
           "when": "view == computor.student.courses",
           "group": "navigation@1"
+        },
+        {
+          "command": "computor.user.profile",
+          "when": "view == computor.tutor.courses",
+          "group": "navigation@0"
         },
         {
           "command": "computor.tutor.refresh",

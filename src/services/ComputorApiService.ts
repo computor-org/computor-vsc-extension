@@ -39,6 +39,8 @@ import {
   CourseMemberProviderAccountUpdate,
   CourseMemberReadinessStatus,
   UserPassword,
+  UserGet,
+  UserUpdate,
   CourseMemberValidationRequest,
   TaskResponse,
   TestCreate,
@@ -46,6 +48,11 @@ import {
   DeploymentHistoryGet,
   CourseContentStudentList,
   CourseContentStudentUpdate,
+  ProfileGet,
+  ProfileUpdate,
+  StudentProfileGet,
+  StudentProfileCreate,
+  StudentProfileUpdate,
   MessageList,
   MessageGet,
   MessageCreate,
@@ -1174,14 +1181,29 @@ export class ComputorApiService {
     }
   }
 
+  private invalidateUserCaches(targets: { user?: boolean; profile?: boolean; studentProfiles?: boolean } = { user: true, profile: true, studentProfiles: true }): void {
+    if (targets.user) {
+      multiTierCache.delete('currentUser');
+    }
+    if (targets.profile) {
+      multiTierCache.delete('userProfile');
+    }
+    if (targets.studentProfiles) {
+      multiTierCache.delete('userStudentProfiles');
+    }
+  }
+
   // Student API methods
-  async getCurrentUser(): Promise<{ id: string; username: string; full_name?: string } | undefined> {
+  async getCurrentUser(options?: { force?: boolean }): Promise<{ id: string; username: string; full_name?: string } | undefined> {
     const cacheKey = 'currentUser';
 
-    // Check cache first
-    const cached = multiTierCache.get<any>(cacheKey);
-    if (cached) {
-      return cached;
+    if (options?.force) {
+      multiTierCache.delete(cacheKey);
+    } else {
+      const cached = multiTierCache.get<any>(cacheKey);
+      if (cached) {
+        return cached;
+      }
     }
 
     try {
@@ -1201,6 +1223,14 @@ export class ComputorApiService {
       console.error('Failed to get current user:', error);
       return undefined;
     }
+  }
+
+  async getUserAccount(options?: { force?: boolean }): Promise<UserGet | undefined> {
+    const user = await this.getCurrentUser(options);
+    if (!user) {
+      return undefined;
+    }
+    return user as UserGet;
   }
 
   async getUserCourseViews(courseId: string): Promise<string[]> {
@@ -1228,6 +1258,127 @@ export class ComputorApiService {
     } catch (error) {
       console.error('Failed to get user course views:', error);
       return [];
+    }
+  }
+
+  async updateUserAccount(updates: UserUpdate): Promise<UserGet> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.put<UserGet>('/user', updates);
+      const user = response.data;
+      this.invalidateUserCaches({ user: true, profile: false, studentProfiles: true });
+      if (user) {
+        multiTierCache.set('currentUser', user, 'warm');
+        if (Array.isArray(user.student_profiles)) {
+          multiTierCache.set('userStudentProfiles', user.student_profiles, 'warm');
+        }
+      }
+      return user;
+    } catch (error) {
+      console.error('Failed to update user account:', error);
+      throw error;
+    }
+  }
+
+  async getUserProfile(options?: { force?: boolean }): Promise<ProfileGet | undefined> {
+    const cacheKey = 'userProfile';
+
+    if (options?.force) {
+      multiTierCache.delete(cacheKey);
+    } else {
+      const cached = multiTierCache.get<ProfileGet>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+    }
+
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<ProfileGet>('/user/profile');
+      const profile = response.data;
+      if (profile) {
+        multiTierCache.set(cacheKey, profile, 'warm');
+      }
+      return profile ?? undefined;
+    } catch (error: any) {
+      const status = error?.status ?? error?.response?.status;
+      if (status === 404) {
+        multiTierCache.delete(cacheKey);
+        return undefined;
+      }
+      console.error('Failed to load user profile:', error);
+      throw error;
+    }
+  }
+
+  async updateUserProfile(updates: ProfileUpdate): Promise<ProfileGet> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.put<ProfileGet>('/user/profile', updates);
+      const profile = response.data;
+      this.invalidateUserCaches({ user: false, profile: true, studentProfiles: false });
+      if (profile) {
+        multiTierCache.set('userProfile', profile, 'warm');
+      }
+      return profile;
+    } catch (error) {
+      console.error('Failed to update user profile:', error);
+      throw error;
+    }
+  }
+
+  async getStudentProfiles(options?: { force?: boolean }): Promise<StudentProfileGet[]> {
+    const cacheKey = 'userStudentProfiles';
+
+    if (options?.force) {
+      multiTierCache.delete(cacheKey);
+    } else {
+      const cached = multiTierCache.get<StudentProfileGet[]>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+    }
+
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<StudentProfileGet[]>('/user/student-profiles');
+      const profiles = Array.isArray(response.data) ? response.data : [];
+      multiTierCache.set(cacheKey, profiles, 'warm');
+      return profiles;
+    } catch (error: any) {
+      const status = error?.status ?? error?.response?.status;
+      if (status === 404) {
+        multiTierCache.delete(cacheKey);
+        return [];
+      }
+      console.error('Failed to load student profiles:', error);
+      throw error;
+    }
+  }
+
+  async createStudentProfile(payload: StudentProfileCreate): Promise<StudentProfileGet> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.post<StudentProfileGet>('/user/student-profiles', payload);
+      const profile = response.data;
+      this.invalidateUserCaches({ user: true, profile: false, studentProfiles: true });
+      return profile;
+    } catch (error) {
+      console.error('Failed to create student profile:', error);
+      throw error;
+    }
+  }
+
+  async updateStudentProfile(profileId: string, updates: StudentProfileUpdate): Promise<StudentProfileGet> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.patch<StudentProfileGet>(`/user/student-profiles/${profileId}`, updates);
+      const profile = response.data;
+      this.invalidateUserCaches({ user: true, profile: false, studentProfiles: true });
+      return profile;
+    } catch (error) {
+      console.error(`Failed to update student profile ${profileId}:`, error);
+      throw error;
     }
   }
 
