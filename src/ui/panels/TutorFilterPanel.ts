@@ -116,6 +116,9 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
           const getGroupLabel = (group) => group.title || group.name || group.id;
           const getMemberLabel = (member) => {
             const user = member?.user;
+            if (user?.given_name && user?.family_name) {
+              return user.given_name + ' ' + user.family_name;
+            }
             return (user?.full_name) || (user?.username) || member.id;
           };
 
@@ -297,7 +300,14 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
     let selected = this.selection.getCurrentMemberId();
     if ((!selected || selected === '') && members && members.length > 0) {
       const first = members[0];
-      const label = (first.user && (first.user.full_name || first.user.username)) || first.id;
+      let label = first.id;
+      if (first.user) {
+        if (first.user.given_name && first.user.family_name) {
+          label = first.user.given_name + ' ' + first.user.family_name;
+        } else {
+          label = first.user.full_name || first.user.username || first.id;
+        }
+      }
       await this.selection.selectMember(first.id, label);
       selected = first.id;
     }
