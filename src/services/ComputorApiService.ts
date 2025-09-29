@@ -76,7 +76,7 @@ type MessageQueryParams = Partial<{
   author_id: string;
   user_id: string;
   course_member_id: string;
-  course_submission_group_id: string;
+  submission_group_id: string;
   course_group_id: string;
   course_content_id: string;
   course_id: string;
@@ -1421,7 +1421,7 @@ export class ComputorApiService {
         params.limit = options.limit;
       }
       if (options?.submissionGroupId) {
-        params.course_submission_group_id = options.submissionGroupId;
+        params.submission_group_id = options.submissionGroupId;
       }
 
       const response = await client.get<ResultWithGrading[] | { items?: ResultWithGrading[] }>(

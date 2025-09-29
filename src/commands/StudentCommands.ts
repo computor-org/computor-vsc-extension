@@ -7,7 +7,7 @@ import { ComputorApiService } from '../services/ComputorApiService';
 import { GitBranchManager } from '../services/GitBranchManager';
 import { CourseSelectionService } from '../services/CourseSelectionService';
 import { TestResultService } from '../services/TestResultService';
-import { SubmissionGroupStudentList, SubmissionGroupStudentGet, MessageCreate, CourseContentStudentList, CourseContentTypeList, CourseSubmissionGroupGradingList, SubmissionGroupMemberBasic, ResultWithGrading, SubmissionUploadResponseModel } from '../types/generated';
+import { SubmissionGroupStudentList, SubmissionGroupStudentGet, MessageCreate, CourseContentStudentList, CourseContentTypeList, SubmissionGroupGradingList, SubmissionGroupMemberBasic, ResultWithGrading, SubmissionUploadResponseModel } from '../types/generated';
 import { StudentRepositoryManager } from '../services/StudentRepositoryManager';
 import { execAsync } from '../utils/exec';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
@@ -406,7 +406,7 @@ export class StudentCommands {
               let uploadRequired = true;
               try {
                 const existingSubmissions = await this.apiService.listStudentSubmissions({
-                  course_submission_group_id: submissionGroupId,
+                  submission_group_id: submissionGroupId,
                   version_identifier: submissionVersion,
                   submit: true
                 });
@@ -429,9 +429,8 @@ export class StudentCommands {
 
               progress.report({ message: 'Creating submission...' });
               submissionResponse = await this.apiService.createStudentSubmission({
-                course_submission_group_id: submissionGroupId,
-                version_identifier: submissionVersion || undefined,
-                submit: true
+                submission_group_id: submissionGroupId,
+                version_identifier: submissionVersion || undefined
               }, archive);
 
               submissionOk = true;
@@ -644,7 +643,7 @@ export class StudentCommands {
               let uploadRequired = true;
               try {
                 const existingSubmissions = await this.apiService.listStudentSubmissions({
-                  course_submission_group_id: submissionGroupId,
+                  submission_group_id: submissionGroupId,
                   version_identifier: commitHash,
                   submit: false
                 });
@@ -665,7 +664,7 @@ export class StudentCommands {
 
                 progress.report({ message: 'Uploading submission package...' });
                 await this.apiService.createStudentSubmission({
-                  course_submission_group_id: submissionGroupId,
+                  submission_group_id: submissionGroupId,
                   version_identifier: commitHash
                 }, archive);
               } else {
@@ -732,8 +731,8 @@ export class StudentCommands {
         };
 
         if (submissionGroup?.id) {
-          query.course_submission_group_id = submissionGroup.id;
-          createPayload.course_submission_group_id = submissionGroup.id;
+          query.submission_group_id = submissionGroup.id;
+          createPayload.submission_group_id = submissionGroup.id;
         }
 
         target = {
@@ -1013,17 +1012,17 @@ export class StudentCommands {
 
 
   private buildGradingHistory(entries: unknown): StudentGradingHistoryEntry[] {
-    let normalized: CourseSubmissionGroupGradingList[] = [];
+    let normalized: SubmissionGroupGradingList[] = [];
 
     if (Array.isArray(entries)) {
-      normalized = entries.filter((entry): entry is CourseSubmissionGroupGradingList => Boolean(entry));
+      normalized = entries.filter((entry): entry is SubmissionGroupGradingList => Boolean(entry));
     } else if (entries && typeof entries === 'object') {
       const maybeItems = (entries as any).items;
       if (Array.isArray(maybeItems)) {
-        normalized = maybeItems.filter((entry: any): entry is CourseSubmissionGroupGradingList => Boolean(entry));
+        normalized = maybeItems.filter((entry: any): entry is SubmissionGroupGradingList => Boolean(entry));
       } else {
-        normalized = Object.values(entries as Record<string, CourseSubmissionGroupGradingList>)
-          .filter((entry): entry is CourseSubmissionGroupGradingList => Boolean(entry));
+        normalized = Object.values(entries as Record<string, SubmissionGroupGradingList>)
+          .filter((entry): entry is SubmissionGroupGradingList => Boolean(entry));
       }
     }
 
@@ -1040,7 +1039,7 @@ export class StudentCommands {
     return sorted.map((entry) => this.createHistoryEntry(entry));
   }
 
-  private createHistoryEntry(entry: CourseSubmissionGroupGradingList): StudentGradingHistoryEntry {
+  private createHistoryEntry(entry: SubmissionGroupGradingList): StudentGradingHistoryEntry {
     const grade = this.normalizeGradeValue(entry.grading);
     const graderName = this.formatGraderName(entry.graded_by_course_member as any, entry.graded_by_course_member_id);
     const status = this.mapGradingStatus(entry.status) || 'unknown';

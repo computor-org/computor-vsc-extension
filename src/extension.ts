@@ -164,14 +164,15 @@ async function ensureWorkspaceMarker(baseUrl: string): Promise<void> {
           // Give VS Code a moment to update
           await new Promise(resolve => setTimeout(resolve, 100));
           // Recursively call to handle the marker with the new workspace
-          return ensureCourseMarker(api, context);
+          await ensureWorkspaceMarker(baseUrl);
+          return;
         }
 
-        // Extension will restart, return undefined
-        return undefined;
+        // Extension will restart
+        return;
       }
     }
-    return undefined;
+    return;
   }
   const file = path.join(root, computorMarker);
   const existing = await readMarker(file);
@@ -183,8 +184,11 @@ async function ensureWorkspaceMarker(baseUrl: string): Promise<void> {
 }
 
 // Legacy function for course selection (kept for compatibility)
-async function ensureCourseMarker(api: ComputorApiService, context?: vscode.ExtensionContext): Promise<string | undefined> {
+async function ensureCourseMarker(api: ComputorApiService): Promise<string | undefined> {
   const root = getWorkspaceRoot();
+  const file = root ? path.join(root, computorMarker) : null;
+  const existing = file ? await readMarker(file) : null;
+
   if (!root) {
     const action = await vscode.window.showErrorMessage('Login requires an open workspace.', 'Open Folder');
     if (action === 'Open Folder') {
@@ -207,7 +211,7 @@ async function ensureCourseMarker(api: ComputorApiService, context?: vscode.Exte
 
         if (workspaceFolders.length > 0) {
           await new Promise(resolve => setTimeout(resolve, 100));
-          return ensureCourseMarker(api, context);
+          return ensureCourseMarker(api);
         }
 
         return undefined;
@@ -250,7 +254,7 @@ async function ensureCourseMarker(api: ComputorApiService, context?: vscode.Exte
     return undefined;
   }
 
-  if (existing?.courseId) {
+  if (existing && existing.courseId) {
     const match = uniqueCourses.find((course: any) => course.id === existing.courseId);
     if (match) {
       return existing.courseId;
@@ -258,7 +262,9 @@ async function ensureCourseMarker(api: ComputorApiService, context?: vscode.Exte
 
     // Invalid or stale marker – remove and continue as if no marker exists
     try {
-      await fs.promises.unlink(file);
+      if (file) {
+        await fs.promises.unlink(file);
+      }
     } catch {
       // Ignore errors when removing invalid marker
     }
@@ -494,8 +500,6 @@ class UnifiedController {
   async activate(client: ReturnType<typeof buildHttpClient>): Promise<void> {
     const api = await this.setupApi(client);
 
-    const currentUser = await api.getCurrentUser();
-
     // Get available views for this user across all courses
     // This is a lightweight check to determine which role views to show
     const availableViews = await this.getAvailableViews(api);
@@ -552,7 +556,13 @@ class UnifiedController {
     return Array.from(views);
   }
 
+  /**
+   * @deprecated No longer used since we don't select a single course upfront
+   * GitLab authentication is now handled on-demand when repositories are cloned via GitLabTokenManager
+   * Keeping this function for reference in case we need course-specific provider setup in the future
+   */
   private async setupProviderAccount(api: ComputorApiService, courseId: string, currentUser: any, views: string[]): Promise<void> {
+    void currentUser; // Unused parameter
     // Try multiple approaches to get provider URL, as different views have different data structures
     let providerUrl: string | null = null;
     let courseLabel: string = courseId;

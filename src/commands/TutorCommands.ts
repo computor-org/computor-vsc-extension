@@ -434,8 +434,8 @@ export class TutorCommands {
         };
 
         if (submissionGroup?.id) {
-          query.course_submission_group_id = submissionGroup.id;
-          createPayload.course_submission_group_id = submissionGroup.id;
+          query.submission_group_id = submissionGroup.id;
+          createPayload.submission_group_id = submissionGroup.id;
         }
 
         const subtitleSegments = [courseLabel, memberLabel, content.path || contentTitle].filter(Boolean) as string[];
