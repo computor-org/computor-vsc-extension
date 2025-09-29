@@ -5,7 +5,8 @@ import { ComputorApiService } from '../../../services/ComputorApiService';
 import { TutorSelectionService } from '../../../services/TutorSelectionService';
 import { IconGenerator } from '../../../utils/IconGenerator';
 import { CourseContentStudentList, CourseContentKindList, SubmissionGroupStudentList } from '../../../types/generated';
-import { deriveTutorRepoDirectoryName, buildTutorStudentRepoRoot } from '../../../utils/repositoryNaming';
+import { deriveRepositoryDirectoryName, buildReviewRepoRoot } from '../../../utils/repositoryNaming';
+import { CTGit } from '../../../git/CTGit';
 
 export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   private _onDidChangeTreeData = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
@@ -192,7 +193,17 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
     const repoRoot = this.getTutorRepoRoot(workspaceFolder, courseId, memberId, element.content);
     const gitDir = path.join(repoRoot, '.git');
     if (!fs.existsSync(gitDir)) {
-      return [new MessageItem('Student repository not found locally. Use “Clone Student Repository” first.', 'warning')];
+      return [new MessageItem('Student repository not found locally. Use "Clone Student Repository" first.', 'warning')];
+    }
+
+    // Auto-update repository when expanding the tree item
+    try {
+      const git = new CTGit(repoRoot);
+      await git.fetch();
+      await git.pull();
+    } catch (error) {
+      console.warn('[TutorStudentTreeProvider] Failed to update repository:', error);
+      // Continue even if update fails - the user might be offline or have local changes
     }
 
     const directoryName = element.assignmentDirectory || this.deriveAssignmentDirectory(element.content);
@@ -221,14 +232,15 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
       }
     }
 
-    const repoName = deriveTutorRepoDirectoryName({
+    const repoName = deriveRepositoryDirectoryName({
       submissionRepo,
       remoteUrl,
       courseId,
-      memberId
+      memberId,
+      submissionGroupId: content.submission_group?.id || undefined
     });
 
-    return buildTutorStudentRepoRoot(workspaceRoot, repoName);
+    return buildReviewRepoRoot(workspaceRoot, repoName);
   }
 
   private async readDirectoryItems(dir: string, courseId: string, memberId: string, repositoryRoot: string): Promise<vscode.TreeItem[]> {

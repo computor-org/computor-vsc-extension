@@ -15,6 +15,7 @@ interface RepositoryInfo {
   assignmentTitle: string;
   directory?: string;       // Directory path inside the git repository for sparse-checkout
   submissionGroupId?: string; // UUID of the submission group
+  fullPath?: string;        // Full path of the repository (e.g., "course/student-123")
 }
 
 /**
@@ -99,22 +100,24 @@ export class StudentRepositoryManager {
 
   /**
    * Collect unique repositories from course contents
+   * Groups by (url, full_path) tuple to handle shared repositories
    */
   private collectRepositoriesFromContents(courseContents: any[]): RepositoryInfo[] {
     const repoMap = new Map<string, RepositoryInfo>();
-    
+
     for (const content of courseContents) {
       // Check if it's an assignment with a repository
-      const isAssignment = content.course_content_type?.course_content_kind_id === 'assignment' || 
+      const isAssignment = content.course_content_type?.course_content_kind_id === 'assignment' ||
                           content.example_id;
       const repo = content.submission_group?.repository;
-      
-      if (isAssignment && repo?.clone_url && content.submission_group?.id) {
-        // Use submission group ID as the unique key
-        const key = content.submission_group.id;
+
+      if (isAssignment && repo?.clone_url && repo?.full_path && content.submission_group?.id) {
+        // Use (url, full_path) as the unique key for repositories
+        const key = `${repo.clone_url}::${repo.full_path}`;
         if (!repoMap.has(key)) {
           console.log(`[StudentRepositoryManager] Repository info for ${content.title}:`, {
             cloneUrl: repo.clone_url,
+            fullPath: repo.full_path,
             assignmentPath: content.path,
             directory: content.directory,
             exampleIdentifier: content.submission_group?.example_identifier
@@ -125,18 +128,19 @@ export class StudentRepositoryManager {
             ? content.directory
             : content.submission_group?.example_identifier;
           console.log(`[StudentRepositoryManager] Subdirectory for ${content.title}: "${subdirectory}"`);
-          
+
           repoMap.set(key, {
             cloneUrl: repo.clone_url,
             assignmentPath: content.path,
             assignmentTitle: content.title || content.path,
             directory: subdirectory,  // This should be just the subdirectory, not a full path
-            submissionGroupId: content.submission_group.id
-          } as RepositoryInfo & { submissionGroupId: string });
+            submissionGroupId: content.submission_group.id,
+            fullPath: repo.full_path  // Store the full_path from repository
+          } as RepositoryInfo & { submissionGroupId: string; fullPath: string });
         }
       }
     }
-    
+
     return Array.from(repoMap.values());
   }
 
@@ -185,29 +189,31 @@ export class StudentRepositoryManager {
       console.warn('[StudentRepositoryManager] Could not get course information for upstream:', error);
     }
     
-      // Group repositories by submission group ID (each submission group gets its own repo directory)
+      // Group repositories by (url, full_path) to get unique repositories
     const uniqueRepos = new Map<string, RepositoryInfo[]>();
     for (const repo of repositories) {
-      const submissionGroupId = (repo as any).submissionGroupId;
-      if (submissionGroupId) {
-        if (!uniqueRepos.has(submissionGroupId)) {
-          uniqueRepos.set(submissionGroupId, []);
+      const fullPath = (repo as any).fullPath;
+      if (fullPath) {
+        const key = `${repo.cloneUrl}::${fullPath}`;
+        if (!uniqueRepos.has(key)) {
+          uniqueRepos.set(key, []);
         }
-        uniqueRepos.get(submissionGroupId)!.push(repo);
+        uniqueRepos.get(key)!.push(repo);
       }
     }
-    
+
     console.log(`[StudentRepositoryManager] Found ${uniqueRepos.size} unique repositories for course ${courseId}`);
     report(`Found ${uniqueRepos.size} unique repositories`);
-    
+
     // Clone/update each unique repository only once
-    for (const [submissionGroupId, repoInfos] of uniqueRepos) {
+    for (const [, repoInfos] of uniqueRepos) {
       const firstRepo = repoInfos[0];
-      if (firstRepo) {
+      if (firstRepo && (firstRepo as any).fullPath) {
         const cloneUrl = firstRepo.cloneUrl;
-        const repoName = firstRepo.assignmentTitle || submissionGroupId;
+        const fullPath = (firstRepo as any).fullPath;
+        const repoName = firstRepo.assignmentTitle || fullPath;
         report(`Setting up ${repoName}...`);
-        token = await this.setupUniqueRepository(courseId, submissionGroupId, cloneUrl, repoInfos, token, courseContents, upstreamUrl, onProgress);
+        token = await this.setupUniqueRepository(courseId, fullPath, cloneUrl, repoInfos, token, courseContents, upstreamUrl, onProgress);
       }
     }
     
@@ -221,7 +227,7 @@ export class StudentRepositoryManager {
    */
   private async setupUniqueRepository(
     courseId: string, // Used for logging and upstream URL
-    submissionGroupId: string, // Submission group UUID
+    fullPath: string, // Repository full_path (e.g., "course/student-123")
     cloneUrl: string,
     repoInfos: RepositoryInfo[],
     token: string,
@@ -232,9 +238,10 @@ export class StudentRepositoryManager {
     void courseId; // Only used for logging
     const report = onProgress || (() => {});
     let effectiveToken = token;
-    // Use submission group UUID as the directory name
-    const repoPath = this.workspaceStructure.getStudentRepositoryPath(submissionGroupId);
-    const repoName = repoInfos[0]?.assignmentTitle || submissionGroupId;
+    // Use full_path with dots instead of slashes as the directory name
+    const dirName = fullPath.replace(/\//g, '.');
+    const repoPath = this.workspaceStructure.getStudentRepositoryPath(dirName);
+    const repoName = repoInfos[0]?.assignmentTitle || fullPath;
 
     const repoExists = await this.directoryExists(repoPath);
     
@@ -338,14 +345,18 @@ export class StudentRepositoryManager {
           }
         
         // Try to find the repository for this content
-        const isAssignment = content.course_content_type?.course_content_kind_id === 'assignment' || 
+        const isAssignment = content.course_content_type?.course_content_kind_id === 'assignment' ||
                             content.example_id;
-        
-        if (isAssignment) {
-          // Look for a matching repository and the expected subdirectory
-          for (const dir of dirs) {
+
+        if (isAssignment && content.submission_group?.repository?.full_path) {
+          // Convert full_path to directory name format
+          const expectedDirName = content.submission_group.repository.full_path.replace(/\//g, '.');
+
+          // Check if this directory exists
+          if (dirs.includes(expectedDirName)) {
             const studentDir = this.workspaceStructure.getDirectories().student;
-            const repoPath = path.join(studentDir, dir);
+            const repoPath = path.join(studentDir, expectedDirName);
+
             // Determine expected subdirectory from backend data first
             let subdirectory: string | undefined;
             if (typeof content.directory === 'string' && content.directory.length > 0) {
@@ -359,8 +370,11 @@ export class StudentRepositoryManager {
               if (fs.existsSync(fullPath)) {
                 content.directory = fullPath;
                 console.log(`[StudentRepositoryManager] Found existing directory for ${content.title}: ${fullPath}`);
-                break;
               }
+            } else {
+              // No subdirectory, use the repository root
+              content.directory = repoPath;
+              console.log(`[StudentRepositoryManager] Using repository root for ${content.title}: ${repoPath}`);
             }
           }
         }

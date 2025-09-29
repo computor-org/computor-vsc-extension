@@ -16,9 +16,14 @@ export interface RepositoryContext {
 }
 
 export function deriveRepositoryDirectoryName(context: RepositoryContext): string {
-  const { submissionGroupId, courseId, memberId } = context;
+  const { submissionRepo, submissionGroupId, courseId, memberId, remoteUrl } = context;
 
-  // Prefer submission group ID (UUID) as the directory name
+  // Prefer full_path from repository (with dots instead of slashes)
+  if (submissionRepo?.full_path) {
+    return submissionRepo.full_path.replace(/\//g, '.');
+  }
+
+  // Fallback to submission group ID (UUID) as the directory name
   if (submissionGroupId) {
     return submissionGroupId;
   }
@@ -34,7 +39,6 @@ export function deriveRepositoryDirectoryName(context: RepositoryContext): strin
   }
 
   // Last resort: derive from repository info
-  const { submissionRepo, remoteUrl } = context;
   const candidates: Array<string | undefined> = [
     repoNameFromSubmissionRepository(submissionRepo),
     repoNameFromUrl(remoteUrl)

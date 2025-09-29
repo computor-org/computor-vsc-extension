@@ -109,8 +109,10 @@ export class TutorCommands {
 
           // Extract submission group ID if available
           const submissionGroupId = submission?.id || content?.submission_group?.id;
+          // Include full repository data for full_path
+          const fullSubmissionRepo = submissionRepo || content?.submission_group?.repository;
           const repoName = deriveRepositoryDirectoryName({
-            submissionRepo,
+            submissionRepo: fullSubmissionRepo,
             remoteUrl,
             submissionGroupId,
             courseId,
@@ -121,7 +123,7 @@ export class TutorCommands {
           await this.workspaceStructure.ensureDirectories();
 
           // Use review directory for tutor repositories
-          const dir = this.workspaceStructure.getReviewRepositoryPath(submissionGroupId || repoName);
+          const dir = this.workspaceStructure.getReviewRepositoryPath(repoName);
           await fs.promises.mkdir(dir, { recursive: true });
           // Git clone into the destination if empty
           const exists = await fs.promises.readdir(dir).then(list => list.length > 0).catch(() => false);
@@ -209,15 +211,17 @@ export class TutorCommands {
 
           // Extract submission group ID if available
           const submissionGroupId = content?.submission_group?.id;
+          // Include full repository data for full_path
+          const fullSubmissionRepo = submissionRepo || content?.submission_group?.repository;
           const repoName = deriveRepositoryDirectoryName({
-            submissionRepo,
+            submissionRepo: fullSubmissionRepo,
             remoteUrl,
             submissionGroupId,
             courseId,
             memberId
           });
 
-          const repoPath = this.workspaceStructure.getReviewRepositoryPath(submissionGroupId || repoName);
+          const repoPath = this.workspaceStructure.getReviewRepositoryPath(repoName);
           // Ensure repository exists
           const gitDir = path.join(repoPath, '.git');
           try {
