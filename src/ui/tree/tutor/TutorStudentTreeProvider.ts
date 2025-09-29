@@ -140,7 +140,15 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
       if (child.isUnit) {
         items.push(new TutorUnitItem(child));
       } else if (child.courseContent) {
-        items.push(new TutorContentItem(child.courseContent, memberId, this.isAssignmentContent(child.courseContent), this.deriveAssignmentDirectory(child.courseContent)));
+        const isAssignment = this.isAssignmentContent(child.courseContent);
+        const hasRepository = isAssignment ? this.hasLocalRepository(child.courseContent, memberId) : false;
+        items.push(new TutorContentItem(
+          child.courseContent,
+          memberId,
+          isAssignment,
+          this.deriveAssignmentDirectory(child.courseContent),
+          hasRepository
+        ));
       }
     }
     return items;
@@ -178,6 +186,22 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
     }
     const segments = normalized.split(/[\\/]+/).filter(seg => seg && seg !== '..');
     return segments.join(path.sep);
+  }
+
+  private hasLocalRepository(content: CourseContentStudentList, memberId: string): boolean {
+    try {
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!workspaceFolder) return false;
+
+      const courseId = this.selection.getCurrentCourseId();
+      if (!courseId) return false;
+
+      const repoRoot = this.getTutorRepoRoot(workspaceFolder, courseId, memberId, content);
+      const gitDir = path.join(repoRoot, '.git');
+      return fs.existsSync(gitDir);
+    } catch {
+      return false;
+    }
   }
 
   private async getAssignmentDirectoryChildren(element: TutorContentItem, courseId: string, memberId: string): Promise<vscode.TreeItem[]> {
@@ -337,12 +361,14 @@ class TutorContentItem extends vscode.TreeItem {
   public readonly memberId: string;
   public readonly isAssignment: boolean;
   public readonly assignmentDirectory?: string;
+  public readonly hasRepository: boolean;
 
   constructor(
     public content: CourseContentStudentList,
     memberId: string,
     isAssignment: boolean,
-    assignmentDirectory?: string
+    assignmentDirectory?: string,
+    hasRepository: boolean = false
   ) {
     super(content.title || content.path, isAssignment ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
     const ct: any = (content as any).course_content_type;
@@ -371,7 +397,12 @@ class TutorContentItem extends vscode.TreeItem {
     this.memberId = memberId;
     this.isAssignment = isAssignment;
     this.assignmentDirectory = assignmentDirectory;
-    this.contextValue = this.isAssignment ? 'tutorStudentContent.assignment' : 'tutorStudentContent.reading';
+    this.hasRepository = hasRepository;
+    if (this.isAssignment) {
+      this.contextValue = hasRepository ? 'tutorStudentContent.assignment.hasRepo' : 'tutorStudentContent.assignment.noRepo';
+    } else {
+      this.contextValue = 'tutorStudentContent.reading';
+    }
     this.description = unread > 0 ? `🔔 ${unread}` : undefined;
     // Tooltip with friendly status label
     const friendlyStatus = (() => {
