@@ -147,12 +147,7 @@ async function ensureWorkspaceMarker(baseUrl: string): Promise<void> {
       });
 
       if (folderUri && folderUri.length > 0) {
-        // Store pending login info before workspace change
-        if (context) {
-          await context.globalState.update('pendingLogin', {
-            timestamp: Date.now()
-          });
-        }
+        // No longer storing pending login - will auto-detect .computor file instead
 
         // Add the folder to the current workspace
         // This will restart the extension if no workspace was open
@@ -201,11 +196,7 @@ async function ensureCourseMarker(api: ComputorApiService, context?: vscode.Exte
       });
 
       if (folderUri && folderUri.length > 0) {
-        if (context) {
-          await context.globalState.update('pendingLogin', {
-            timestamp: Date.now()
-          });
-        }
+        // No longer storing pending login - will auto-detect .computor file instead
 
         const workspaceFolders = vscode.workspace.workspaceFolders || [];
         vscode.workspace.updateWorkspaceFolders(
@@ -922,10 +913,7 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
         });
 
         if (folderUri && folderUri.length > 0) {
-          // Store pending login info before workspace change
-          await context.globalState.update('pendingLogin', {
-            timestamp: Date.now()
-          });
+          // No longer storing pending login - will auto-detect .computor file instead
 
           // Add the folder to the current workspace
           // This will restart the extension if no workspace was open
@@ -1016,7 +1004,7 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
 }
 
 
-// Removed automatic marker-based login prompts per user request
+// Automatic login prompt when .computor file is detected
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   console.log('Computor extension activated');
@@ -1037,19 +1025,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await manageGitLabTokens(context);
   }));
   
-  // Check for pending login after workspace change
-  const pendingLogin = context.globalState.get<{ timestamp: number }>('pendingLogin');
-  if (pendingLogin) {
-    // Clear the pending login state
-    await context.globalState.update('pendingLogin', undefined);
-
-    // Check if the login is recent (within 5 seconds)
-    if (Date.now() - pendingLogin.timestamp < 5000) {
-      // Automatically continue the login flow
-      setTimeout(() => {
-        vscode.window.showInformationMessage('Continuing login after workspace change...');
-        unifiedLoginFlow(context);
-      }, 1000);
+  // Check if workspace has .computor file and automatically prompt for login
+  const workspaceRoot = getWorkspaceRoot();
+  if (workspaceRoot && !activeSession) {
+    const computorMarkerPath = path.join(workspaceRoot, computorMarker);
+    if (fs.existsSync(computorMarkerPath)) {
+      // Workspace has .computor file - prompt for login after a short delay
+      setTimeout(async () => {
+        const action = await vscode.window.showInformationMessage(
+          'Computor workspace detected. Would you like to login?',
+          'Login',
+          'Not Now'
+        );
+        if (action === 'Login') {
+          await unifiedLoginFlow(context);
+        }
+      }, 1500); // Small delay to let the extension fully initialize
     }
   }
 
@@ -1068,8 +1059,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.window.showInformationMessage('Computor backend URL updated.');
   }));
 
-  // Detect marker files on startup and when workspace changes
-  // Disabled: no automatic login prompt based on marker files
+  // Listen for workspace folder changes to detect .computor files
+  context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(async () => {
+    if (!activeSession) {
+      const workspaceRoot = getWorkspaceRoot();
+      if (workspaceRoot) {
+        const computorMarkerPath = path.join(workspaceRoot, computorMarker);
+        if (fs.existsSync(computorMarkerPath)) {
+          // New workspace has .computor file - prompt for login
+          setTimeout(async () => {
+            const action = await vscode.window.showInformationMessage(
+              'Computor workspace detected. Would you like to login?',
+              'Login',
+              'Not Now'
+            );
+            if (action === 'Login') {
+              await unifiedLoginFlow(context);
+            }
+          }, 1500);
+        }
+      }
+    }
+  }));
 
   // Maintain legacy settings command to open extension settings scope
   context.subscriptions.push(vscode.commands.registerCommand('computor.settings', async () => {
