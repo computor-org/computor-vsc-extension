@@ -65,6 +65,7 @@ import {
   SubmissionQuery,
   SubmissionUploadResponseModel
 } from '../types/generated';
+import { TutorGradeCreate } from '../types/generated/common';
 
 // Query interface for examples (not generated yet)
 interface ExampleQuery {
@@ -1879,7 +1880,7 @@ export class ComputorApiService {
   }
 
   /**
-   * Tutor: update a student's course content grading/status
+   * Tutor: update a student's course content grading/status (deprecated - use submitTutorGrade instead)
    */
   async updateTutorCourseContentStudent(
     memberId: string,
@@ -1890,6 +1891,25 @@ export class ComputorApiService {
     const response = await client.patch<any>(
       `/tutors/course-members/${memberId}/course-contents/${courseContentId}`,
       update
+    );
+    // Invalidate caches related to this member/content so UI refresh shows changes
+    multiTierCache.delete(`tutorContents-${memberId}`);
+    multiTierCache.delete(`studentCourseContent-${courseContentId}`);
+    return response.data;
+  }
+
+  /**
+   * Tutor: submit a grade for a student's course content
+   */
+  async submitTutorGrade(
+    memberId: string,
+    courseContentId: string,
+    grade: TutorGradeCreate
+  ): Promise<any> {
+    const client = await this.getHttpClient();
+    const response = await client.patch<any>(
+      `/tutors/course-members/${memberId}/course-contents/${courseContentId}`,
+      grade
     );
     // Invalidate caches related to this member/content so UI refresh shows changes
     multiTierCache.delete(`tutorContents-${memberId}`);

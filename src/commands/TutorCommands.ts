@@ -12,6 +12,7 @@ import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 import { CourseMemberCommentsWebviewProvider } from '../ui/webviews/CourseMemberCommentsWebviewProvider';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { MessageCreate, CourseContentStudentList, SubmissionGroupStudentList } from '../types/generated';
+import { TutorGradeCreate } from '../types/generated/common';
 
 export class TutorCommands {
   private context: vscode.ExtensionContext;
@@ -289,11 +290,18 @@ export class TutorCommands {
           { label: 'corrected', description: 'Mark as corrected' },
           { label: 'correction_necessary', description: 'Correction necessary' },
           { label: 'improvement_possible', description: 'Improvement possible' },
+          { label: 'not_reviewed', description: 'Not reviewed' },
         ], { title: 'Status', placeHolder: 'Choose status', canPickMany: false, ignoreFocusOut: true });
         if (!statusPick) return; // cancelled
 
         try {
-          await this.apiService.updateTutorCourseContentStudent(memberId, contentId, { grading: grade, status: statusPick.label as any });
+          // Use new TutorGradeCreate type
+          const tutorGrade: TutorGradeCreate = {
+            grade: grade,
+            status: statusPick.label,
+            feedback: null
+          };
+          await this.apiService.submitTutorGrade(memberId, contentId, tutorGrade);
           // Fetch fresh item and update the clicked tree item inline
           const updated = await this.apiService.getTutorMemberCourseContent(memberId, contentId);
           if (updated && item) {
