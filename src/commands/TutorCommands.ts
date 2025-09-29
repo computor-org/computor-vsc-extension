@@ -6,7 +6,7 @@ import { ComputorApiService } from '../services/ComputorApiService';
 import { TutorSelectionService } from '../services/TutorSelectionService';
 import { createSimpleGit } from '../git/simpleGitFactory';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
-import { deriveRepositoryDirectoryName, buildReviewRepoRoot } from '../utils/repositoryNaming';
+import { deriveRepositoryDirectoryName } from '../utils/repositoryNaming';
 import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 // Import interfaces from generated types (interfaces removed to avoid duplication)
 import { CourseMemberCommentsWebviewProvider } from '../ui/webviews/CourseMemberCommentsWebviewProvider';

@@ -705,8 +705,8 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
             submissionRepo: repo,
             remoteUrl,
             courseId,
-            memberId: submissionGroup.id,
-            submissionGroupId: submissionGroup.id
+            memberId: submissionGroup.id || undefined,
+            submissionGroupId: submissionGroup.id || undefined
         });
 
         return buildStudentRepoRoot(workspaceRoot, repoName);

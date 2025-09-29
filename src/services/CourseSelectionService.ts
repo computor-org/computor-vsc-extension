@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { ComputorApiService } from './ComputorApiService';
 import { StatusBarService } from '../ui/StatusBarService';
 

@@ -9,7 +9,7 @@ export class LecturerFsCommands {
 
   constructor(
     private context: vscode.ExtensionContext,
-    private apiService: ComputorApiService
+    apiService: ComputorApiService
   ) {
     this.repositoryManager = new LecturerRepositoryManager(context, apiService);
   }

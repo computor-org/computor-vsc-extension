@@ -18,7 +18,7 @@ export class WorkspaceStructureManager {
     if (!workspaceFolders || workspaceFolders.length === 0) {
       throw new Error('No workspace folder is open');
     }
-    this.workspaceRoot = workspaceFolders[0].uri.fsPath;
+    this.workspaceRoot = workspaceFolders[0]!.uri.fsPath;
   }
 
   static getInstance(): WorkspaceStructureManager {
