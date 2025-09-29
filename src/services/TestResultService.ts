@@ -50,11 +50,10 @@ export class TestResultService {
   // }
 
   /**
-   * Submit a test and display results
+   * Submit a test using artifact ID and display results
    */
-  async submitTestAndAwaitResults(
-    courseContentId: string,
-    versionIdentifier: string,
+  async submitTestByArtifactAndAwaitResults(
+    artifactId: string,
     assignmentTitle: string,
     submit?: boolean,
     options?: { progress?: vscode.Progress<{ message?: string; increment?: number }>; token?: vscode.CancellationToken; showProgress?: boolean }
@@ -72,7 +71,76 @@ export class TestResultService {
         progress.report({ message: 'Submitting test request...' });
 
         const testResult = await this.apiService!.submitTest({
-          course_content_id: courseContentId,
+          artifact_id: artifactId,
+          submit,
+        });
+
+        console.log("[Debug] " + JSON.stringify(testResult,null,2));
+
+        if (!testResult) {
+          vscode.window.showErrorMessage('Failed to submit test - no response received');
+          return;
+        }
+
+        // Check if we have the full result already
+        if (testResult.result_json) {
+          const statusValue = testResult.status;
+          this.showTestResult(assignmentTitle, statusValue, testResult.result_json);
+          return;
+        }
+
+        // Start polling if we have a result ID
+        if (testResult.id) {
+          progress.report({ message: 'Waiting for test results...' });
+          await this.pollForResult(testResult.id, assignmentTitle, progress, token);
+        } else {
+          vscode.window.showErrorMessage('Test submitted but no result ID received');
+        }
+      };
+
+      if (options?.showProgress !== false) {
+        await vscode.window.withProgress({
+          location: vscode.ProgressLocation.Window,
+          title: 'Running Test',
+          cancellable: true
+        }, runWithProgress);
+      } else {
+        if (options?.progress) {
+          const dummy: vscode.Progress<{ message?: string; increment?: number }> = { report: () => void 0 };
+          await runWithProgress(dummy);
+        }
+      }
+    } catch (error: any) {
+      console.error('[TestResultService] Error in submitTestByArtifactAndAwaitResults:', error);
+      vscode.window.showErrorMessage(`Test submission failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Submit a test and display results using submission group + version
+   */
+  async submitTestAndAwaitResults(
+    submissionGroupId: string,
+    versionIdentifier: string,
+    assignmentTitle: string,
+    submit?: boolean,
+    options?: { progress?: vscode.Progress<{ message?: string; increment?: number }>; token?: vscode.CancellationToken; showProgress?: boolean }
+  ): Promise<void> {
+    if (!this.apiService) {
+      vscode.window.showErrorMessage('Test service not properly initialized');
+      return;
+    }
+
+    try {
+      const runWithProgress = async (
+        progress: vscode.Progress<{ message?: string; increment?: number }>,
+        token?: vscode.CancellationToken
+      ) => {
+        progress.report({ message: 'Submitting test request...' });
+
+        // Use new API structure with submission_group_id + version_identifier
+        const testResult = await this.apiService!.submitTest({
+          submission_group_id: submissionGroupId,
           version_identifier: versionIdentifier,
           submit,
         });

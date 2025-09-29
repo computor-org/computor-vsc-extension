@@ -654,6 +654,7 @@ export class StudentCommands {
                 console.warn('[TestAssignment] Failed to check existing submissions:', listError);
               }
 
+              let submissionResponse: any = null;
               if (uploadRequired) {
                 progress.report({ message: 'Packaging submission archive...' });
                 const archive = await this.createSubmissionArchive(submissionDirectory);
@@ -663,7 +664,7 @@ export class StudentCommands {
                 }
 
                 progress.report({ message: 'Uploading submission package...' });
-                await this.apiService.createStudentSubmission({
+                submissionResponse = await this.apiService.createStudentSubmission({
                   submission_group_id: submissionGroupId,
                   version_identifier: commitHash
                 }, archive);
@@ -671,14 +672,26 @@ export class StudentCommands {
                 progress.report({ message: 'Reusing existing submission archive.' });
               }
 
-              // Submit test and reuse the same progress indicator for polling
-              await this.testResultService.submitTestAndAwaitResults(
-                courseContentId,
-                commitHash,
-                assignmentTitle,
-                undefined,
-                { progress, token, showProgress: false }
-              );
+              // Submit test using artifact_id if available, otherwise fall back to submission_group_id + version
+              if (submissionResponse?.artifacts?.length > 0) {
+                // Use new artifact-based approach
+                const artifactId = submissionResponse.artifacts[0]; // Use first artifact
+                await this.testResultService.submitTestByArtifactAndAwaitResults(
+                  artifactId,
+                  assignmentTitle,
+                  undefined,
+                  { progress, token, showProgress: false }
+                );
+              } else {
+                // Fall back to submission_group_id + version approach
+                await this.testResultService.submitTestAndAwaitResults(
+                  submissionGroupId,
+                  commitHash,
+                  assignmentTitle,
+                  undefined,
+                  { progress, token, showProgress: false }
+                );
+              }
             } else {
               vscode.window.showWarningMessage('Could not determine commit hash or content ID for testing');
             }

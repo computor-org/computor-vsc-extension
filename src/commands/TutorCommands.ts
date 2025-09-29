@@ -12,7 +12,7 @@ import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 import { CourseMemberCommentsWebviewProvider } from '../ui/webviews/CourseMemberCommentsWebviewProvider';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { MessageCreate, CourseContentStudentList, SubmissionGroupStudentList } from '../types/generated';
-import { TutorGradeCreate } from '../types/generated/common';
+import { TutorGradeCreate, GradingStatus } from '../types/generated/common';
 
 export class TutorCommands {
   private context: vscode.ExtensionContext;
@@ -286,19 +286,25 @@ export class TutorCommands {
         if (grade > 1) grade = grade / 100; // percentage to fraction
         grade = Math.max(0, Math.min(1, grade));
 
-        const statusPick = await vscode.window.showQuickPick([
-          { label: 'corrected', description: 'Mark as corrected' },
-          { label: 'correction_necessary', description: 'Correction necessary' },
-          { label: 'improvement_possible', description: 'Improvement possible' },
-          { label: 'not_reviewed', description: 'Not reviewed' },
-        ], { title: 'Status', placeHolder: 'Choose status', canPickMany: false, ignoreFocusOut: true });
+        const statusOptions: Array<vscode.QuickPickItem & { value: GradingStatus }> = [
+          { label: 'corrected', description: 'Mark as corrected', value: 1 as GradingStatus },
+          { label: 'correction_necessary', description: 'Correction necessary', value: 2 as GradingStatus },
+          { label: 'improvement_possible', description: 'Improvement possible', value: 3 as GradingStatus },
+          { label: 'not_reviewed', description: 'Not reviewed', value: 0 as GradingStatus },
+        ];
+        const statusPick = await vscode.window.showQuickPick(statusOptions, {
+          title: 'Status',
+          placeHolder: 'Choose status',
+          canPickMany: false,
+          ignoreFocusOut: true
+        });
         if (!statusPick) return; // cancelled
 
         try {
-          // Use new TutorGradeCreate type
+          // Use new TutorGradeCreate type with enum status
           const tutorGrade: TutorGradeCreate = {
             grade: grade,
-            status: statusPick.label,
+            status: statusPick.value,
             feedback: null
           };
           await this.apiService.submitTutorGrade(memberId, contentId, tutorGrade);
