@@ -25,10 +25,12 @@ import {
   LoadMoreTreeItem,
   CourseContentAssignmentInfo
 } from './LecturerTreeItems';
-import type { 
-  CourseContentList, 
-  CourseContentCreate, 
-  CourseContentUpdate, 
+import type {
+  CourseContentList,
+  CourseContentLecturerList,
+  CourseContentLecturerGet,
+  CourseContentCreate,
+  CourseContentUpdate,
   CourseContentGet,
   CourseList,
   CourseContentTypeList,
@@ -686,7 +688,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       if (element instanceof CourseContentTreeItem) {
         // Show child course contents or, for assignments (leaves), show local repo files
         const allContents = await this.getCourseContents(element.course.id);
-        const childContents = this.getChildContents(element.courseContent, allContents);
+        const childContents = this.getChildContents(element.courseContent as CourseContentLecturerList, allContents);
         
         // Fetch example info for child contents
         const childItems = await Promise.all(childContents.map(async content => {
@@ -876,7 +878,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       return [];
     }
 
-    const rawDirectoryName = element.assignmentDirectory || await this.resolveAssignmentDirectoryName(element.courseContent);
+    const rawDirectoryName = element.assignmentDirectory || await this.resolveAssignmentDirectoryName(element.courseContent as CourseContentLecturerList);
     if (!rawDirectoryName) {
       return [new InfoItem('Assignment not initialized in assignments repo', 'info')];
     }
@@ -920,20 +922,14 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     }
   }
 
-  private async resolveAssignmentDirectoryName(content: CourseContentList): Promise<string | undefined> {
+  private async resolveAssignmentDirectoryName(content: CourseContentLecturerList): Promise<string | undefined> {
     const cached = this.assignmentIdentifierCache.get(content.id);
     if (cached !== undefined) {
       return cached || undefined;
     }
 
-   const deployment = content.deployment as (CourseContentDeploymentList & { deployment_path?: string | null; version_identifier?: string | null }) | null | undefined;
-    const deploymentIdentifier = ((deployment as any)?.deployment_path as string | undefined) || deployment?.example_identifier || undefined;
-    const sanitizedDeployment = this.sanitizeAssignmentDirectoryName(deploymentIdentifier);
-    if (sanitizedDeployment) {
-      this.assignmentIdentifierCache.set(content.id, sanitizedDeployment);
-      return sanitizedDeployment;
-    }
-
+    // The new lecturer endpoint doesn't include deployment details,
+    // so we need to fetch the full content to get deployment path
     try {
       const full = await this.apiService.getCourseContent(content.id, true) as CourseContentGet | undefined;
       const fullDeployment = full?.deployment as (CourseContentDeploymentList & { deployment_path?: string | null; example_identifier?: string | null; version_identifier?: string | null }) | null | undefined;
@@ -1050,16 +1046,16 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
 
   private async computeAssignmentInfo(
     course: CourseList,
-    content: CourseContentList,
+    content: CourseContentLecturerList,
     directoryName?: string
   ): Promise<CourseContentAssignmentInfo | undefined> {
-    const deployment = content.deployment as (CourseContentDeploymentList & { deployment_path?: string | null; version_identifier?: string | null }) | null | undefined;
+    // The new lecturer endpoint has deployment_status and has_deployment directly
     const info: CourseContentAssignmentInfo = {
       directoryName,
-      versionIdentifier: (deployment as any)?.version_identifier || undefined,
-      versionTag: (deployment as any)?.version_tag || undefined,
-      deploymentStatus: deployment?.deployment_status || content.deployment_status || null,
-      hasDeployment: Boolean(deployment)
+      versionIdentifier: undefined, // Will be fetched if needed
+      versionTag: undefined, // Will be fetched if needed
+      deploymentStatus: content.deployment_status || null,
+      hasDeployment: content.has_deployment || false
     };
 
     if (!directoryName) {
@@ -1168,9 +1164,9 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     this.assignmentIdentifierCache.set(contentId, identifier);
   }
 
-  private async getCourseContents(courseId: string): Promise<CourseContentList[]> {
-    // Always fetch fresh data from API, include deployment info for proper status display
-    const contents = await this.apiService.getCourseContents(courseId, true, true);
+  private async getCourseContents(courseId: string): Promise<CourseContentLecturerList[]> {
+    // Use new lecturer-specific endpoint that includes repository info
+    const contents = await this.apiService.getLecturerCourseContents(courseId);
     return contents || [];
   }
 
@@ -1199,7 +1195,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     return members || [];
   }
 
-  private getRootContents(contents: CourseContentList[]): CourseContentList[] {
+  private getRootContents(contents: CourseContentLecturerList[]): CourseContentLecturerList[] {
     // Get contents that have no parent (root level)
     return contents.filter(content => {
       const pathParts = content.path.split('.');
@@ -1207,7 +1203,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     }).sort((a, b) => a.position - b.position);
   }
 
-  private getChildContents(parent: CourseContentList, allContents: CourseContentList[]): CourseContentList[] {
+  private getChildContents(parent: CourseContentLecturerList, allContents: CourseContentLecturerList[]): CourseContentLecturerList[] {
     // Get direct children of the parent content
     const parentPath = parent.path;
     const parentDepth = parentPath.split('.').length;
@@ -1221,7 +1217,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     }).sort((a, b) => a.position - b.position);
   }
 
-  private hasChildContents(content: CourseContentList, allContents: CourseContentList[]): boolean {
+  private hasChildContents(content: CourseContentLecturerList, allContents: CourseContentLecturerList[]): boolean {
     const contentPath = content.path;
     return allContents.some(c => c.path.startsWith(contentPath + '.') && c.path !== contentPath);
   }
@@ -1418,7 +1414,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     const contents = await this.getCourseContents(courseId);
     
     if (parentPath) {
-      const siblings = this.getChildContents({ path: parentPath } as CourseContentList, contents);
+      const siblings = this.getChildContents({ path: parentPath } as CourseContentLecturerList, contents);
       return siblings.length + 1;
     } else {
       const roots = this.getRootContents(contents);

@@ -405,7 +405,7 @@ export class StudentCommands {
 
               let uploadRequired = true;
               try {
-                const existingSubmissions = await this.apiService.listStudentSubmissions({
+                const existingSubmissions = await this.apiService.listStudentSubmissionArtifacts({
                   submission_group_id: submissionGroupId,
                   version_identifier: submissionVersion,
                   submit: true
@@ -642,7 +642,7 @@ export class StudentCommands {
             if (commitHash && courseContentId) {
               let uploadRequired = true;
               try {
-                const existingSubmissions = await this.apiService.listStudentSubmissions({
+                const existingSubmissions = await this.apiService.listStudentSubmissionArtifacts({
                   submission_group_id: submissionGroupId,
                   version_identifier: commitHash,
                   submit: false

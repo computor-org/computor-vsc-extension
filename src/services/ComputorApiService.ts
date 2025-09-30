@@ -25,6 +25,8 @@ import {
   CourseContentTypeGet,
   CourseContentTypeCreate,
   CourseContentTypeUpdate,
+  CourseContentLecturerList,
+  CourseContentLecturerGet,
   ExampleList,
   ExampleRepositoryList,
   ExampleRepositoryGet,
@@ -386,13 +388,13 @@ export class ComputorApiService {
 
   async getCourseContent(contentId: string, includeDeployment: boolean = false): Promise<CourseContentGet | undefined> {
     const cacheKey = `courseContent-${contentId}-${includeDeployment}`;
-    
+
     // Check cache first
     const cached = multiTierCache.get<CourseContentGet>(cacheKey);
     if (cached) {
       return cached;
     }
-    
+
     try {
       const result = await errorRecoveryService.executeWithRecovery(async () => {
         const client = await this.getHttpClient();
@@ -403,12 +405,68 @@ export class ComputorApiService {
         maxRetries: 2,
         exponentialBackoff: true
       });
-      
+
       // Cache in warm tier
       multiTierCache.set(cacheKey, result, 'warm');
       return result;
     } catch (error) {
       console.error('Failed to get course content:', error);
+      return undefined;
+    }
+  }
+
+  async getLecturerCourseContents(courseId: string): Promise<CourseContentLecturerList[]> {
+    const cacheKey = `lecturerCourseContents-${courseId}`;
+
+    // Check cache first
+    const cached = multiTierCache.get<CourseContentLecturerList[]>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const response = await client.get<CourseContentLecturerList[]>(`/lecturers/course-contents?course_id=${courseId}`);
+        return response.data;
+      }, {
+        maxRetries: 2,
+        exponentialBackoff: true
+      });
+
+      // Cache in warm tier
+      multiTierCache.set(cacheKey, result, 'warm');
+      return result;
+    } catch (error) {
+      console.error('Failed to get lecturer course contents:', error);
+      return [];
+    }
+  }
+
+  async getLecturerCourseContent(contentId: string): Promise<CourseContentLecturerGet | undefined> {
+    const cacheKey = `lecturerCourseContent-${contentId}`;
+
+    // Check cache first
+    const cached = multiTierCache.get<CourseContentLecturerGet>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const response = await client.get<CourseContentLecturerGet>(`/lecturers/course-contents/${contentId}`);
+        return response.data;
+      }, {
+        maxRetries: 2,
+        exponentialBackoff: true
+      });
+
+      // Cache in warm tier
+      multiTierCache.set(cacheKey, result, 'warm');
+      return result;
+    } catch (error) {
+      console.error('Failed to get lecturer course content:', error);
       return undefined;
     }
   }
@@ -829,14 +887,18 @@ export class ComputorApiService {
     // Also clear content types cache
     const contentTypesKey = `courseContentTypes-${courseId}`;
     multiTierCache.delete(contentTypesKey);
-    
+
     // Clear course groups cache
     const groupsKey = `courseGroups-${courseId}`;
     multiTierCache.delete(groupsKey);
-    
+
     // Clear course members cache
     const membersKey = `courseMembers-${courseId}`;
     multiTierCache.delete(membersKey);
+
+    // Clear lecturer-specific caches
+    const lecturerKey = `lecturerCourseContents-${courseId}`;
+    multiTierCache.delete(lecturerKey);
   }
 
   // Tutor helpers: cache invalidation
@@ -2117,10 +2179,10 @@ export class ComputorApiService {
   }
 
   // Student submission API
-  async listStudentSubmissions(params?: SubmissionQuery | null): Promise<SubmissionListItem[]> {
+  async listStudentSubmissionArtifacts(params?: SubmissionQuery | null): Promise<SubmissionListItem[]> {
     try {
       const client = await this.getHttpClient();
-      const response = await client.get<SubmissionListItem[]>('/submissions', params ?? undefined);
+      const response = await client.get<SubmissionListItem[]>('/submissions/artifacts', params ?? undefined);
       return Array.isArray(response.data) ? response.data : [];
     } catch (error: any) {
       console.error('Failed to list student submissions:', error);
@@ -2142,7 +2204,7 @@ export class ComputorApiService {
       });
 
       const response = await client.post<SubmissionUploadResponseModel>(
-        '/submissions',
+        '/submissions/artifacts',
         formData
       );
       return response.data;
