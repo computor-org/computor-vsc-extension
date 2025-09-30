@@ -1405,7 +1405,7 @@ export class ComputorApiService {
 
     try {
       const client = await this.getHttpClient();
-      const response = await client.get<StudentProfileGet[]>('/user/student-profiles');
+      const response = await client.get<StudentProfileGet[]>('/student-profiles');
       const profiles = Array.isArray(response.data) ? response.data : [];
       multiTierCache.set(cacheKey, profiles, 'warm');
       return profiles;
@@ -1423,7 +1423,7 @@ export class ComputorApiService {
   async createStudentProfile(payload: StudentProfileCreate): Promise<StudentProfileGet> {
     try {
       const client = await this.getHttpClient();
-      const response = await client.post<StudentProfileGet>('/user/student-profiles', payload);
+      const response = await client.post<StudentProfileGet>('/student-profiles', payload);
       const profile = response.data;
       this.invalidateUserCaches({ user: true, profile: false, studentProfiles: true });
       return profile;
@@ -1436,7 +1436,7 @@ export class ComputorApiService {
   async updateStudentProfile(profileId: string, updates: StudentProfileUpdate): Promise<StudentProfileGet> {
     try {
       const client = await this.getHttpClient();
-      const response = await client.patch<StudentProfileGet>(`/user/student-profiles/${profileId}`, updates);
+      const response = await client.patch<StudentProfileGet>(`/student-profiles/${profileId}`, updates);
       const profile = response.data;
       this.invalidateUserCaches({ user: true, profile: false, studentProfiles: true });
       return profile;
