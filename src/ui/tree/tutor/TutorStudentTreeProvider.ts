@@ -433,6 +433,7 @@ class TutorFsFolderItem extends vscode.TreeItem {
     super(path.basename(absPath), vscode.TreeItemCollapsibleState.Collapsed);
     this.contextValue = 'tutorFsFolder';
     this.tooltip = absPath;
+    this.resourceUri = vscode.Uri.file(absPath);
     this.id = `tutorFsFolder:${courseId}:${memberId}:${absPath}`;
   }
 }
@@ -447,6 +448,7 @@ class TutorFsFileItem extends vscode.TreeItem {
     super(path.basename(absPath), vscode.TreeItemCollapsibleState.None);
     this.contextValue = 'tutorFsFile';
     this.tooltip = absPath;
+    this.resourceUri = vscode.Uri.file(absPath);
     this.command = { command: 'vscode.open', title: 'Open File', arguments: [vscode.Uri.file(absPath)] };
     this.id = `tutorFsFile:${courseId}:${memberId}:${absPath}`;
   }
