@@ -75,6 +75,104 @@ export class StudentCommands {
     this.courseContentTreeProvider = provider;
   }
 
+  private async openReadmeIfExists(dir: string, silent: boolean = false): Promise<boolean> {
+    try {
+      let readmePath: string | undefined;
+      let preferredLanguage: string | null = null;
+
+      try {
+        const userAccount = await this.apiService.getUserAccount();
+        const userLanguage = userAccount?.profile?.language_code || null;
+
+        const courseId = CourseSelectionService.getInstance().getCurrentCourseId();
+        let courseLanguage: string | null = null;
+        if (courseId) {
+          const course = await this.apiService.getCourse(courseId);
+          courseLanguage = course?.language_code || null;
+        }
+
+        preferredLanguage = userLanguage || courseLanguage;
+      } catch (error) {
+        console.warn('[openReadmeIfExists] Failed to fetch language preferences:', error);
+      }
+
+      if (preferredLanguage) {
+        const localizedPath = path.join(dir, `README_${preferredLanguage}.md`);
+        if (fs.existsSync(localizedPath)) {
+          readmePath = localizedPath;
+        }
+      }
+
+      if (!readmePath) {
+        const files = fs.readdirSync(dir);
+        const readmeFiles = files.filter(f => f.match(/^README(_[a-z]{2})?\.md$/i));
+
+        if (readmeFiles.length === 1) {
+          readmePath = path.join(dir, readmeFiles[0]!);
+        } else if (readmeFiles.includes('README.md')) {
+          readmePath = path.join(dir, 'README.md');
+        } else if (readmeFiles.length > 0) {
+          readmePath = path.join(dir, readmeFiles[0]!);
+        }
+      }
+
+      if (readmePath && fs.existsSync(readmePath)) {
+        const readmeUri = vscode.Uri.file(readmePath);
+        await vscode.commands.executeCommand('markdown.showPreview', readmeUri, vscode.ViewColumn.Two, { sideBySide: true });
+        return true;
+      }
+
+      if (!silent) {
+        vscode.window.showInformationMessage('No README.md found in this assignment');
+      }
+      return false;
+    } catch (e) {
+      console.error('openReadmeIfExists failed:', e);
+      if (!silent) vscode.window.showErrorMessage('Failed to open README.md');
+      return false;
+    }
+  }
+
+  private async findRepoRoot(startPath: string): Promise<string | undefined> {
+    try {
+      let current = startPath;
+      while (true) {
+        const stat = fs.existsSync(current) ? fs.statSync(current) : undefined;
+        const dir = stat && stat.isDirectory() ? current : path.dirname(current);
+        const gitDir = path.join(dir, '.git');
+        if (fs.existsSync(gitDir)) {
+          return dir;
+        }
+        const parent = path.dirname(dir);
+        if (parent === dir) break;
+        current = parent;
+      }
+      return undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async copyDirectory(src: string, dest: string): Promise<void> {
+    const stat = await fs.promises.stat(src);
+    if (!stat.isDirectory()) {
+      throw new Error('Source is not a directory');
+    }
+    await fs.promises.rm(dest, { recursive: true, force: true });
+    await fs.promises.mkdir(dest, { recursive: true });
+
+    const entries = await fs.promises.readdir(src, { withFileTypes: true });
+    for (const entry of entries) {
+      const s = path.join(src, entry.name);
+      const d = path.join(dest, entry.name);
+      if (entry.isDirectory()) {
+        await this.copyDirectory(s, d);
+      } else if (entry.isFile()) {
+        await fs.promises.copyFile(s, d);
+      }
+    }
+  }
+
   registerCommands(): void {
     // Refresh student view
     this.context.subscriptions.push(
@@ -1192,94 +1290,3 @@ export class StudentCommands {
     return path.join(workspaceRoot, directory);
   }
 }
-
-// Private helpers
-export interface StudentCommands {
-  openReadmeIfExists(dir: string, silent?: boolean): Promise<boolean>;
-  findRepoRoot(startPath: string): Promise<string | undefined>;
-  copyDirectory(src: string, dest: string): Promise<void>;
-}
-
-StudentCommands.prototype.openReadmeIfExists = async function (dir: string, silent: boolean = false): Promise<boolean> {
-  try {
-    const readmePath = path.join(dir, 'README.md');
-    if (fs.existsSync(readmePath)) {
-      const readmeUri = vscode.Uri.file(readmePath);
-      await vscode.commands.executeCommand('markdown.showPreview', readmeUri, vscode.ViewColumn.Two, { sideBySide: true });
-      return true;
-    }
-    if (!silent) {
-      vscode.window.showInformationMessage('No README.md found in this assignment');
-    }
-    return false;
-  } catch (e) {
-    console.error('openReadmeIfExists failed:', e);
-    if (!silent) vscode.window.showErrorMessage('Failed to open README.md');
-    return false;
-  }
-};
-
-// Extract GitLab origin (protocol + host) from a git remote URL
-(StudentCommands.prototype as any).extractGitLabOrigin = function(remote: string): string | undefined {
-  try {
-    if (remote.startsWith('http://') || remote.startsWith('https://')) {
-      const u = new URL(remote);
-      return `${u.protocol}//${u.host}`;
-    }
-    // git@host:group/repo.git
-    if (remote.startsWith('git@')) {
-      const at = remote.indexOf('@');
-      const colon = remote.indexOf(':');
-      if (at !== -1 && colon !== -1 && colon > at) {
-        const host = remote.substring(at + 1, colon);
-        return `https://${host}`;
-      }
-    }
-  } catch {}
-  try {
-    const u = new URL(remote);
-    return `${u.protocol}//${u.host}`;
-  } catch {}
-  return undefined;
-};
-
-
-StudentCommands.prototype.findRepoRoot = async function (startPath: string): Promise<string | undefined> {
-  try {
-    let current = startPath;
-    while (true) {
-      const stat = fs.existsSync(current) ? fs.statSync(current) : undefined;
-      const dir = stat && stat.isDirectory() ? current : path.dirname(current);
-      const gitDir = path.join(dir, '.git');
-      if (fs.existsSync(gitDir)) {
-        return dir;
-      }
-      const parent = path.dirname(dir);
-      if (parent === dir) break;
-      current = parent;
-    }
-    return undefined;
-  } catch {
-    return undefined;
-  }
-};
-
-StudentCommands.prototype.copyDirectory = async function (src: string, dest: string): Promise<void> {
-  const stat = await fs.promises.stat(src);
-  if (!stat.isDirectory()) {
-    throw new Error('Source is not a directory');
-  }
-  await fs.promises.rm(dest, { recursive: true, force: true });
-  await fs.promises.mkdir(dest, { recursive: true });
-
-  const entries = await fs.promises.readdir(src, { withFileTypes: true });
-  for (const entry of entries) {
-    const s = path.join(src, entry.name);
-    const d = path.join(dest, entry.name);
-    if (entry.isDirectory()) {
-      await this.copyDirectory(s, d);
-    } else if (entry.isFile()) {
-      await fs.promises.copyFile(s, d);
-    }
-  }
-};
