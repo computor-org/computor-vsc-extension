@@ -157,7 +157,8 @@ export class IconGenerator {
       'navy': '#000080',
       'teal': '#008080',
       'maroon': '#800000',
-      'olive': '#808000'
+      'olive': '#808000',
+      'fuchsia': '#FF00FF'
     };
 
     const lowerColor = color.toLowerCase().trim();
