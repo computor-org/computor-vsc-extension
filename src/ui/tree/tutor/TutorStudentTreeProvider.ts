@@ -371,29 +371,6 @@ class TutorContentItem extends vscode.TreeItem {
     hasRepository: boolean = false
   ) {
     super(content.title || content.path, isAssignment ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
-    const ct: any = (content as any).course_content_type;
-    const color = ct?.color || 'grey';
-    const kindId = ct?.course_content_kind_id;
-    const shape = kindId === 'assignment' ? 'square' : 'circle';
-    const unread = ((content as any).unread_message_count ?? 0) + (content.submission_group?.unread_message_count ?? 0);
-    let badge: 'success' | 'failure' | 'none' = 'none';
-    let corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none';
-    const submission: SubmissionGroupStudentList = content.submission_group!;
-    const status = submission?.status?.toLowerCase?.();
-    const grading = submission?.grading;
-    if (status === 'corrected') corner = 'corrected';
-    else if (status === 'correction_necessary') corner = 'correction_necessary';
-    else if (status === 'correction_possible' || status === 'improvement_possible') corner = 'correction_possible';
-    // if (typeof grading === 'number') {
-    //   badge = grading === 1 ? 'success' : 'failure';
-    // }
-    const result = content.result?.result as number | undefined;
-    if (typeof result === 'number') {
-        badge = (result === 1) ? 'success' : 'failure';
-    }
-    this.iconPath = (badge === 'none' && corner === 'none')
-      ? IconGenerator.getColoredIcon(color, shape)
-      : IconGenerator.getColoredIconWithBadge(color, shape, badge, corner);
     this.memberId = memberId;
     this.isAssignment = isAssignment;
     this.assignmentDirectory = assignmentDirectory;
@@ -403,15 +380,38 @@ class TutorContentItem extends vscode.TreeItem {
     } else {
       this.contextValue = 'tutorStudentContent.reading';
     }
+    this.id = content.id;
+    this.updateVisuals();
+  }
+
+  updateVisuals(): void {
+    const ct: any = (this.content as any).course_content_type;
+    const color = ct?.color || 'grey';
+    const kindId = ct?.course_content_kind_id;
+    const shape = kindId === 'assignment' ? 'square' : 'circle';
+    const unread = ((this.content as any).unread_message_count ?? 0) + (this.content.submission_group?.unread_message_count ?? 0);
+    let badge: 'success' | 'failure' | 'none' = 'none';
+    let corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none';
+    const submission: SubmissionGroupStudentList = this.content.submission_group!;
+    const status = submission?.status?.toLowerCase?.();
+    const grading = submission?.grading;
+    if (status === 'corrected') corner = 'corrected';
+    else if (status === 'correction_necessary') corner = 'correction_necessary';
+    else if (status === 'correction_possible' || status === 'improvement_possible') corner = 'correction_possible';
+    const result = this.content.result?.result as number | undefined;
+    if (typeof result === 'number') {
+        badge = (result === 1) ? 'success' : 'failure';
+    }
+    this.iconPath = (badge === 'none' && corner === 'none')
+      ? IconGenerator.getColoredIcon(color, shape)
+      : IconGenerator.getColoredIconWithBadge(color, shape, badge, corner);
     this.description = unread > 0 ? `🔔 ${unread}` : undefined;
-    // Tooltip with friendly status label
     const friendlyStatus = (() => {
       if (!status) return undefined;
       if (status === 'corrected') return 'Corrected';
       if (status === 'correction_necessary') return 'Correction Necessary';
       if (status === 'improvement_possible') return 'Improvement Possible';
       if (status === 'correction_possible') return 'Correction Possible';
-      // Fallback: capitalize first letter and replace underscores
       const t = status.replace(/_/g, ' ');
       return t.charAt(0).toUpperCase() + t.slice(1);
     })();
@@ -420,8 +420,6 @@ class TutorContentItem extends vscode.TreeItem {
       (typeof grading === 'number') ? `Grading: ${(grading * 100).toFixed(2)}%` : undefined,
       unread > 0 ? `${unread} unread message${unread === 1 ? '' : 's'}` : undefined
     ].filter(Boolean).join('\n');
-    this.id = content.id;
-    // No IDs in description per request
   }
 }
 

@@ -310,48 +310,19 @@ export class TutorCommands {
           await this.apiService.submitTutorGrade(memberId, contentId, tutorGrade);
           // Fetch fresh item and update the clicked tree item inline
           const updated = await this.apiService.getTutorMemberCourseContent(memberId, contentId);
-          if (updated && item) {
+          if (updated && item && typeof (item as any).updateVisuals === 'function') {
             try {
-              // Update visible item fields
+              // Preserve course_content_type if the updated data doesn't include it
+              // The single-item endpoint may not return this field
+              const oldCourseContentType = (item.content as any)?.course_content_type;
+              if (oldCourseContentType && !(updated as any).course_content_type) {
+                (updated as any).course_content_type = oldCourseContentType;
+              }
+              // Update the content data
               item.content = updated;
               item.label = updated.title || updated.path;
-              const ct: any = (updated as any).course_content_type;
-              const color = ct?.color || 'grey';
-              const kindId = ct?.course_content_kind_id;
-              const shape = kindId === 'assignment' ? 'square' : 'circle';
-              let corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none';
-              const submission: any = (updated as any).submission_group || (updated as any).submission;
-              const statusValue = submission?.status ?? submission?.latest_grading?.status;
-
-              // Handle both string (legacy) and numeric (new enum) status values
-              if (statusValue === 'corrected' || statusValue === 1) corner = 'corrected';
-              else if (statusValue === 'correction_necessary' || statusValue === 2) corner = 'correction_necessary';
-              else if (statusValue === 'correction_possible' || statusValue === 'improvement_possible' || statusValue === 3) corner = 'correction_possible';
-              const gradingVal: number | undefined = (typeof submission?.latest_grading?.grading === 'number')
-                ? submission.latest_grading.grading
-                : (typeof submission?.grading === 'number' ? submission.grading : undefined);
-              const badge: 'success' | 'failure' | 'none' = (typeof gradingVal === 'number') ? (gradingVal === 1 ? 'success' : 'failure') : 'none';
-              item.iconPath = (badge === 'none' && corner === 'none')
-                ? (await import('../utils/IconGenerator').then(m => m.IconGenerator.getColoredIcon(color, shape)))
-                : (await import('../utils/IconGenerator').then(m => m.IconGenerator.getColoredIconWithBadge(color, shape, badge, corner)));
-              // Update tooltip with friendly status
-              const friendlyStatus = (() => {
-                if (statusValue === undefined || statusValue === null) return undefined;
-                // Handle numeric enum values
-                if (statusValue === 1 || statusValue === 'corrected') return 'Corrected';
-                if (statusValue === 2 || statusValue === 'correction_necessary') return 'Correction Necessary';
-                if (statusValue === 3 || statusValue === 'improvement_possible') return 'Improvement Possible';
-                if (statusValue === 0 || statusValue === 'not_reviewed') return 'Not Reviewed';
-                if (statusValue === 'correction_possible') return 'Correction Possible';
-                // Fallback for unknown string values
-                if (typeof statusValue === 'string') {
-                  const t = statusValue.replace(/_/g, ' ');
-                  return t.charAt(0).toUpperCase() + t.slice(1);
-                }
-                return `Status: ${statusValue}`;
-              })();
-              const gradingText = (typeof gradingVal === 'number') ? `Grading: ${(gradingVal * 100).toFixed(2)}%` : undefined;
-              item.tooltip = [`Path: ${updated.path}`, friendlyStatus ? `Status: ${friendlyStatus}` : undefined, gradingText].filter(Boolean).join('\n');
+              // Use the tree item's own method to update icon, tooltip, etc.
+              (item as any).updateVisuals();
               // Trigger a targeted refresh for this item
               (this.treeDataProvider as any).refreshItem?.(item);
             } catch {
