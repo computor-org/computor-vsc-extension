@@ -1296,8 +1296,8 @@ export class ComputorApiService {
     return user as UserGet;
   }
 
-  async getUserCourseViews(courseId: string): Promise<string[]> {
-    const cacheKey = `userCourseViews-${courseId}`;
+  async getUserViews(): Promise<string[]> {
+    const cacheKey = 'userViews';
 
     // Check cache first
     const cached = multiTierCache.get<string[]>(cacheKey);
@@ -1308,7 +1308,7 @@ export class ComputorApiService {
     try {
       const result = await errorRecoveryService.executeWithRecovery(async () => {
         const client = await this.getHttpClient();
-        const response = await client.get<string[]>(`/user/courses/${courseId}/views`);
+        const response = await client.get<string[]>('/user/views');
         return response.data;
       }, {
         maxRetries: 2,
@@ -1319,7 +1319,7 @@ export class ComputorApiService {
       multiTierCache.set(cacheKey, result, 'warm');
       return result;
     } catch (error) {
-      console.error('Failed to get user course views:', error);
+      console.error('Failed to get user views:', error);
       return [];
     }
   }

@@ -241,31 +241,7 @@ class UnifiedController {
   }
 
   private async getAvailableViews(api: ComputorApiService): Promise<string[]> {
-    const views = new Set<string>();
-
-    // Try a lightweight check for each role
-    try {
-      const studentCourses = await api.getStudentCourses();
-      if (studentCourses && studentCourses.length > 0) {
-        views.add('student');
-      }
-    } catch {}
-
-    try {
-      const tutorCourses = await api.getTutorCourses(false);
-      if (tutorCourses && tutorCourses.length > 0) {
-        views.add('tutor');
-      }
-    } catch {}
-
-    try {
-      const lecturerCourses = await api.getLecturerCourses();
-      if (lecturerCourses && lecturerCourses.length > 0) {
-        views.add('lecturer');
-      }
-    } catch {}
-
-    return Array.from(views);
+    return await api.getUserViews();
   }
 
 
