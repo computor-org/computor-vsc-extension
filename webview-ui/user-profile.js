@@ -78,14 +78,6 @@
         <form id="account-form">
           <div class="profile-grid">
             <div class="form-field">
-              <label for="account-username">Username</label>
-              <input id="account-username" name="username" value="${escapeHtml(toInputValue(user.username))}" placeholder="Username" autocomplete="username">
-            </div>
-            <div class="form-field">
-              <label for="account-email">Email</label>
-              <input id="account-email" name="email" type="email" value="${escapeHtml(toInputValue(user.email))}" placeholder="Email" autocomplete="email">
-            </div>
-            <div class="form-field">
               <label for="account-given-name">Given Name</label>
               <input id="account-given-name" name="given_name" value="${escapeHtml(toInputValue(user.given_name))}" placeholder="Given name">
             </div>
@@ -94,12 +86,17 @@
               <input id="account-family-name" name="family_name" value="${escapeHtml(toInputValue(user.family_name))}" placeholder="Family name">
             </div>
             <div class="form-field">
+              <label for="account-email">Email</label>
+              <input id="account-email" name="email" type="email" value="${escapeHtml(toInputValue(user.email))}" placeholder="Email" autocomplete="email">
+            </div>
+            <div class="form-field">
+              <label for="account-username">Username</label>
+              <input id="account-username" name="username" value="${escapeHtml(toInputValue(user.username))}" placeholder="Username" autocomplete="username">
+            </div>
+            <div class="form-field">
               <label for="account-number">Student Number</label>
               <input id="account-number" name="number" value="${escapeHtml(toInputValue(user.number))}" placeholder="Optional student number">
             </div>
-          </div>
-          <div class="profile-actions">
-            <button type="submit" class="primary">Save Account</button>
           </div>
         </form>
       </section>
