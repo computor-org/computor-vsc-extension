@@ -403,35 +403,43 @@ export class StudentCommands {
               const { stdout: headStdout } = await execAsync('git rev-parse HEAD', { cwd: repoPath });
               submissionVersion = headStdout.trim();
 
-              let uploadRequired = true;
+              let existingArtifactId: string | undefined;
+              let alreadySubmitted = false;
               try {
                 const existingSubmissions = await this.apiService.listStudentSubmissionArtifacts({
                   submission_group_id: submissionGroupId,
-                  version_identifier: submissionVersion,
-                  submit: true
+                  version_identifier: submissionVersion
                 });
-                if (existingSubmissions.length > 0) {
-                  uploadRequired = false;
+                if (existingSubmissions.length > 0 && existingSubmissions[0]?.id) {
+                  existingArtifactId = existingSubmissions[0].id;
+                  alreadySubmitted = existingSubmissions[0].submit === true;
                 }
               } catch (listError) {
                 console.warn('[StudentCommands] Failed to check existing submissions:', listError);
               }
 
-              if (!uploadRequired) {
+              if (existingArtifactId && alreadySubmitted) {
                 reusedExistingSubmission = true;
                 submissionOk = true;
-                progress.report({ message: 'Submission already exists for this version; skipping upload.' });
+                progress.report({ message: 'Submission already exists for this version.' });
                 return;
+              } else if (existingArtifactId && !alreadySubmitted) {
+                progress.report({ message: 'Marking existing artifact as submitted...' });
+                submissionResponse = await this.apiService.updateStudentSubmission(
+                  existingArtifactId,
+                  { submit: true }
+                );
+              } else {
+                progress.report({ message: 'Packaging submission archive...' });
+                const archive = await this.createSubmissionArchive(submissionDirectory);
+
+                progress.report({ message: 'Creating submission...' });
+                submissionResponse = await this.apiService.createStudentSubmission({
+                  submission_group_id: submissionGroupId,
+                  version_identifier: submissionVersion || undefined,
+                  submit: true
+                }, archive);
               }
-
-              progress.report({ message: 'Packaging submission archive...' });
-              const archive = await this.createSubmissionArchive(submissionDirectory);
-
-              progress.report({ message: 'Creating submission...' });
-              submissionResponse = await this.apiService.createStudentSubmission({
-                submission_group_id: submissionGroupId,
-                version_identifier: submissionVersion || undefined
-              }, archive);
 
               submissionOk = true;
             } catch (e) {
@@ -641,22 +649,26 @@ export class StudentCommands {
             }
 
             if (commitHash && courseContentId) {
-              let uploadRequired = true;
+              let existingArtifactId: string | undefined;
               try {
                 const existingSubmissions = await this.apiService.listStudentSubmissionArtifacts({
                   submission_group_id: submissionGroupId,
                   version_identifier: commitHash,
                   submit: false
                 });
-                if (existingSubmissions.length > 0) {
-                  uploadRequired = false;
+                if (existingSubmissions.length > 0 && existingSubmissions[0]?.id) {
+                  existingArtifactId = existingSubmissions[0].id;
                 }
               } catch (listError) {
                 console.warn('[TestAssignment] Failed to check existing submissions:', listError);
               }
 
               let submissionResponse: any = null;
-              if (uploadRequired) {
+
+              if (existingArtifactId) {
+                progress.report({ message: 'Reusing existing test submission...' });
+                submissionResponse = { artifacts: [existingArtifactId] };
+              } else {
                 progress.report({ message: 'Packaging submission archive...' });
                 const archive = await this.createSubmissionArchive(submissionDirectory);
 
@@ -667,10 +679,9 @@ export class StudentCommands {
                 progress.report({ message: 'Uploading submission package...' });
                 submissionResponse = await this.apiService.createStudentSubmission({
                   submission_group_id: submissionGroupId,
-                  version_identifier: commitHash
+                  version_identifier: commitHash,
+                  submit: false
                 }, archive);
-              } else {
-                progress.report({ message: 'Reusing existing submission archive.' });
               }
 
               // Submit test using artifact_id if available, otherwise fall back to submission_group_id + version

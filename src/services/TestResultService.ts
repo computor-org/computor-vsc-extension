@@ -86,27 +86,121 @@ export class TestResultService {
         // Check if we have the full result already
         if (testResult.result_json) {
           const statusValue = testResult.status;
-          this.showTestResult(assignmentTitle, statusValue, testResult.result_json);
-          return;
+          const statusString = typeof statusValue === 'string' ? statusValue.toLowerCase() : undefined;
+          console.log(`[TestResultService] Test completed immediately with status: ${statusValue}`);
+
+          // Display the results
+          await this.displayTestResults(testResult, assignmentTitle);
+
+          const isSuccess = statusValue === 0 || statusString === 'finished';
+          const isFailure = statusValue === 1 || statusString === 'failed';
+          const isCancelled = statusString === 'cancelled';
+          const isTerminal = isSuccess || isFailure || isCancelled || statusString === 'deferred' || statusValue === 6;
+
+          if (isTerminal) {
+            if (isSuccess) {
+              const score = typeof testResult.result === 'number' ? testResult.result : 0;
+              const percentage = (score * 100).toFixed(1);
+              vscode.window.showInformationMessage(
+                `✅ Tests completed for ${assignmentTitle}: ${percentage}% passed`
+              );
+            } else if (isFailure) {
+              vscode.window.showErrorMessage(`❌ Test execution failed for ${assignmentTitle}`);
+            } else if (isCancelled) {
+              vscode.window.showWarningMessage(`⚠️ Test execution cancelled for ${assignmentTitle}`);
+            } else {
+              vscode.window.showInformationMessage(`ℹ️ Test results available for ${assignmentTitle} (status: ${statusValue})`);
+            }
+            return;
+          }
         }
 
         // Start polling if we have a result ID
         if (testResult.id) {
+          const resultId = testResult.id;
+          console.log(`[TestResultService] Test submitted with result ID: ${resultId}, starting polling...`);
+
           progress.report({ message: 'Waiting for test results...' });
-          await this.pollForResult(testResult.id, assignmentTitle, progress, token);
+
+          await (async () => {
+            return new Promise<void>((resolve) => {
+              const startTime = Date.now();
+              let pollCount = 0;
+
+              this.stopPolling(resultId);
+
+              const interval = setInterval(async () => {
+                pollCount++;
+
+                if (token && token.isCancellationRequested) {
+                  this.stopPolling(resultId);
+                  resolve();
+                  return;
+                }
+
+                if (Date.now() - startTime > this.MAX_POLL_DURATION) {
+                  this.stopPolling(resultId);
+                  vscode.window.showWarningMessage(`Test for ${assignmentTitle} timed out after 5 minutes`);
+                  resolve();
+                  return;
+                }
+
+                const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                progress.report({ message: `Running tests... (${elapsed}s)` });
+
+                const status = await this.apiService!.getResultStatus(resultId) as unknown as number | string;
+                console.log(`[TestResultService] Poll ${pollCount}: Status = ${status}`);
+
+                if (status === undefined) {
+                  return;
+                }
+
+                if (status === 0 || status === 1 || status === 6 || status === "finished" || status === "failed" || status === "cancelled") {
+                  this.stopPolling(resultId);
+
+                  const fullResult = await this.apiService!.getResult(resultId);
+
+                  if (fullResult) {
+                    console.log('[TestResultService] Test complete, full result:', fullResult);
+
+                    await this.displayTestResults(fullResult, assignmentTitle);
+
+                    if (status === 0 || status === "finished") {
+                      vscode.window.showInformationMessage(
+                        `✅ Tests completed for ${assignmentTitle}`
+                      );
+                    } else {
+                      vscode.window.showErrorMessage(
+                        `❌ Tests failed for ${assignmentTitle}`
+                      );
+                    }
+                  }
+
+                  resolve();
+                }
+              }, this.POLL_INTERVAL);
+
+              this.pollingIntervals.set(resultId, interval);
+            });
+          })();
         } else {
           vscode.window.showErrorMessage('Test submitted but no result ID received');
         }
       };
 
-      if (options?.showProgress !== false) {
-        await vscode.window.withProgress({
-          location: vscode.ProgressLocation.Window,
-          title: 'Running Test',
-          cancellable: true
-        }, runWithProgress);
+      if (options?.progress) {
+        await runWithProgress(options.progress, options.token);
       } else {
-        if (options?.progress) {
+        const show = options?.showProgress !== false;
+        if (show) {
+          await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `Testing ${assignmentTitle}...`,
+            cancellable: true,
+          }, async (progress, token) => {
+            await runWithProgress(progress, token);
+          });
+        } else {
           const dummy: vscode.Progress<{ message?: string; increment?: number }> = { report: () => void 0 };
           await runWithProgress(dummy);
         }
@@ -114,6 +208,7 @@ export class TestResultService {
     } catch (error: any) {
       console.error('[TestResultService] Error in submitTestByArtifactAndAwaitResults:', error);
       vscode.window.showErrorMessage(`Test submission failed: ${error.message}`);
+      throw error;
     }
   }
 

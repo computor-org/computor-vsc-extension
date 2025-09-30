@@ -65,7 +65,8 @@ import {
   SubmissionCreate,
   SubmissionListItem,
   SubmissionQuery,
-  SubmissionUploadResponseModel
+  SubmissionUploadResponseModel,
+  SubmissionArtifactUpdate
 } from '../types/generated';
 import { TutorGradeCreate } from '../types/generated/common';
 
@@ -2210,6 +2211,23 @@ export class ComputorApiService {
       return response.data;
     } catch (error: any) {
       console.error('Failed to create student submission:', error);
+      throw error;
+    }
+  }
+
+  async updateStudentSubmission(
+    artifactId: string,
+    payload: SubmissionArtifactUpdate
+  ): Promise<SubmissionUploadResponseModel | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.patch<SubmissionUploadResponseModel>(
+        `/submissions/artifacts/${artifactId}`,
+        payload
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error('Failed to update student submission:', error);
       throw error;
     }
   }

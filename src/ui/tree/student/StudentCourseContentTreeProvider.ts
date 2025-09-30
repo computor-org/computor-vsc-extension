@@ -893,12 +893,25 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
 
     // Update this item's data from a fresh course content object
     public applyUpdate(updatedContent: CourseContentStudentList): void {
+        // Preserve the old absolute directory path before overwriting
+        const oldDirectory = (this.courseContent as any)?.directory;
+
         // Overwrite backing fields (readonly at type-level only)
         (this as any).courseContent = updatedContent;
         (this as any).submissionGroup = updatedContent.submission_group;
         if ((updatedContent as any)?.course_content_type) {
             (this as any).contentType = (updatedContent as any).course_content_type;
         }
+
+        // If we had an absolute path and the new data has a relative path or no path,
+        // restore the old absolute path to prevent commands from disappearing
+        if (oldDirectory && path.isAbsolute(oldDirectory)) {
+            const newDirectory = (updatedContent as any)?.directory;
+            if (!newDirectory || !path.isAbsolute(newDirectory)) {
+                (updatedContent as any).directory = oldDirectory;
+            }
+        }
+
         // Recompute visual aspects
         this.setupIcon();
         this.setupDescription();
