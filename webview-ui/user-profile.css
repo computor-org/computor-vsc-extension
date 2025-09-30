@@ -81,11 +81,17 @@
 .profile-grid input,
 .profile-grid textarea {
   background: var(--vscode-input-background);
-  border: 1px solid var(--vscode-input-border);
+  border: 1px solid var(--vscode-input-border, var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35)));
   color: var(--vscode-input-foreground);
   border-radius: 4px;
   font-size: 13px;
   padding: 6px 8px;
+}
+
+.profile-grid input:focus,
+.profile-grid textarea:focus {
+  outline: 1px solid var(--vscode-focusBorder, rgba(0, 122, 204, 0.8));
+  outline-offset: -1px;
 }
 
 .profile-grid textarea {
