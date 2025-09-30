@@ -51,7 +51,9 @@ import {
   CourseContentStudentList,
   CourseContentStudentUpdate,
   ProfileGet,
+  ProfileCreate,
   ProfileUpdate,
+  LanguageList,
   StudentProfileGet,
   StudentProfileCreate,
   StudentProfileUpdate,
@@ -1375,10 +1377,26 @@ export class ComputorApiService {
     }
   }
 
-  async updateUserProfile(updates: ProfileUpdate): Promise<ProfileGet> {
+  async createUserProfile(payload: ProfileCreate): Promise<ProfileGet> {
     try {
       const client = await this.getHttpClient();
-      const response = await client.patch<ProfileGet>('/profiles', updates);
+      const response = await client.post<ProfileGet>('/profiles', payload);
+      const profile = response.data;
+      this.invalidateUserCaches({ user: false, profile: true, studentProfiles: false });
+      if (profile) {
+        multiTierCache.set('userProfile', profile, 'warm');
+      }
+      return profile;
+    } catch (error) {
+      console.error('Failed to create user profile:', error);
+      throw error;
+    }
+  }
+
+  async updateUserProfile(profileId: string, updates: ProfileUpdate): Promise<ProfileGet> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.patch<ProfileGet>(`/profiles/${profileId}`, updates);
       const profile = response.data;
       this.invalidateUserCaches({ user: false, profile: true, studentProfiles: false });
       if (profile) {
@@ -1387,6 +1405,30 @@ export class ComputorApiService {
       return profile;
     } catch (error) {
       console.error('Failed to update user profile:', error);
+      throw error;
+    }
+  }
+
+  async getLanguages(options?: { force?: boolean }): Promise<LanguageList[]> {
+    const cacheKey = 'languages';
+
+    if (options?.force) {
+      multiTierCache.delete(cacheKey);
+    } else {
+      const cached = multiTierCache.get<LanguageList[]>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+    }
+
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<LanguageList[]>('/languages');
+      const languages = Array.isArray(response.data) ? response.data : [];
+      multiTierCache.set(cacheKey, languages, 'cold');
+      return languages;
+    } catch (error) {
+      console.error('Failed to load languages:', error);
       throw error;
     }
   }

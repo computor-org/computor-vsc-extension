@@ -44,6 +44,7 @@
     const user = state.user || {};
     const profile = state.profile || {};
     const studentProfiles = Array.isArray(state.studentProfiles) ? state.studentProfiles : [];
+    const languages = Array.isArray(state.languages) ? state.languages : [];
 
     const studentProfilesHtml = studentProfiles.length > 0
       ? studentProfiles.map((sp, index) => `
@@ -73,7 +74,7 @@
       <section class="profile-section">
         <div>
           <h2>Account Information</h2>
-          <p class="section-description">Update your core account details used across Computor.</p>
+          <p class="section-description">Core account details.</p>
         </div>
         <form id="account-form">
           <div class="profile-grid">
@@ -103,8 +104,8 @@
 
       <section class="profile-section">
         <div>
-          <h2>Public Profile</h2>
-          <p class="section-description">This information is visible to tutors and lecturers when available.</p>
+          <h2>User Profile</h2>
+          <p class="section-description">Update your profile used across Computor.</p>
         </div>
         <form id="profile-form">
           <div class="profile-grid">
@@ -124,6 +125,13 @@
               <label for="profile-avatar-image">Avatar Image URL</label>
               <input id="profile-avatar-image" name="avatar_image" type="url" value="${escapeHtml(toInputValue(profile.avatar_image))}" placeholder="https://...">
             </div>
+            <div class="form-field">
+              <label for="profile-language">Language</label>
+              <select id="profile-language" name="language_code">
+                <option value="">No preference</option>
+                ${languages.map(lang => `<option value="${escapeHtml(lang.code)}" ${profile.language_code === lang.code ? 'selected' : ''}>${escapeHtml(lang.name)}${lang.native_name ? ` (${escapeHtml(lang.native_name)})` : ''}</option>`).join('')}
+              </select>
+            </div>
             <div class="form-field" style="grid-column: 1 / -1;">
               <label for="profile-bio">Biography</label>
               <textarea id="profile-bio" name="bio" placeholder="Tell others a little about you">${escapeHtml(toInputValue(profile.bio))}</textarea>
@@ -138,7 +146,7 @@
       <section class="profile-section">
         <div>
           <h2>Student Profiles</h2>
-          <p class="section-description">Student profiles link your Computor account to academic identifiers used by courses.</p>
+          <p class="section-description">Student profiles link your Computor account to academic identifiers used by organizations.</p>
         </div>
         <div class="student-profile-list">
           ${studentProfilesHtml}

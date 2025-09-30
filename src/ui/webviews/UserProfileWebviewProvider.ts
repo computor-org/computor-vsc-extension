@@ -3,7 +3,9 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import {
   ProfileGet,
+  ProfileCreate,
   ProfileUpdate,
+  LanguageList,
   StudentProfileCreate,
   StudentProfileGet,
   StudentProfileUpdate,
@@ -16,6 +18,7 @@ interface UserProfileViewState {
   user?: UserGet;
   profile?: ProfileGet | null;
   studentProfiles: StudentProfileGet[];
+  languages: LanguageList[];
   canChangePassword: boolean;
   username?: string;
 }
@@ -110,10 +113,10 @@ export class UserProfileWebviewProvider extends BaseWebviewProvider {
   }
 
   private async loadState(options?: { force?: boolean }): Promise<UserProfileViewState> {
-    const [user, profile, studentProfiles] = await Promise.all([
+    const [user, studentProfiles, languages] = await Promise.all([
       this.apiService.getUserAccount(options),
-      this.apiService.getUserProfile(options),
-      this.apiService.getStudentProfiles(options)
+      this.apiService.getStudentProfiles(options),
+      this.apiService.getLanguages(options)
     ]);
 
     let canChangePassword = false;
@@ -133,8 +136,9 @@ export class UserProfileWebviewProvider extends BaseWebviewProvider {
 
     return {
       user: user ?? undefined,
-      profile: profile ?? null,
+      profile: user?.profile ?? null,
       studentProfiles: studentProfiles ?? [],
+      languages: languages ?? [],
       canChangePassword,
       username
     };
@@ -180,20 +184,45 @@ export class UserProfileWebviewProvider extends BaseWebviewProvider {
       return;
     }
 
-    const updates: ProfileUpdate = {
-      nickname: raw.nickname ?? undefined,
-      bio: raw.bio ?? undefined,
-      url: raw.url ?? undefined,
-      avatar_image: raw.avatar_image ?? raw.avatarImage ?? undefined,
-      avatar_color: raw.avatar_color ?? raw.avatarColor ?? undefined,
-      properties: raw.properties ?? undefined
-    };
+    const user = await this.apiService.getUserAccount();
+    if (!user?.id) {
+      this.handleError('Failed to save profile', new Error('User ID not found'));
+      return;
+    }
+
+    const profile = user.profile;
 
     try {
-      await this.apiService.updateUserProfile(updates);
-      await this.refreshState({ force: true, notice: { type: 'success', message: 'Profile updated.' } });
+      if (!profile?.id) {
+        const payload: ProfileCreate = {
+          user_id: user.id,
+          nickname: raw.nickname ?? undefined,
+          bio: raw.bio ?? undefined,
+          url: raw.url ?? undefined,
+          avatar_image: raw.avatar_image ?? raw.avatarImage ?? undefined,
+          avatar_color: raw.avatar_color ?? raw.avatarColor ?? undefined,
+          language_code: raw.language_code ?? undefined,
+          properties: raw.properties ?? undefined
+        };
+
+        await this.apiService.createUserProfile(payload);
+        await this.refreshState({ force: true, notice: { type: 'success', message: 'Profile created.' } });
+      } else {
+        const updates: ProfileUpdate = {
+          nickname: raw.nickname ?? undefined,
+          bio: raw.bio ?? undefined,
+          url: raw.url ?? undefined,
+          avatar_image: raw.avatar_image ?? raw.avatarImage ?? undefined,
+          avatar_color: raw.avatar_color ?? raw.avatarColor ?? undefined,
+          language_code: raw.language_code ?? undefined,
+          properties: raw.properties ?? undefined
+        };
+
+        await this.apiService.updateUserProfile(profile.id, updates);
+        await this.refreshState({ force: true, notice: { type: 'success', message: 'Profile updated.' } });
+      }
     } catch (error: any) {
-      this.handleError('Failed to update profile', error);
+      this.handleError('Failed to save profile', error);
     }
   }
 
