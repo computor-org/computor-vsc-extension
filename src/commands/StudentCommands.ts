@@ -604,6 +604,7 @@ export class StudentCommands {
           ? item.courseContent.id
           : String(item.courseContent.id);
 
+        let testSucceeded = false;
         try {
           // Always show a single progress for the entire test flow
           await vscode.window.withProgress({
@@ -692,13 +693,16 @@ export class StudentCommands {
                   { progress, token, showProgress: false }
                 );
               }
+              testSucceeded = true;
             } else {
               vscode.window.showWarningMessage('Could not determine commit hash or content ID for testing');
             }
           });
 
-          // Refresh just this course content from API after results
-          await this.treeDataProvider.refreshContentItem(courseContentId);
+          // Only refresh if test completed successfully
+          if (testSucceeded) {
+            await this.treeDataProvider.refreshContentItem(courseContentId);
+          }
         } catch (error: any) {
           console.error('Failed to test assignment:', error);
           if (error?.message && error.message.includes('Failed to push changes to remote')) {

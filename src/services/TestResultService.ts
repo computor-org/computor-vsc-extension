@@ -78,8 +78,9 @@ export class TestResultService {
         console.log("[Debug] " + JSON.stringify(testResult,null,2));
 
         if (!testResult) {
-          vscode.window.showErrorMessage('Failed to submit test - no response received');
-          return;
+          const errorMsg = 'Failed to submit test - no response received';
+          vscode.window.showErrorMessage(errorMsg);
+          throw new Error(errorMsg);
         }
 
         // Check if we have the full result already
@@ -148,8 +149,9 @@ export class TestResultService {
         console.log("[Debug] " + JSON.stringify(testResult,null,2));
 
         if (!testResult) {
-          vscode.window.showErrorMessage('Failed to submit test - no response received');
-          return;
+          const errorMsg = 'Failed to submit test - no response received';
+          vscode.window.showErrorMessage(errorMsg);
+          throw new Error(errorMsg);
         }
 
         // Check if we have the full result already
