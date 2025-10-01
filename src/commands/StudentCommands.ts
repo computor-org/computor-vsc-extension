@@ -1128,7 +1128,7 @@ export class StudentCommands {
       resultPercent: normalizedResult !== null ? normalizedResult * 100 : null,
       rawResult: normalizedResult,
       status: entry.status ?? null,
-      submit: typeof entry.submit === 'boolean' ? entry.submit : null,
+      submit: null,
       createdAt: entry.created_at ?? null,
       updatedAt: entry.updated_at ?? null,
       versionIdentifier: entry.version_identifier ?? null,

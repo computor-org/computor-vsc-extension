@@ -5,6 +5,8 @@
     user: undefined,
     profile: null,
     studentProfiles: [],
+    languages: [],
+    organizations: [],
     canChangePassword: false,
     username: undefined,
     ...(window.__INITIAL_STATE__ || {})
@@ -45,11 +47,14 @@
     const profile = state.profile || {};
     const studentProfiles = Array.isArray(state.studentProfiles) ? state.studentProfiles : [];
     const languages = Array.isArray(state.languages) ? state.languages : [];
+    const organizations = Array.isArray(state.organizations) ? state.organizations : [];
 
     const studentProfilesHtml = studentProfiles.length > 0
-      ? studentProfiles.map((sp, index) => `
+      ? studentProfiles.map((sp, index) => {
+          const orgTitle = sp.organization?.title || sp.organization?.name || sp.organization?.path || 'Unknown Organization';
+          return `
         <form class="student-profile-card student-profile-form" data-profile-id="${escapeHtml(sp.id)}">
-          <h3>Student Profile ${index + 1}</h3>
+          <h3>Student Profile: ${escapeHtml(orgTitle)}</h3>
           <div class="student-profile-meta">ID: ${escapeHtml(sp.id)}${sp.created_at ? ` · Created: ${escapeHtml(sp.created_at)}` : ''}</div>
           <div class="profile-grid">
             <div class="form-field">
@@ -65,7 +70,8 @@
             <button type="submit" class="primary">Save Changes</button>
           </div>
         </form>
-      `).join('')
+      `;
+      }).join('')
       : '<div class="empty-state">No student profiles yet.</div>';
 
     root.innerHTML = `
@@ -80,23 +86,23 @@
           <div class="profile-grid">
             <div class="form-field">
               <label for="account-given-name">Given Name</label>
-              <input id="account-given-name" name="given_name" value="${escapeHtml(toInputValue(user.given_name))}" placeholder="Given name">
+              <input id="account-given-name" name="given_name" value="${escapeHtml(toInputValue(user.given_name))}" placeholder="Given name" readonly>
             </div>
             <div class="form-field">
               <label for="account-family-name">Family Name</label>
-              <input id="account-family-name" name="family_name" value="${escapeHtml(toInputValue(user.family_name))}" placeholder="Family name">
+              <input id="account-family-name" name="family_name" value="${escapeHtml(toInputValue(user.family_name))}" placeholder="Family name" readonly>
             </div>
             <div class="form-field">
               <label for="account-email">Email</label>
-              <input id="account-email" name="email" type="email" value="${escapeHtml(toInputValue(user.email))}" placeholder="Email" autocomplete="email">
+              <input id="account-email" name="email" type="email" value="${escapeHtml(toInputValue(user.email))}" placeholder="Email" autocomplete="email" readonly>
             </div>
             <div class="form-field">
               <label for="account-username">Username</label>
-              <input id="account-username" name="username" value="${escapeHtml(toInputValue(user.username))}" placeholder="Username" autocomplete="username">
+              <input id="account-username" name="username" value="${escapeHtml(toInputValue(user.username))}" placeholder="Username" autocomplete="username" readonly>
             </div>
             <div class="form-field">
               <label for="account-number">Student Number</label>
-              <input id="account-number" name="number" value="${escapeHtml(toInputValue(user.number))}" placeholder="Optional student number">
+              <input id="account-number" name="number" value="${escapeHtml(toInputValue(user.number))}" placeholder="Optional student number" readonly>
             </div>
           </div>
         </form>
@@ -154,6 +160,13 @@
           <form id="new-student-profile-form" class="student-profile-card">
             <h3>Add Student Profile</h3>
             <div class="profile-grid">
+              <div class="form-field">
+                <label for="new-organization">Organization</label>
+                <select id="new-organization" name="organization_id" required>
+                  <option value="">Select organization...</option>
+                  ${organizations.map(org => `<option value="${escapeHtml(org.id)}">${escapeHtml(org.title || org.name || org.path)}</option>`).join('')}
+                </select>
+              </div>
               <div class="form-field">
                 <label for="new-student-id">Student ID</label>
                 <input id="new-student-id" name="student_id" placeholder="e.g. matrikel number">
@@ -230,7 +243,8 @@
           bio: formData.get('bio')?.toString() || undefined,
           url: formData.get('url')?.toString().trim() || undefined,
           avatar_color: formData.get('avatar_color')?.toString().trim() || undefined,
-          avatar_image: formData.get('avatar_image')?.toString().trim() || undefined
+          avatar_image: formData.get('avatar_image')?.toString().trim() || undefined,
+          language_code: formData.get('language_code')?.toString().trim() || undefined
         };
         post('saveProfile', payload);
       });
@@ -257,9 +271,14 @@
         event.preventDefault();
         const formData = new FormData(newStudentForm);
         const payload = {
+          organization_id: formData.get('organization_id')?.toString().trim() || undefined,
           student_id: formData.get('student_id')?.toString().trim() || undefined,
           student_email: formData.get('student_email')?.toString().trim() || undefined
         };
+        if (!payload.organization_id) {
+          updateNotice({ type: 'warning', message: 'Please select an organization.' });
+          return;
+        }
         if (!payload.student_id && !payload.student_email) {
           updateNotice({ type: 'warning', message: 'Provide at least a student ID or a student email.' });
           return;
@@ -313,6 +332,8 @@
         state.user = message.data.user ?? state.user;
         state.profile = message.data.profile ?? state.profile;
         state.studentProfiles = message.data.studentProfiles ?? state.studentProfiles;
+        state.languages = message.data.languages ?? state.languages;
+        state.organizations = message.data.organizations ?? state.organizations;
         state.canChangePassword = message.data.canChangePassword ?? state.canChangePassword;
         state.username = message.data.username ?? state.username;
       }

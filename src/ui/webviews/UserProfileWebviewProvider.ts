@@ -6,7 +6,6 @@ import {
   ProfileCreate,
   ProfileUpdate,
   LanguageList,
-  StudentProfileCreate,
   StudentProfileGet,
   StudentProfileUpdate,
   UserGet,
@@ -19,6 +18,7 @@ interface UserProfileViewState {
   profile?: ProfileGet | null;
   studentProfiles: StudentProfileGet[];
   languages: LanguageList[];
+  organizations: any[];
   canChangePassword: boolean;
   username?: string;
 }
@@ -113,10 +113,11 @@ export class UserProfileWebviewProvider extends BaseWebviewProvider {
   }
 
   private async loadState(options?: { force?: boolean }): Promise<UserProfileViewState> {
-    const [user, studentProfiles, languages] = await Promise.all([
+    const [user, studentProfiles, languages, organizations] = await Promise.all([
       this.apiService.getUserAccount(options),
       this.apiService.getStudentProfiles(options),
-      this.apiService.getLanguages(options)
+      this.apiService.getLanguages(options),
+      this.apiService.getOrganizations()
     ]);
 
     let canChangePassword = false;
@@ -139,6 +140,7 @@ export class UserProfileWebviewProvider extends BaseWebviewProvider {
       profile: user?.profile ?? null,
       studentProfiles: studentProfiles ?? [],
       languages: languages ?? [],
+      organizations: organizations ?? [],
       canChangePassword,
       username
     };
@@ -241,9 +243,11 @@ export class UserProfileWebviewProvider extends BaseWebviewProvider {
       if (raw.id) {
         await this.apiService.updateStudentProfile(String(raw.id), updates);
       } else {
-        const payload: StudentProfileCreate = {
+        console.log(JSON.stringify(raw,null,2));
+        const payload: any = {
           student_id: updates.student_id,
-          student_email: updates.student_email
+          student_email: updates.student_email,
+          organization_id: raw.organization_id || undefined
         };
         await this.apiService.createStudentProfile(payload);
       }

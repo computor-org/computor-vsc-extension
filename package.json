@@ -57,6 +57,11 @@
         "category": "Computor"
       },
       {
+        "command": "computor.checkBackendConnection",
+        "title": "Computor: Check Backend Connection",
+        "category": "Computor"
+      },
+      {
         "command": "computor.settings",
         "title": "Computor: Settings",
         "category": "Computor"
