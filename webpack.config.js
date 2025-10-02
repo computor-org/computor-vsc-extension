@@ -45,7 +45,7 @@ module.exports = (_env = {}, argv = {}) => {
         new TerserPlugin({
           terserOptions: {
             compress: {
-              drop_console: false, // Keep console.log statements
+              drop_console: mode === 'production', // Remove console.log in production
             },
             format: {
               comments: false,
