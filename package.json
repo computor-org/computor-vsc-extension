@@ -446,42 +446,6 @@
         "title": "Release Course Content",
         "icon": "$(rocket)",
         "category": "Computor Lecturer"
-      },
-      {
-        "command": "computor.fileExplorer.refresh",
-        "title": "Refresh",
-        "icon": "$(refresh)",
-        "category": "File Explorer"
-      },
-      {
-        "command": "computor.fileExplorer.goUp",
-        "title": "Go Up",
-        "icon": "$(arrow-up)",
-        "category": "File Explorer"
-      },
-      {
-        "command": "computor.fileExplorer.goHome",
-        "title": "Go Home",
-        "icon": "$(home)",
-        "category": "File Explorer"
-      },
-      {
-        "command": "computor.fileExplorer.goToWorkspace",
-        "title": "Go to Workspace",
-        "icon": "$(root-folder)",
-        "category": "File Explorer"
-      },
-      {
-        "command": "computor.fileExplorer.toggleHidden",
-        "title": "Toggle Hidden Files",
-        "icon": "$(eye)",
-        "category": "File Explorer"
-      },
-      {
-        "command": "computor.fileExplorer.openFolder",
-        "title": "Open Folder",
-        "icon": "$(folder-opened)",
-        "category": "File Explorer"
       }
     ],
     "viewsContainers": {
@@ -554,14 +518,6 @@
           "icon": "$(repo)",
           "contextualTitle": "Example Repository",
           "when": "computor.lecturer.show"
-        }
-      ],
-      "explorer": [
-        {
-          "id": "computor.jsonTreeView",
-          "name": "JSON Explorer",
-          "icon": "$(json)",
-          "contextualTitle": "JSON Data Explorer"
         }
       ],
       "computor-test-results": [
@@ -646,31 +602,6 @@
           "command": "computor.lecturer.filterExamplesByTags",
           "when": "view == computor.lecturer.examples",
           "group": "navigation@4"
-        },
-        {
-          "command": "computor.selectWorkspaceDirectory",
-          "when": "view == computor.fileExplorerLecturer",
-          "group": "navigation@1"
-        },
-        {
-          "command": "computor.fileExplorer.refresh",
-          "when": "view == computor.fileExplorerLecturer",
-          "group": "navigation@2"
-        },
-        {
-          "command": "computor.fileExplorer.refresh",
-          "when": "view == computor.fileExplorerStudent",
-          "group": "navigation@2"
-        },
-        {
-          "command": "computor.selectWorkspaceDirectory",
-          "when": "view == computor.fileExplorerTutor",
-          "group": "navigation@1"
-        },
-        {
-          "command": "computor.fileExplorer.refresh",
-          "when": "view == computor.fileExplorerTutor",
-          "group": "navigation@2"
         }
       ],
       "view/item/context": [
