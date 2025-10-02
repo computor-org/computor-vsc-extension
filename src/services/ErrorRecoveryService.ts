@@ -77,25 +77,14 @@ export class AuthenticationErrorStrategy implements ErrorRecoveryStrategy {
   async recover(error: Error): Promise<void> {
     const action = await vscode.window.showErrorMessage(
       'Authentication failed. Your session may have expired.',
-      'Sign In as Lecturer',
-      'Sign In as Tutor',
-      'Sign In as Student',
+      'Sign In',
       'Cancel'
     );
-    
-    switch (action) {
-      case 'Sign In as Lecturer':
-        await vscode.commands.executeCommand('computor.lecturer.signIn');
-        break;
-      case 'Sign In as Tutor':
-        await vscode.commands.executeCommand('computor.tutor.signIn');
-        break;
-      case 'Sign In as Student':
-        // Command removed - student features being reimplemented
-        vscode.window.showInformationMessage('Student sign-in is being reimplemented');
-        break;
-      default:
-        throw error;
+
+    if (action === 'Sign In') {
+      await vscode.commands.executeCommand('computor.login');
+    } else {
+      throw error;
     }
   }
 }
