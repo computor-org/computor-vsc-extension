@@ -28,7 +28,6 @@ import {
 import type {
   CourseContentList,
   CourseContentLecturerList,
-  CourseContentLecturerGet,
   CourseContentCreate,
   CourseContentUpdate,
   CourseContentGet,

@@ -13,6 +13,7 @@ import { execAsync } from '../utils/exec';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { StudentCourseContentDetailsWebviewProvider, StudentContentDetailsViewState, StudentGradingHistoryEntry, StudentResultHistoryEntry } from '../ui/webviews/StudentCourseContentDetailsWebviewProvider';
 import { getExampleVersionId } from '../utils/deploymentHelpers';
+import { GitEnvironmentService } from '../services/GitEnvironmentService';
 import JSZip from 'jszip';
 
 // (Deprecated legacy types removed)
@@ -153,25 +154,6 @@ export class StudentCommands {
     }
   }
 
-  private async copyDirectory(src: string, dest: string): Promise<void> {
-    const stat = await fs.promises.stat(src);
-    if (!stat.isDirectory()) {
-      throw new Error('Source is not a directory');
-    }
-    await fs.promises.rm(dest, { recursive: true, force: true });
-    await fs.promises.mkdir(dest, { recursive: true });
-
-    const entries = await fs.promises.readdir(src, { withFileTypes: true });
-    for (const entry of entries) {
-      const s = path.join(src, entry.name);
-      const d = path.join(dest, entry.name);
-      if (entry.isDirectory()) {
-        await this.copyDirectory(s, d);
-      } else if (entry.isFile()) {
-        await fs.promises.copyFile(s, d);
-      }
-    }
-  }
 
   registerCommands(): void {
     // Refresh student view
@@ -376,7 +358,7 @@ export class StudentCommands {
 
     // Submit assignment
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.student.submitAssignment', async (itemOrSubmissionGroup: any, maybeCourse?: any) => {
+      vscode.commands.registerCommand('computor.student.submitAssignment', async (itemOrSubmissionGroup: any) => {
         try {
           // Support invocation from tree item (preferred)
           let directory: string | undefined;
@@ -636,13 +618,28 @@ export class StudentCommands {
             // Stage only the assignment directory
             const relAssignmentPath = path.relative(repoPath, directory);
             await execAsync(`git add ${JSON.stringify(relAssignmentPath)}`, { cwd: repoPath });
-            
+
             // Commit only if something is staged
             const { stdout: staged } = await execAsync('git diff --cached --name-only', { cwd: repoPath });
             if (staged.trim().length === 0) {
               throw new Error('No changes to commit in the assignment folder');
             }
-            await execAsync(`git commit -m ${JSON.stringify(commitMessage)}`, { cwd: repoPath });
+
+            try {
+              await execAsync(`git commit -m ${JSON.stringify(commitMessage)}`, { cwd: repoPath });
+            } catch (commitError: any) {
+              if (commitError.message?.includes('user.name') || commitError.message?.includes('user.email') || commitError.message?.includes('Author identity')) {
+                const gitEnv = GitEnvironmentService.getInstance();
+                const configured = await gitEnv.promptAndConfigureGit();
+                if (configured) {
+                  await execAsync(`git commit -m ${JSON.stringify(commitMessage)}`, { cwd: repoPath });
+                } else {
+                  throw new Error('Git configuration is required to commit. Please configure git user.name and user.email.');
+                }
+              } else {
+                throw commitError;
+              }
+            }
 
             progress.report({ increment: 60, message: 'Pushing to remote...' });
             // Push to main branch, prompting for new token if required
@@ -833,26 +830,29 @@ export class StudentCommands {
     try {
       const courseSelection = CourseSelectionService.getInstance();
       const courseInfo = courseSelection.getCurrentCourseInfo();
-      const courseId = courseSelection.getCurrentCourseId();
-      if (!courseId) {
-        vscode.window.showWarningMessage('No course selected.');
-        return;
-      }
+      let courseId = courseSelection.getCurrentCourseId();
 
       let target: MessageTargetContext | undefined;
 
       const content = item?.courseContent as any;
       if (content && typeof content.id === 'string') {
+        courseId = content.course_id || courseId;
+
+        if (!courseId) {
+          vscode.window.showWarningMessage('No course selected.');
+          return;
+        }
+
         const submissionGroup = item?.submissionGroup as SubmissionGroupStudentList | undefined;
         const contentTitle: string = content.title || content.path || 'Course content';
         const courseLabel = courseInfo?.title || courseInfo?.path || 'Course';
         const subtitle = courseLabel ? `${courseLabel} › ${content.path || contentTitle}` : undefined;
         const query: Record<string, string> = {
-          course_id: content.course_id || courseId,
+          course_id: courseId,
           course_content_id: content.id
         };
         const createPayload: Partial<MessageCreate> = {
-          course_id: content.course_id || courseId,
+          course_id: courseId,
           course_content_id: content.id
         };
 
@@ -871,6 +871,11 @@ export class StudentCommands {
       }
 
       if (!target) {
+        if (!courseId) {
+          vscode.window.showWarningMessage('No course selected.');
+          return;
+        }
+
         const courseLabel = courseInfo?.title || courseInfo?.path || 'Course messages';
         const subtitle = courseInfo?.path ? `Course • ${courseInfo.path}` : undefined;
         target = {

@@ -96,7 +96,7 @@ type MessageQueryParams = Partial<{
 }>;
 
 export class ComputorApiService {
-  private httpClient?: BasicAuthHttpClient;
+  public httpClient?: BasicAuthHttpClient;
   private settingsManager: ComputorSettingsManager;
   private context: vscode.ExtensionContext;
   
@@ -123,17 +123,27 @@ export class ComputorApiService {
   }
 
   private async getHttpClient(): Promise<BasicAuthHttpClient> {
+    console.log('[getHttpClient] Checking httpClient availability:', !!this.httpClient);
+
     if (!this.httpClient) {
+      console.log('[getHttpClient] httpClient not set, attempting to create from stored credentials...');
       const settings = await this.settingsManager.getSettings();
-      
+
       // Try to get stored credentials
       const username = await this.context.secrets.get('computor.username');
       const password = await this.context.secrets.get('computor.password');
-      
+
+      console.log('[getHttpClient] Credentials check:', {
+        hasUsername: !!username,
+        hasPassword: !!password
+      });
+
       if (!username || !password) {
         throw new Error('Not authenticated. Please login first using the Computor: Login command.');
       }
-      
+
+      console.log('[getHttpClient] Creating BasicAuthHttpClient with baseUrl:', settings.authentication.baseUrl);
+
       // Use BasicAuthHttpClient for proper Basic authentication handling
       this.httpClient = new BasicAuthHttpClient(
         settings.authentication.baseUrl,
@@ -141,16 +151,25 @@ export class ComputorApiService {
         password,
         5000
       );
-      
+
       // Authenticate to verify credentials
       try {
+        console.log('[getHttpClient] Authenticating client...');
         await this.httpClient.authenticate();
+        console.log('[getHttpClient] Authentication successful');
       } catch (error) {
+        console.error('[getHttpClient] Authentication failed:', error);
         // Clear invalid client
         this.httpClient = undefined;
         throw error;
       }
     }
+
+    console.log('[getHttpClient] Returning httpClient:', {
+      exists: !!this.httpClient,
+      type: this.httpClient?.constructor?.name
+    });
+
     return this.httpClient;
   }
 
@@ -1305,25 +1324,35 @@ export class ComputorApiService {
     // Check cache first
     const cached = multiTierCache.get<string[]>(cacheKey);
     if (cached) {
+      console.log('[getUserViews] Returning cached views:', cached);
       return cached;
     }
 
     try {
+      console.log('[getUserViews] Fetching user views from API...');
       const result = await errorRecoveryService.executeWithRecovery(async () => {
         const client = await this.getHttpClient();
+        console.log('[getUserViews] HTTP client obtained, making GET request to /user/views');
         const response = await client.get<string[]>('/user/views');
+        console.log('[getUserViews] Response received:', response);
         return response.data;
       }, {
         maxRetries: 2,
         exponentialBackoff: true
       });
 
+      console.log('[getUserViews] Successfully fetched views:', result);
       // Cache in warm tier
       multiTierCache.set(cacheKey, result, 'warm');
       return result;
     } catch (error) {
-      console.error('Failed to get user views:', error);
-      return [];
+      console.error('[getUserViews] Failed to get user views:', error);
+      console.error('[getUserViews] Error details:', {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        error
+      });
+      throw error;
     }
   }
 

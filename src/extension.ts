@@ -598,8 +598,30 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
 
       vscode.window.showInformationMessage(`Logged in: ${baseUrl}`);
     } catch (error: any) {
+      console.error('Login failed:', error);
       await controller.dispose();
-      vscode.window.showErrorMessage(`Failed to login: ${error?.message || error}`);
+
+      let errorMessage = 'Unknown error';
+      if (error?.message) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error?.toString) {
+        errorMessage = error.toString();
+      }
+
+      const fullError = error?.stack ? `${errorMessage}\n\nStack trace:\n${error.stack}` : errorMessage;
+      console.error('Full error details:', fullError);
+
+      vscode.window.showErrorMessage(
+        `Failed to login: ${errorMessage}`,
+        'Show Details'
+      ).then(selection => {
+        if (selection === 'Show Details') {
+          vscode.window.showErrorMessage(fullError, { modal: true });
+        }
+      });
+
       backendConnectionService.stopHealthCheck();
     }
   } finally {
@@ -627,6 +649,66 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(vscode.commands.registerCommand('computor.manageGitLabTokens', async () => {
     await manageGitLabTokens(context);
+  }));
+
+  // Check backend connection command
+  context.subscriptions.push(vscode.commands.registerCommand('computor.checkBackendConnection', async () => {
+    try {
+      const settings = new ComputorSettingsManager(context);
+      const baseUrl = await settings.getBaseUrl();
+
+      if (!baseUrl) {
+        const action = await vscode.window.showWarningMessage(
+          'No backend URL configured. Would you like to configure it now?',
+          'Configure',
+          'Cancel'
+        );
+        if (action === 'Configure') {
+          await vscode.commands.executeCommand('computor.changeRealmUrl');
+        }
+        return;
+      }
+
+      const backendConnectionService = BackendConnectionService.getInstance();
+      backendConnectionService.setBaseUrl(baseUrl);
+
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Checking backend connection...',
+        cancellable: false
+      }, async () => {
+        const status = await backendConnectionService.checkBackendConnection(baseUrl);
+
+        if (status.isReachable) {
+          vscode.window.showInformationMessage(`✓ Backend is reachable at ${baseUrl}`);
+        } else {
+          await backendConnectionService.showConnectionError(status);
+        }
+      });
+    } catch (error: any) {
+      console.error('Backend connection check failed:', error);
+
+      let errorMessage = 'Unknown error';
+      if (error?.message) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error?.toString) {
+        errorMessage = error.toString();
+      }
+
+      const fullError = error?.stack ? `${errorMessage}\n\nStack trace:\n${error.stack}` : errorMessage;
+      console.error('Full error details:', fullError);
+
+      vscode.window.showErrorMessage(
+        `Backend connection check failed: ${errorMessage}`,
+        'Show Details'
+      ).then(selection => {
+        if (selection === 'Show Details') {
+          vscode.window.showErrorMessage(fullError, { modal: true });
+        }
+      });
+    }
   }));
   
   // Check if workspace has .computor file and automatically prompt for login

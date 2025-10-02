@@ -1,4 +1,5 @@
 const path = require('path');
+const TerserPlugin = require('terser-webpack-plugin');
 
 /**
  * @param {Record<string, unknown>} env
@@ -38,6 +39,21 @@ module.exports = (_env = {}, argv = {}) => {
           ]
         }
       ]
+    },
+    optimization: {
+      minimizer: [
+        new TerserPlugin({
+          terserOptions: {
+            compress: {
+              drop_console: false, // Keep console.log statements
+            },
+            format: {
+              comments: false,
+            },
+          },
+          extractComments: false,
+        }),
+      ],
     },
     infrastructureLogging: {
       level: 'warn'
