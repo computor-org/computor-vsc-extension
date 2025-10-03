@@ -8,9 +8,7 @@ import { ComputorApiService } from './services/ComputorApiService';
 // GitLabTokenManager is dynamically imported in code blocks below
 // import { GitLabTokenManager } from './services/GitLabTokenManager';
 
-import { BasicAuthHttpClient } from './http/BasicAuthHttpClient';
-import { ApiKeyHttpClient } from './http/ApiKeyHttpClient';
-import { JwtHttpClient } from './http/JwtHttpClient';
+import { BearerTokenHttpClient } from './http/BearerTokenHttpClient';
 import { BackendConnectionService } from './services/BackendConnectionService';
 import { GitEnvironmentService } from './services/GitEnvironmentService';
 import { ExtensionUpdateService } from './services/ExtensionUpdateService';
@@ -35,17 +33,11 @@ import { TestResultsPanelProvider, TestResultsTreeDataProvider } from './ui/pane
 import { TestResultService } from './services/TestResultService';
 import { manageGitLabTokens } from './commands/manageGitLabTokens';
 
-type Role = 'Lecturer' | 'Student' | 'Tutor';
-type AuthType = 'basic' | 'apiKey' | 'jwt';
-
 interface StoredAuth {
-  type: AuthType;
-  username?: string;
-  password?: string;
-  apiKey?: string;
-  token?: string;
-  headerName?: string;
-  headerPrefix?: string;
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt?: string;
+  userId?: string;
 }
 
 
@@ -74,50 +66,35 @@ async function ensureBaseUrl(settings: ComputorSettingsManager): Promise<string 
   return url;
 }
 
-async function chooseAuthType(settings: ComputorSettingsManager, defaultType?: AuthType): Promise<AuthType | undefined> {
-  const choice = await vscode.window.showQuickPick([
-    { label: 'Basic (username/password)', value: 'basic', picked: defaultType === 'basic' },
-    { label: 'API Key', value: 'apiKey', picked: defaultType === 'apiKey' },
-    { label: 'JWT Token (SSO)', value: 'jwt', picked: defaultType === 'jwt' }
-  ], { title: 'Choose authentication method', placeHolder: 'Select auth method' });
-  if (!choice) return undefined;
-  await settings.setAuthProvider(choice.value);
-  return choice.value as AuthType;
+async function promptCredentials(previous?: { username?: string }): Promise<{ username: string; password: string } | undefined> {
+  const username = await vscode.window.showInputBox({
+    title: 'Computor Login',
+    prompt: 'Username',
+    value: previous?.username,
+    ignoreFocusOut: true
+  });
+  if (!username) return undefined;
+
+  const password = await vscode.window.showInputBox({
+    title: 'Computor Login',
+    prompt: 'Password',
+    password: true,
+    ignoreFocusOut: true
+  });
+  if (!password) return undefined;
+
+  return { username, password };
 }
 
-async function promptCredentials(role: Role, auth: AuthType, settings: ComputorSettingsManager, previous?: StoredAuth): Promise<StoredAuth | undefined> {
-  switch (auth) {
-    case 'basic': {
-      const username = await vscode.window.showInputBox({ title: `${role} Login`, prompt: 'Username', value: previous?.username, ignoreFocusOut: true });
-      if (!username) return undefined;
-      const password = await vscode.window.showInputBox({ title: `${role} Login`, prompt: 'Password', value: previous?.password, password: true, ignoreFocusOut: true });
-      if (!password) return undefined;
-      return { type: 'basic', username, password };
-    }
-    case 'apiKey': {
-      const apiKey = await vscode.window.showInputBox({ title: `${role} Login`, prompt: 'API Key', value: previous?.apiKey, password: true, ignoreFocusOut: true });
-      if (!apiKey) return undefined;
-      const tokenSettings = await settings.getTokenSettings();
-      return { type: 'apiKey', apiKey, headerName: tokenSettings.headerName, headerPrefix: tokenSettings.headerPrefix };
-    }
-    case 'jwt': {
-      const token = await vscode.window.showInputBox({ title: `${role} Login`, prompt: 'Paste JWT/OAuth access token', value: previous?.token, password: true, ignoreFocusOut: true });
-      if (!token) return undefined;
-      return { type: 'jwt', token };
-    }
-  }
-}
-
-function buildHttpClient(baseUrl: string, auth: StoredAuth): BasicAuthHttpClient | ApiKeyHttpClient | JwtHttpClient {
-  if (auth.type === 'basic') {
-    return new BasicAuthHttpClient(baseUrl, auth.username!, auth.password!, 5000);
-  } else if (auth.type === 'apiKey') {
-    return new ApiKeyHttpClient(baseUrl, auth.apiKey!, auth.headerName || 'X-API-Key', auth.headerPrefix || '', 5000);
-  } else {
-    const jwt = new JwtHttpClient(baseUrl, { serverUrl: baseUrl, realm: 'computor', clientId: 'computor-vscode', redirectUri: '' }, 5000);
-    jwt.setTokens(auth.token!);
-    return jwt;
-  }
+function buildHttpClient(baseUrl: string, auth: StoredAuth): BearerTokenHttpClient {
+  const client = new BearerTokenHttpClient(baseUrl, 5000);
+  client.setTokens(
+    auth.accessToken,
+    auth.refreshToken,
+    auth.expiresAt ? new Date(auth.expiresAt) : undefined,
+    auth.userId
+  );
+  return client;
 }
 
 async function readMarker(file: string): Promise<{ backendUrl?: string; courseId?: string } | undefined> {
@@ -548,15 +525,12 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
       activeSession = null;
     }
 
-    // Prompt for authentication - use generic auth since we don't know roles yet
     const secretKey = 'computor.auth';
-    const storedRaw = await context.secrets.get(secretKey);
-    const previous: StoredAuth | undefined = storedRaw ? JSON.parse(storedRaw) as StoredAuth : undefined;
-    const type = await chooseAuthType(settings, previous?.type);
-    if (!type) { return; }
-    const creds = await promptCredentials('Student', type, settings, previous);
+    const usernameKey = 'computor.username';
+
+    const storedUsername = await context.secrets.get(usernameKey);
+    const creds = await promptCredentials(storedUsername ? { username: storedUsername } : undefined);
     if (!creds) { return; }
-    const auth: StoredAuth = creds;
 
     backendConnectionService.setBaseUrl(baseUrl);
     const connectionStatus = await backendConnectionService.checkBackendConnection(baseUrl);
@@ -565,10 +539,24 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
       return;
     }
 
-    // Update workspace marker with backend URL
-    await ensureWorkspaceMarker(baseUrl);
+    const client = new BearerTokenHttpClient(baseUrl, 5000);
 
-    const client = buildHttpClient(baseUrl, auth);
+    try {
+      await client.authenticateWithCredentials(creds.username, creds.password);
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Authentication failed: ${error.message}`);
+      return;
+    }
+
+    const tokenData = client.getTokenData();
+    const auth: StoredAuth = {
+      accessToken: tokenData.accessToken!,
+      refreshToken: tokenData.refreshToken || undefined,
+      expiresAt: tokenData.expiresAt?.toISOString(),
+      userId: tokenData.userId || undefined
+    };
+
+    await ensureWorkspaceMarker(baseUrl);
     const controller = new UnifiedController(context);
 
     try {
@@ -589,6 +577,8 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
       };
 
       await context.secrets.store(secretKey, JSON.stringify(auth));
+      await context.secrets.store(usernameKey, creds.username);
+
       if (extensionUpdateService) {
         extensionUpdateService.checkForUpdates().catch(err => {
           console.warn('Extension update check failed:', err);
