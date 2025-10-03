@@ -16,17 +16,20 @@ export class UserPasswordCommands {
 
   private async changePassword(): Promise<void> {
     const secretKey = 'computor.auth';
+    const usernameKey = 'computor.username';
+
     const storedRaw = await this.context.secrets.get(secretKey);
     const storedAuth: any = storedRaw ? JSON.parse(storedRaw) : undefined;
+    const username = await this.context.secrets.get(usernameKey);
 
-    if (!storedAuth || storedAuth.type !== 'basic' || !storedAuth.username) {
-      vscode.window.showErrorMessage('Password changes are only supported for Basic Auth logins.');
+    if (!storedAuth || !username) {
+      vscode.window.showErrorMessage('Please login before changing your password.');
       return;
     }
 
     try {
       const rawClient: any = (this.apiService as any).httpClient;
-      if (!rawClient && !this.apiService.isAuthenticated()) {
+      if (!rawClient || !this.apiService.isAuthenticated()) {
         vscode.window.showErrorMessage('Please login before changing your password.');
         return;
       }
@@ -88,35 +91,33 @@ export class UserPasswordCommands {
         await this.apiService.updateUserPassword(payload);
       });
 
-      await this.updateStoredCredentials(secretKey, storedAuth.username, newPassword);
-      vscode.window.showInformationMessage('Password updated successfully.');
+      await this.reauthenticateWithNewPassword(username, newPassword);
+      vscode.window.showInformationMessage('Password updated successfully. Please re-login if you experience any issues.');
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to update password: ${error?.message || error}`);
     }
   }
 
-  private async updateStoredCredentials(secretKey: string, username: string, newPassword: string): Promise<void> {
+  private async reauthenticateWithNewPassword(username: string, newPassword: string): Promise<void> {
     try {
-      const storedRaw = await this.context.secrets.get(secretKey);
-      if (storedRaw) {
-        const storedAuth: any = JSON.parse(storedRaw);
-        if (storedAuth?.type === 'basic') {
-          storedAuth.password = newPassword;
-          await this.context.secrets.store(secretKey, JSON.stringify(storedAuth));
-        }
-      }
-
       const client: any = (this.apiService as any).httpClient;
-      if (client && typeof client.setCredentials === 'function') {
-        client.setCredentials(username, newPassword);
-        try {
-          await client.authenticate();
-        } catch (error) {
-          console.warn('Failed to re-authenticate after password change:', error);
-        }
+      if (client && typeof client.authenticateWithCredentials === 'function') {
+        await client.authenticateWithCredentials(username, newPassword);
+
+        const tokenData = client.getTokenData();
+        const secretKey = 'computor.auth';
+        const auth = {
+          accessToken: tokenData.accessToken,
+          refreshToken: tokenData.refreshToken || undefined,
+          expiresAt: tokenData.expiresAt?.toISOString(),
+          userId: tokenData.userId || undefined
+        };
+
+        await this.context.secrets.store(secretKey, JSON.stringify(auth));
       }
     } catch (error) {
-      console.warn('Failed to update stored credentials after password change:', error);
+      console.warn('Failed to re-authenticate after password change:', error);
+      throw error;
     }
   }
 }
